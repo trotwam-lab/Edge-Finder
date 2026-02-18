@@ -2,51 +2,57 @@
 
 ## Project Overview
 
-**Edge-Finder** is a new project in its initial setup phase. No source code, build system, or dependencies have been configured yet.
+**Edge-Finder** is a native iOS app for [EdgeFinder](https://edgefinder-betting.vercel.app/), a sports betting edge-finding platform.
 
 - **Repository**: trotwam-lab/Edge-Finder
-- **Status**: Initial setup — no source code or configuration files exist yet
+- **Status**: Active development — iOS app with lock screen Live Activities, push notifications, bet tracker, and Pro theme system
 - **Branch strategy**: Feature branches prefixed with `claude/`
+- **Language**: Swift 5.9 / SwiftUI
+- **Minimum iOS**: 16.2 (required for Live Activities + lock screen widgets)
 
 ## Repository Structure
 
 ```
 Edge-Finder/
-├── CLAUDE.md          # This file — AI assistant guide
-└── .git/              # Git metadata
+├── CLAUDE.md
+├── README.md
+├── .gitignore
+├── EdgeFinder/                         # Main app target
+│   ├── App/                            # Entry point + AppDelegate
+│   ├── Models/                         # Bet, Game, User, Theme
+│   ├── Views/                          # SwiftUI views by feature
+│   ├── ViewModels/                     # ObservableObject VMs
+│   ├── Services/                       # LiveActivity, Notifications, API
+│   ├── Utilities/                      # Persistence, WidgetKit helper
+│   └── Resources/                      # Info.plist, entitlements
+├── EdgeFinderWidget/                   # WidgetKit extension (Live Activity + widgets)
+└── EdgeFinderNotificationService/      # Notification Service Extension
 ```
-
-> When adding new files or directories, update this section to reflect the actual layout.
 
 ## Development Setup
 
-No setup steps are required yet. When dependencies and tooling are added, document them here:
-
-- **Language(s)**: TBD
-- **Package manager**: TBD
-- **Runtime requirements**: TBD
+- **Language**: Swift 5.9+
+- **Package manager**: Xcode (no SPM packages yet — all Apple frameworks)
+- **Runtime requirements**: Xcode 15+, iOS 16.2 simulator or device, Apple Developer Program account for APNs/Live Activities
 
 ## Common Commands
 
-<!-- Update these as the project evolves -->
-
 | Task         | Command |
 |--------------|---------|
-| Install deps | TBD     |
-| Build        | TBD     |
-| Run tests    | TBD     |
-| Lint         | TBD     |
-| Format       | TBD     |
-| Start        | TBD     |
+| Build        | `Cmd+B` in Xcode |
+| Run          | `Cmd+R` (requires simulator or device) |
+| Test         | `Cmd+U` |
+| Lint         | `swiftlint` (not yet configured) |
 
 ## Architecture
 
-No architecture has been established yet. When it is, document:
-
-- Entry points
-- Key modules and their responsibilities
-- Data flow patterns
-- External service dependencies
+- **Entry point**: `EdgeFinder/App/EdgeFinderApp.swift` (@main SwiftUI App)
+- **Pattern**: MVVM — `@MainActor ObservableObject` ViewModels injected via `@EnvironmentObject`
+- **Lock screen**: `EdgeFinderWidget/BetLiveActivityWidget.swift` (ActivityKit) + accessory widgets
+- **Push notifications**: `NotificationService.swift` + `EdgeFinderNotificationService/` extension
+- **Theming**: `AppTheme` propagated via `EnvironmentKey` — Pro users unlock additional color themes
+- **Data flow**: API → ViewModel → View; bets persisted to App Group `UserDefaults` (shared with widget)
+- **External services**: EdgeFinder REST API (`api.edgefinder-betting.com/v1`), APNs
 
 ## Conventions for AI Assistants
 

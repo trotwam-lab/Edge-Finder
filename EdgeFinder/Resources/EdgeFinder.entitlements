@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push Notifications (APNs) -->
+	<key>aps-environment</key>
+	<string>development</string>
+
+	<!-- App Groups — shared storage with Widget and Notification extensions -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.edgefinder.app</string>
+	</array>
+
+	<!-- Live Activities (ActivityKit) -->
+	<key>com.apple.developer.activitykit.apns-key-id</key>
+	<string>YOUR_ACTIVITYKIT_APNS_KEY_ID</string>
+
+	<!-- Associated Domains (for universal links / deep links) -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:edgefinder-betting.vercel.app</string>
+	</array>
+
+	<!-- In-App Purchases (for Pro subscription) -->
+	<key>com.apple.developer.in-app-payments</key>
+	<array>
+		<string>com.edgefinder.pro.monthly</string>
+		<string>com.edgefinder.pro.yearly</string>
+	</array>
+</dict>
+</plist>
