@@ -16,6 +16,12 @@ export default async function handler(req, res) {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: 'Missing email' });
 
+    // Lifetime Pro accounts (owner/admin)
+    const LIFETIME_PRO = ['wamelite@yahoo.com'];
+    if (LIFETIME_PRO.includes(email.toLowerCase())) {
+      return res.json({ tier: 'pro', lifetime: true });
+    }
+
     // Get customer by email
     const customersRes = await fetch(`${STRIPE_API}/customers?email=${encodeURIComponent(email)}&limit=1`, {
       headers: { 'Authorization': `Bearer ${key}` }
