@@ -15,22 +15,23 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) return res.status(500).json({ error: 'STRIPE_SECRET_KEY not configured' });
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+  // We only need the Stripe SDK for webhook signature verification
   const stripe = new Stripe(key);
   let event;
 
   try {
     const rawBody = await getRawBody(req);
 
-    if (process.env.STRIPE_WEBHOOK_SECRET) {
+    if (webhookSecret) {
       const sig = req.headers['stripe-signature'];
-      event = stripe.webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
     } else {
       event = JSON.parse(rawBody.toString());
     }
   } catch (err) {
-    console.error('Webhook error:', err.message);
+    console.error('Webhook verification error:', err.message);
     return res.status(400).json({ error: 'Invalid signature' });
   }
 
@@ -39,7 +40,11 @@ export default async function handler(req, res) {
 
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object;
-      console.log('Checkout completed:', s.customer_email, 'Sub:', s.subscription);
+      console.log('Checkout completed:', s.customer_email, 'Customer:', s.customer, 'Sub:', s.subscription);
+    } else if (event.type === 'customer.subscription.deleted') {
+      console.log('Subscription cancelled:', event.data.object.id);
+    } else if (event.type === 'customer.subscription.updated') {
+      console.log('Subscription updated:', event.data.object.id, 'Status:', event.data.object.status);
     }
 
     return res.json({ received: true });
