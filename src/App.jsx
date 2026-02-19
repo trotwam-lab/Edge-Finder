@@ -212,7 +212,7 @@ export default function BettingApp() {
                 <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
                   All features unlocked. Thank you for supporting Edge Finder!
                 </div>
-                <a href="https://billing.stripe.com/p/login/test" target="_blank" rel="noopener" style={{
+                <a href="https://billing.stripe.com/p/login/live" target="_blank" rel="noopener" style={{
                   padding: '8px 16px', background: 'rgba(99, 102, 241, 0.2)',
                   border: '1px solid rgba(99, 102, 241, 0.4)', borderRadius: '6px',
                   color: '#818cf8', fontSize: '11px', textDecoration: 'none',
