@@ -31,9 +31,9 @@ export default async function handler(req, res) {
     // Fetch odds for each event
     const allProps = [];
     
-    for (const event of events.slice(0, 10)) { // Limit to 10 events to avoid rate limits
+    for (const event of events.slice(0, 3)) { // Limit to 3 events to conserve API quota
       try {
-        const oddsUrl = `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&markets=${markets.join(',')}&oddsFormat=american`;
+        const oddsUrl = `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=us&markets=${markets.join(',')}&oddsFormat=american`;
         
         const oddsResponse = await fetch(oddsUrl);
         
