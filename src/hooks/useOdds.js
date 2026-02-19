@@ -20,7 +20,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   const [games, setGames] = useState([]);
   const [playerProps, setPlayerProps] = useState([]);
   const [injuries, setInjuries] = useState({});
-  const [historicOdds, setHistoricOdds] = useState({});
+  const [historicOdds, setHistoricOdds] = usePersistentState('edgefinder_historic_openers', {});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -190,6 +190,26 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
       });
       setInjuries(prev => isInitial ? injuriesByTeam : { ...prev, ...injuriesByTeam });
 
+      // Auto-capture opening lines: first time we see a game, save its odds as the opener
+      newGames.forEach(game => {
+        setHistoricOdds(prev => {
+          if (prev[game.id]) return prev; // Already have opener for this game
+          const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team)?.point;
+          const total = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0]?.point;
+          const h2h = game.bookmakers?.[0]?.markets?.find(m => m.key === 'h2h')?.outcomes;
+          if (spread == null && total == null) return prev;
+          return {
+            ...prev,
+            [game.id]: {
+              spread, total,
+              h2h: h2h?.map(o => ({ name: o.name, price: o.price })) || [],
+              capturedAt: new Date().toISOString(),
+              book: game.bookmakers?.[0]?.title,
+            }
+          };
+        });
+      });
+
       // Track game line history
       newGames.forEach(game => {
         const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team)?.point;
@@ -216,7 +236,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     } finally {
       setLoading(false);
     }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, enabledSports, refreshInterval, setGameLineHistory]);
+  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
   // Initial load
   useEffect(() => { loadData(true); }, []);
