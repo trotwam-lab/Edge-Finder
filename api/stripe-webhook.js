@@ -73,6 +73,39 @@ export default async function handler(req, res) {
     } else if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object;
       const firebaseUID = sub.metadata?.firebaseUID;
+      const customerId = sub.customer;
+      
+      // RETENTION: Check if this is Darryl (first customer - offer free month)
+      if (sub.id === 'sub_1T2fWv3swfFjeUB1AyCHeyMG' || customerId === 'cus_U0gul94dvIyJk1') {
+        console.log('🚨 RETENTION ALERT: First customer Darryl cancelled!');
+        
+        try {
+          // Create retention coupon (100% off for 1 month)
+          const coupon = await stripe.coupons.create({
+            name: 'RETENTION_DARRYL_1MONTH_FREE',
+            percent_off: 100,
+            duration: 'once',
+            metadata: { reason: 'Customer retention - first subscriber' }
+          });
+          console.log('Created retention coupon:', coupon.id);
+          
+          // Store retention offer in Firestore
+          await db.collection('retention_offers').doc(customerId).set({
+            customerId: customerId,
+            email: 'darryljrice@gmail.com',
+            subscriptionId: sub.id,
+            couponId: coupon.id,
+            status: 'pending',
+            message: '1 FREE MONTH offer created - contact customer',
+            createdAt: new Date().toISOString(),
+          });
+          console.log('Retention offer stored for Darryl');
+          
+        } catch (retentionErr) {
+          console.error('Failed to create retention offer:', retentionErr.message);
+        }
+      }
+      
       if (firebaseUID) {
         await db.collection('users').doc(firebaseUID).set({
           tier: 'free',
