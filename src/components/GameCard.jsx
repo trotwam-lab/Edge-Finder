@@ -58,7 +58,7 @@ export default function GameCard({
     e.stopPropagation(); // Don't toggle card expand
     const spreadText = homeSpread ? `Spread: ${homeSpread.point > 0 ? '+' : ''}${homeSpread.point}` : '';
     const totalText = totalLine ? `Total: ${totalLine.point}` : '';
-    const parts = [`${game.away_team} vs ${game.home_team}`, spreadText, totalText, 'via Edge Finder edgefinder-betting.vercel.app'].filter(Boolean);
+    const parts = [`${game.away_team} vs ${game.home_team}`, spreadText, totalText, 'via Edge Finder edgefinderdaily.com'].filter(Boolean);
     navigator.clipboard.writeText(parts.join(' | ')).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);

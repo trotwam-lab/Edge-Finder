@@ -46,9 +46,9 @@ module.exports = async (req, res) => {
       // 'subscription' = recurring payment (not a one-time charge)
       mode: 'subscription',
       // Where to send the user after successful payment
-      success_url: 'https://edgefinder-betting.vercel.app/?checkout=success',
+      success_url: 'https://edgefinderdaily.com/?checkout=success',
       // Where to send the user if they cancel/go back
-      cancel_url: 'https://edgefinder-betting.vercel.app/?checkout=cancel',
+      cancel_url: 'https://edgefinderdaily.com/?checkout=cancel',
       // We attach the userId so we can link the payment to the user later
       client_reference_id: userId,
       // Pre-fill the email on the Stripe checkout page
