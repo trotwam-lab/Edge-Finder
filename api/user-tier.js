@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     if (!email) return res.status(400).json({ error: 'Missing email' });
 
     // Lifetime Pro accounts (owner/admin)
-    const LIFETIME_PRO = ['wamelite@yahoo.com'];
+    const LIFETIME_PRO = ['wamelite@yahoo.com', 'mrxprofit@gmail.com'];
     if (LIFETIME_PRO.includes(email.toLowerCase())) {
       return res.json({ tier: 'pro', lifetime: true });
     }
