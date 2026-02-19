@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://edgefinderdaily.com';
 
     const session = await stripeClient.checkout.sessions.create({
-      line_items: [{ price: process.env.STRIPE_PRICE_ID || 'price_1T1qX14BRKqfJjuBAkGUEmmv', quantity: 1 }],
+      line_items: [{ price: 'price_1T215u3swfFjeUB1wzDerK1u', quantity: 1 }],
       mode: 'subscription',
       success_url: `${baseUrl}/?checkout=success`,
       cancel_url: `${baseUrl}/?checkout=cancel`,

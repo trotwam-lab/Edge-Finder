@@ -1,5 +1,5 @@
 // ==============================================
-// FIREBASE CONFIG â The central setup file for Firebase
+// FIREBASE CONFIG ★ The central setup file for Firebase
 // ==============================================
 // Firebase gives us: Authentication (login) and Firestore (database).
 // This file initializes both and exports them for use throughout the app.
@@ -9,7 +9,7 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 // Firestore = Firebase's database. We use it to store user data.
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
-// Your Firebase project config (from Firebase Console â Project Settings)
+// Your Firebase project config (from Firebase Console ★ Project Settings)
 const firebaseConfig = {
   apiKey: "AIzaSyBGKVFcZm8rurc9XXYoQ6uWkx7IGhXR6m4",
   authDomain: "edgefinder-betting.firebaseapp.com",
@@ -23,11 +23,11 @@ const firebaseConfig = {
 // Initialize the Firebase app
 const app = initializeApp(firebaseConfig);
 
-// Auth â handles user login/signup
+// Auth ★ handles user login/signup
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Firestore â our database for storing user data (like subscription tier)
+// Firestore ★ our database for storing user data (like subscription tier)
 export const db = getFirestore(app);
 
 // Helper: check a user's subscription tier by calling our API endpoint

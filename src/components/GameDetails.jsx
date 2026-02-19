@@ -61,11 +61,11 @@ export default function GameDetails({
   if (spreadMoveAbs >= 2) {
     trendText = spreadMove > 0 ? `HEAVY PUBLIC ACTION on ${game.home_team}` : `SHARP MONEY on ${game.away_team}`;
     trendColor = spreadMove > 0 ? '#f97316' : '#3b82f6';
-    trendIcon = spreadMove > 0 ? 'ð¥' : 'ð°';
+    trendIcon = spreadMove > 0 ? '🏆¥' : '🏆°';
   } else if (spreadMoveAbs >= 1) {
     trendText = spreadMove > 0 ? `Steam move toward ${game.home_team}` : `Line fading ${game.home_team}`;
     trendColor = spreadMove > 0 ? '#f97316' : '#64748b';
-    trendIcon = spreadMove > 0 ? 'ð' : 'ð';
+    trendIcon = spreadMove > 0 ? '🏆' : '🏆';
   }
 
   return (
@@ -90,7 +90,7 @@ export default function GameDetails({
             padding: '6px 12px', marginBottom: '4px',
             background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', fontSize: '10px', color: '#818cf8'
           }}>
-            <span>ð FAIR LINE</span>
+            <span>🏆 FAIR LINE</span>
             <span>{h2hFair ? `ML: ${h2hFair.outcomes?.map(o => formatOdds(o.fairPrice)).join(' / ')}` : ''}</span>
             <span>{spreadFair ? `Spread: ${spreadFair.outcomes?.map(o => formatOdds(o.fairPrice)).join(' / ')}` : ''}</span>
             <span>{totalFair ? `Total: ${totalFair.outcomes?.map(o => formatOdds(o.fairPrice)).join(' / ')}` : ''}</span>
@@ -116,7 +116,7 @@ export default function GameDetails({
               }}>
                 <span style={{ fontWeight: 600 }}>{BOOKMAKERS[book.key] || book.title}</span>
 
-                {/* Moneyline â clickable! Tap any odds to send to Bet Tracker */}
+                {/* Moneyline ★ clickable! Tap any odds to send to Bet Tracker */}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {h2h?.outcomes?.map((o, i) => {
                     const isBest = bestOddsMap[`h2h-${o.name}`]?.book === book.key;
@@ -147,7 +147,7 @@ export default function GameDetails({
                   })}
                 </div>
 
-                {/* Spread â clickable! */}
+                {/* Spread ★ clickable! */}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {spreads?.outcomes?.map((o, i) => {
                     const isBest = bestOddsMap[`spreads-${o.name}`]?.book === book.key;
@@ -178,7 +178,7 @@ export default function GameDetails({
                   })}
                 </div>
 
-                {/* Totals â clickable! */}
+                {/* Totals ★ clickable! */}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {totals?.outcomes?.map((o, i) => {
                     const isBest = bestOddsMap[`totals-${o.name}`]?.book === book.key;
@@ -221,10 +221,10 @@ export default function GameDetails({
         )}
       </div>
 
-      {/* Mini Sparkline â quick visual of spread movement (Pro only) */}
+      {/* Mini Sparkline ★ quick visual of spread movement (Pro only) */}
       {hasHistory && tier === 'pro' && (
         <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px' }}>
-          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px' }}>ð SPREAD SPARKLINE</div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px' }}>🏆 SPREAD SPARKLINE</div>
           <div style={{ height: '60px' }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={history}>
@@ -243,7 +243,7 @@ export default function GameDetails({
           background: 'rgba(30, 41, 59, 0.4)', borderRadius: '8px',
           textAlign: 'center', fontSize: '12px', color: '#64748b',
         }}>
-          ð Line history sparkline â <span style={{ color: '#818cf8', fontWeight: 600 }}>Pro</span>
+          🏆 Line history sparkline ★ <span style={{ color: '#818cf8', fontWeight: 600 }}>Pro</span>
         </div>
       )}
 
@@ -252,11 +252,11 @@ export default function GameDetails({
         <>
           <div style={{ marginBottom: '16px', padding: '16px', background: 'rgba(30, 41, 59, 0.6)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <h4 style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px' }}>ð LINE MOVEMENT</h4>
+              <h4 style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px' }}>🏆 LINE MOVEMENT</h4>
               {manualOpener ? (
-                <span style={{ fontSize: '9px', color: '#22c55e', background: 'rgba(34,197,94,0.2)', padding: '2px 6px', borderRadius: '3px' }}>â Manual Opener</span>
+                <span style={{ fontSize: '9px', color: '#22c55e', background: 'rgba(34,197,94,0.2)', padding: '2px 6px', borderRadius: '3px' }}>★ Manual Opener</span>
               ) : historicOpener ? (
-                <span style={{ fontSize: '9px', color: '#6366f1', background: 'rgba(99,102,241,0.2)', padding: '2px 6px', borderRadius: '3px' }}>ð Historic Opener</span>
+                <span style={{ fontSize: '9px', color: '#6366f1', background: 'rgba(99,102,241,0.2)', padding: '2px 6px', borderRadius: '3px' }}>🏆 Historic Opener</span>
               ) : (
                 <span style={{ fontSize: '9px', color: '#64748b', background: 'rgba(100,116,139,0.2)', padding: '2px 6px', borderRadius: '3px' }}>Tracking from app load</span>
               )}
@@ -268,7 +268,7 @@ export default function GameDetails({
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 16px' }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: spreadMove > 0 ? '#22c55e' : spreadMove < 0 ? '#ef4444' : '#64748b' }}>
-                  {spreadMove > 0 ? 'â' : spreadMove < 0 ? 'â' : 'â'}
+                  {spreadMove > 0 ? '★' : spreadMove < 0 ? '★' : '★'}
                 </div>
                 <div style={{
                   fontSize: '12px', fontWeight: 600, padding: '4px 10px',
@@ -284,7 +284,7 @@ export default function GameDetails({
             </div>
             {currentTotal && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', paddingTop: '12px', borderTop: '1px solid rgba(71,85,105,0.3)' }}>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>Total: {openerTotal} â {currentTotal}</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Total: {openerTotal} ★ {currentTotal}</span>
                 {totalMove !== 0 && (
                   <span style={{
                     fontSize: '10px', fontWeight: 600, padding: '2px 8px',
@@ -334,14 +334,14 @@ export default function GameDetails({
         </>
       ) : (
         <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(30,41,59,0.5)', borderRadius: '8px' }}>
-          <h4 style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>ð BETTING TRENDS</h4>
+          <h4 style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>🏆 BETTING TRENDS</h4>
           <p style={{ fontSize: '11px', color: '#64748b' }}>Collecting data... trends will appear after next refresh</p>
         </div>
       )}
 
       {/* Manual Opener */}
       <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(30,41,59,0.5)', borderRadius: '8px', border: '1px solid rgba(71,85,105,0.3)' }}>
-        <h4 style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>âï¸ SET TRUE OPENER</h4>
+        <h4 style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>⚙️ SET TRUE OPENER</h4>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <input type="number" step="0.5" placeholder="Spread" defaultValue={manualOpener?.spread || ''}
             onChange={(e) => {
@@ -369,7 +369,7 @@ export default function GameDetails({
       {allInjuries.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
           <h4 style={{ fontSize: '12px', color: '#ef4444', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            ð INJURY REPORT ({allInjuries.length})
+            🏆 INJURY REPORT ({allInjuries.length})
           </h4>
           <div style={{ display: 'grid', gap: '6px' }}>
             {allInjuries.map((inj, idx) => (

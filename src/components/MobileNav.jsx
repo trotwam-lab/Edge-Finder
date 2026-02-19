@@ -1,7 +1,7 @@
 import React from 'react';
 import { Target, Users, TrendingUp, Calculator, Settings, Zap, Crosshair } from 'lucide-react';
 
-// Each tab in the bottom nav bar â order matters!
+// Each tab in the bottom nav bar ★ order matters!
 const tabs = [
   { key: 'GAMES', label: 'Games', icon: Target },
   { key: 'EDGES', label: 'Edges', icon: Zap },

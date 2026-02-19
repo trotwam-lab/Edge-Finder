@@ -1,4 +1,4 @@
-// BetTracker.jsx â Track your bets, see stats, and monitor your P&L
+// BetTracker.jsx ★ Track your bets, see stats, and monitor your P&L
 // This is the main Bet Tracker tab for Edge Finder
 // It saves all bets to localStorage so they persist between sessions
 
@@ -16,7 +16,7 @@ import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { usePersistentState } from '../hooks/useOdds.js';
 
-// âââ Constants âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ★★★ Constants ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // These are the bet types a user can choose from in the dropdown
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
 
@@ -26,7 +26,7 @@ const PIE_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#22c55e', '#f59e0b', '#647
 // How many bets free users can track before hitting the paywall
 const FREE_BET_LIMIT = 5;
 
-// âââ Shared Styles âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ★★★ Shared Styles ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // Reusable style objects so we don't repeat ourselves everywhere
 const cardStyle = {
   background: 'rgba(30, 41, 59, 0.6)',
@@ -57,38 +57,38 @@ const labelStyle = {
   display: 'block',
 };
 
-// âââ Helper: format a dollar amount with + or - sign âââââââââââââââââââââââââ
+// ★★★ Helper: format a dollar amount with + or - sign ★★★★★★★★★★★★★★★★★★★★★★★★★
 function formatMoney(val) {
-  if (val === null || val === undefined) return 'â';
+  if (val === null || val === undefined) return '★';
   const sign = val >= 0 ? '+' : '';
   return `${sign}$${Math.abs(val).toFixed(2)}`;
 }
 
-// âââ Helper: get today's date as YYYY-MM-DD string âââââââââââââââââââââââââââ
+// ★★★ Helper: get today's date as YYYY-MM-DD string ★★★★★★★★★★★★★★★★★★★★★★★★★★★
 function todayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-// âââ Helper: format American odds with + or - sign âââââââââââââââââââââââââââ
+// ★★★ Helper: format American odds with + or - sign ★★★★★★★★★★★★★★★★★★★★★★★★★★★
 function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // MAIN COMPONENT
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // pendingBet: pre-filled bet data from Games tab (or null)
 // onBetConsumed: callback to clear the pending bet after it's used
 export default function BetTracker({ pendingBet, onBetConsumed }) {
-  // ââ Auth: check if user is free or pro ââ
+  // ★★ Auth: check if user is free or pro ★★
   const { tier } = useAuth();
   const isPro = tier === 'pro';
 
-  // ââ All bets stored in localStorage under key "edgefinder_bets" ââ
+  // ★★ All bets stored in localStorage under key "edgefinder_bets" ★★
   // usePersistentState works like useState but auto-saves to localStorage
   const [bets, setBets] = usePersistentState('edgefinder_bets', []);
 
-  // ââ Form state: these control the "Add a Bet" form inputs ââ
+  // ★★ Form state: these control the "Add a Bet" form inputs ★★
   const [game, setGame] = useState('');           // e.g. "Lakers vs Celtics"
   const [betType, setBetType] = useState('Spread'); // dropdown selection
   const [pick, setPick] = useState('');            // e.g. "Lakers -3.5"
@@ -96,13 +96,13 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   const [wager, setWager] = useState('');          // dollar amount
   const [date, setDate] = useState(todayStr());    // defaults to today
 
-  // ââ UI state ââ
+  // ★★ UI state ★★
   const [showForm, setShowForm] = useState(false);           // toggle the add-bet form
   const [historySortAsc, setHistorySortAsc] = useState(false); // sort direction for history
   const [showHistory, setShowHistory] = useState(true);       // toggle history section
   const [isPreFilled, setIsPreFilled] = useState(false);     // shows indicator when form was pre-filled
 
-  // ââ Pre-fill from pendingBet (when user clicks odds in Games tab) ââ
+  // ★★ Pre-fill from pendingBet (when user clicks odds in Games tab) ★★
   // useEffect runs whenever pendingBet changes. If it's not null, we fill the form.
   useEffect(() => {
     if (pendingBet) {
@@ -117,7 +117,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     }
   }, [pendingBet]);
 
-  // ââ Derived data: split bets into pending vs settled ââ
+  // ★★ Derived data: split bets into pending vs settled ★★
   // useMemo = only recalculate when `bets` changes (performance optimization)
   const pendingBets = useMemo(() => bets.filter(b => b.status === 'pending'), [bets]);
   const settledBets = useMemo(() => {
@@ -130,7 +130,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     });
   }, [bets, historySortAsc]);
 
-  // ââ Stats: calculated from settled bets ââ
+  // ★★ Stats: calculated from settled bets ★★
   const stats = useMemo(() => {
     const wins = settledBets.filter(b => b.status === 'won').length;
     const losses = settledBets.filter(b => b.status === 'lost').length;
@@ -144,7 +144,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     return { wins, losses, pushes, total, totalWagered, netPL, winPct, roi };
   }, [settledBets]);
 
-  // ââ Chart data: cumulative P&L over time ââ
+  // ★★ Chart data: cumulative P&L over time ★★
   const plChartData = useMemo(() => {
     // Sort all settled bets by date, then compute running total
     const sorted = [...settledBets].sort((a, b) =>
@@ -160,7 +160,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     });
   }, [settledBets]);
 
-  // ââ Chart data: pie chart showing bet type breakdown ââ
+  // ★★ Chart data: pie chart showing bet type breakdown ★★
   const pieData = useMemo(() => {
     const counts = {};
     bets.forEach(b => {
@@ -169,10 +169,10 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [bets]);
 
-  // ââ Gating check: are we at the free limit? ââ
+  // ★★ Gating check: are we at the free limit? ★★
   const atLimit = !isPro && bets.length >= FREE_BET_LIMIT;
 
-  // ââ Add a new bet ââ
+  // ★★ Add a new bet ★★
   function handleAddBet(e) {
     e.preventDefault(); // prevent page reload on form submit
 
@@ -211,7 +211,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     if (onBetConsumed) onBetConsumed();
   }
 
-  // ââ Settle a bet (Won, Lost, or Push) ââ
+  // ★★ Settle a bet (Won, Lost, or Push) ★★
   function settleBet(id, result) {
     setBets(prev => prev.map(bet => {
       if (bet.id !== id) return bet; // skip bets that don't match
@@ -237,18 +237,18 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     }));
   }
 
-  // ââ Delete a bet completely ââ
+  // ★★ Delete a bet completely ★★
   function deleteBet(id) {
     setBets(prev => prev.filter(b => b.id !== id));
   }
 
-  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
   // RENDER
-  // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
   return (
     <div style={{ padding: '20px 24px', maxWidth: '800px', margin: '0 auto' }}>
 
-      {/* ââ STATS DASHBOARD âââââââââââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* ★★ STATS DASHBOARD ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* Shows key metrics at the top like a sports betting dashboard */}
       <div style={{
         display: 'grid',
@@ -280,7 +280,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         ))}
       </div>
 
-      {/* ââ CHARTS ROW ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* ★★ CHARTS ROW ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* Only show charts if we have enough data to make them useful */}
       {settledBets.length >= 2 && (
         <div style={{
@@ -292,7 +292,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
           {/* Cumulative P&L line chart */}
           <div style={cardStyle}>
             <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
-              ð Cumulative P&L
+              🏆 Cumulative P&L
             </div>
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={plChartData}>
@@ -306,7 +306,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   }}
                   formatter={(val) => [`$${val}`, 'P&L']}
                 />
-                {/* The line itself â green if profitable, red if not */}
+                {/* The line itself ★ green if profitable, red if not */}
                 <Line
                   type="monotone"
                   dataKey="pnl"
@@ -322,7 +322,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
           {pieData.length > 0 && (
             <div style={cardStyle}>
               <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
-                ð¯ Bet Types
+                🏆¯ Bet Types
               </div>
               <ResponsiveContainer width="100%" height={140}>
                 <PieChart>
@@ -363,12 +363,12 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         </div>
       )}
 
-      {/* ââ ADD A BET BUTTON / FORM âââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* ★★ ADD A BET BUTTON / FORM ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* If free user is at the limit, show the Pro upgrade banner instead */}
       {atLimit ? (
         <div style={{ ...cardStyle, textAlign: 'center' }}>
           <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>
-            ð Free accounts can track up to {FREE_BET_LIMIT} bets.
+            🏆 Free accounts can track up to {FREE_BET_LIMIT} bets.
             Upgrade to Pro for unlimited tracking!
           </div>
           <ProBanner />
@@ -399,7 +399,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
             {showForm ? 'Cancel' : 'Add a Bet'}
           </button>
 
-          {/* The actual form â only visible when showForm is true */}
+          {/* The actual form ★ only visible when showForm is true */}
           {showForm && (
             <form onSubmit={handleAddBet} style={{
               marginTop: '12px',
@@ -411,7 +411,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                 boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)',
               } : {}),
             }}>
-              {/* Pre-filled indicator â lets user know the data came from a game */}
+              {/* Pre-filled indicator ★ lets user know the data came from a game */}
               {isPreFilled && (
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -419,7 +419,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px',
                   fontSize: '11px', color: '#a78bfa', fontWeight: 600,
                 }}>
-                  <span>ð Pre-filled from Games â just add your wager!</span>
+                  <span>🏆 Pre-filled from Games ★ just add your wager!</span>
                   <button
                     type="button"
                     onClick={() => { setIsPreFilled(false); if (onBetConsumed) onBetConsumed(); }}
@@ -530,19 +530,19 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   fontFamily: "'JetBrains Mono', monospace",
                 }}
               >
-                ð² Place Bet
+                🏆² Place Bet
               </button>
             </form>
           )}
         </div>
       )}
 
-      {/* ââ ACTIVE (PENDING) BETS âââââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* ★★ ACTIVE (PENDING) BETS ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* These are bets that haven't been settled yet */}
       {pendingBets.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
           <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            ð¯ Active Bets ({pendingBets.length})
+            🏆¯ Active Bets ({pendingBets.length})
           </div>
           {pendingBets.map(bet => (
             <div key={bet.id} style={{
@@ -566,7 +566,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                       fontSize: '10px',
                       color: '#818cf8',
                     }}>{bet.type}</span>
-                    {bet.pick} â¢ {formatOdds(bet.odds)} â¢ ${Number(bet.wager).toFixed(2)}
+                    {bet.pick} ★¢ {formatOdds(bet.odds)} ★¢ ${Number(bet.wager).toFixed(2)}
                   </div>
                 </div>
                 {/* Delete button (trash icon) */}
@@ -579,7 +579,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                 </button>
               </div>
 
-              {/* Bottom row: Settle buttons â Won, Lost, Push */}
+              {/* Bottom row: Settle buttons ★ Won, Lost, Push */}
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   onClick={() => settleBet(bet.id, 'won')}
@@ -591,7 +591,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                   }}
                 >
-                  <Trophy size={13} /> Won â
+                  <Trophy size={13} /> Won ★
                 </button>
                 <button
                   onClick={() => settleBet(bet.id, 'lost')}
@@ -603,7 +603,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                   }}
                 >
-                  <XCircle size={13} /> Lost â
+                  <XCircle size={13} /> Lost ★
                 </button>
                 <button
                   onClick={() => settleBet(bet.id, 'push')}
@@ -615,7 +615,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                   }}
                 >
-                  <RotateCcw size={13} /> Push â©ï¸
+                  <RotateCcw size={13} /> Push ★©ï¸
                 </button>
               </div>
             </div>
@@ -623,7 +623,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         </div>
       )}
 
-      {/* ââ BET HISTORY (SETTLED BETS) ââââââââââââââââââââââââââââââââââââââââ */}
+      {/* ★★ BET HISTORY (SETTLED BETS) ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {settledBets.length > 0 && (
         <div>
           {/* Section header with toggle and sort controls */}
@@ -639,7 +639,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                 fontFamily: "'JetBrains Mono', monospace", padding: 0,
               }}
             >
-              ð Bet History ({settledBets.length})
+              🏆 Bet History ({settledBets.length})
               {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
             {showHistory && (
@@ -651,21 +651,21 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   color: '#94a3b8', fontSize: '10px', fontFamily: "'JetBrains Mono', monospace",
                 }}
               >
-                {historySortAsc ? 'Oldest First â' : 'Newest First â'}
+                {historySortAsc ? 'Oldest First ★' : 'Newest First ★'}
               </button>
             )}
           </div>
 
-          {/* The history table â each settled bet shown as a row */}
+          {/* The history table ★ each settled bet shown as a row */}
           {showHistory && (
             <div style={{ overflowX: 'auto' }}>
-              {/* Running P&L tracker â we calculate as we render each row */}
+              {/* Running P&L tracker ★ we calculate as we render each row */}
               {(() => {
                 // Sort by date ascending to compute running P&L correctly
                 const chronological = [...settledBets].sort((a, b) =>
                   new Date(a.settledDate || a.date) - new Date(b.settledDate || b.date)
                 );
-                // Build a map of id â running P&L
+                // Build a map of id ★ running P&L
                 const runningMap = {};
                 let running = 0;
                 chronological.forEach(b => {
@@ -707,7 +707,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                         <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{bet.game}</span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                        {bet.date} â¢ {bet.type} â¢ {bet.pick} â¢ {formatOdds(bet.odds)} â¢ ${Number(bet.wager).toFixed(2)}
+                        {bet.date} ★¢ {bet.type} ★¢ {bet.pick} ★¢ {formatOdds(bet.odds)} ★¢ ${Number(bet.wager).toFixed(2)}
                       </div>
                     </div>
                     {/* Right side: profit and running P&L */}
@@ -733,13 +733,13 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         </div>
       )}
 
-      {/* ââ EMPTY STATE âââââââââââââââââââââââââââââââââââââââââââââââââââââââ */}
+      {/* ★★ EMPTY STATE ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* Show a friendly message when there are no bets at all */}
       {bets.length === 0 && (
         <div style={{
           textAlign: 'center', padding: '40px 20px', color: '#475569',
         }}>
-          <div style={{ fontSize: '40px', marginBottom: '12px' }}>ð</div>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>🏆</div>
           <div style={{ fontSize: '14px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
             No bets tracked yet
           </div>

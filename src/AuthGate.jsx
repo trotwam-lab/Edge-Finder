@@ -12,7 +12,7 @@ import { auth, googleProvider, getUserTier } from './firebase';
 
 // --- Auth Context ---
 // This context provides { user, tier, loading, logout } to the whole app
-// "tier" is either "free" or "pro" â it controls what features are visible
+// "tier" is either "free" or "pro" ★ it controls what features are visible
 const AuthContext = createContext(null);
 
 export function useAuth() {
@@ -26,7 +26,7 @@ export function AuthProvider({ children }) {
   const [tier, setTier] = useState('free'); // Default to free tier
   const [loading, setLoading] = useState(true);
 
-  // refreshTier â re-fetches the user's tier from the API
+  // refreshTier ★ re-fetches the user's tier from the API
   // Call this after a successful Stripe checkout to update the UI
   const refreshTier = async () => {
     if (user?.email) {
@@ -41,11 +41,11 @@ export function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        // User is logged in â check their subscription tier via email
+        // User is logged in ★ check their subscription tier via email
         const userTier = await getUserTier(u.email);
         setTier(userTier);
       } else {
-        // User logged out â reset to free
+        // User logged out ★ reset to free
         setTier('free');
       }
       setLoading(false);

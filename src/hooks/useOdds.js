@@ -94,7 +94,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const allSports = Object.entries(SPORTS).filter(([name]) => !enabledSports || enabledSports.includes(name));
     
     if (filter && filter !== 'ALL') {
-      // Single sport selected â only fetch that one
+      // Single sport selected ★ only fetch that one
       const sportKey = SPORTS[filter];
       if (sportKey) return [[filter, sportKey]];
       // Try to match by sport_key
@@ -103,7 +103,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
       return allSports.slice(0, 3);
     }
 
-    // ALL selected â rotate through 3-4 sports per cycle
+    // ALL selected ★ rotate through 3-4 sports per cycle
     const batchSize = 4;
     const start = rotationIndexRef.current % allSports.length;
     const batch = [];

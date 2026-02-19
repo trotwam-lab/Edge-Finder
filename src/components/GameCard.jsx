@@ -37,7 +37,7 @@ export default function GameCard({
   const [showQuickPick, setShowQuickPick] = useState(false); // Quick-pick bet popover
   const isLive = new Date(game.commence_time) < new Date();
 
-  // === EDGE SCOREâ¢ â pro-only composite rating ===
+  // === EDGE SCORE★¢ ★ pro-only composite rating ===
   const edgeScore = calculateEdgeScore(game, gameLineHistory);
   // Map score to label + color for the badge
   const edgeBadge = edgeScore <= 40
@@ -46,14 +46,14 @@ export default function GameCard({
     ? { label: 'MID', color: '#eab308', bg: 'rgba(234,179,8,0.15)' }
     : edgeScore <= 80
     ? { label: 'EDGE', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' }
-    : { label: 'ð¥ HOT', color: '#f97316', bg: 'rgba(249,115,22,0.2)' };
+    : { label: '🏆¥ HOT', color: '#f97316', bg: 'rgba(249,115,22,0.2)' };
 
-  // === TRENDING â free for all users ===
+  // === TRENDING ★ free for all users ===
   // If line history has 3+ entries, the line is actively moving
   const historyEntries = gameLineHistory[game.id] || [];
   const isTrending = historyEntries.length >= 3;
 
-  // === SHARE â copy game summary to clipboard ===
+  // === SHARE ★ copy game summary to clipboard ===
   const handleShare = (e) => {
     e.stopPropagation(); // Don't toggle card expand
     const spreadText = homeSpread ? `Spread: ${homeSpread.point > 0 ? '+' : ''}${homeSpread.point}` : '';
@@ -114,7 +114,7 @@ export default function GameCard({
             <Star size={18} color={watchlist.includes(game.id) ? '#fbbf24' : '#475569'}
               fill={watchlist.includes(game.id) ? '#fbbf24' : 'none'} />
           </button>
-          {/* Share button â copies game summary to clipboard (free for everyone) */}
+          {/* Share button ★ copies game summary to clipboard (free for everyone) */}
           <div style={{ position: 'relative' }}>
             <button onClick={handleShare}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -129,16 +129,16 @@ export default function GameCard({
               }}>Copied!</span>
             )}
           </div>
-          {/* ð¯ Quick Bet button â opens a popover with the main lines to track */}
+          {/* 🏆¯ Quick Bet button ★ opens a popover with the main lines to track */}
           <div style={{ position: 'relative' }}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowQuickPick(!showQuickPick); }}
-              title="Quick bet â track this game"
+              title="Quick bet ★ track this game"
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                 fontSize: '14px', lineHeight: 1,
               }}
-            >ð¯</button>
+            >🏆¯</button>
             {/* Quick-pick popover: shows the main lines for one-tap tracking */}
             {showQuickPick && (
               <div
@@ -151,7 +151,7 @@ export default function GameCard({
                 }}
               >
                 <div style={{ fontSize: '10px', color: '#818cf8', fontWeight: 700, marginBottom: '8px', textAlign: 'center' }}>
-                  QUICK BET â tap a line
+                  QUICK BET ★ tap a line
                 </div>
                 {/* Build quick-pick options from the first bookmaker's lines */}
                 {(() => {
@@ -220,7 +220,7 @@ export default function GameCard({
               color: game.scores ? '#ef4444' : getSportColor(sportLabel),
               borderRadius: '4px', fontSize: '9px', fontWeight: 700
             }}>{game.scores ? 'LIVE' : sportLabel}</span>
-            {/* Edge Scoreâ¢ badge â Pro users see score, free users see lock */}
+            {/* Edge Score★¢ badge ★ Pro users see score, free users see lock */}
             {tier === 'pro' ? (
               <span style={{
                 padding: '1px 5px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
@@ -232,12 +232,12 @@ export default function GameCard({
                 background: 'rgba(100,116,139,0.2)', color: '#64748b'
               }}><Lock size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> Edge</span>
             )}
-            {/* Trending indicator â FREE for all users, shows when line moved 3+ times */}
+            {/* Trending indicator ★ FREE for all users, shows when line moved 3+ times */}
             {isTrending && (
               <span style={{
                 padding: '1px 5px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
                 background: 'rgba(245,158,11,0.2)', color: '#f59e0b'
-              }}>ð MOVING</span>
+              }}>🏆 MOVING</span>
             )}
             {hasMovement && Math.abs(move) >= 1 && (
               <span style={{
@@ -245,12 +245,12 @@ export default function GameCard({
                 background: move > 0 ? 'rgba(249, 115, 22, 0.2)' : 'rgba(59, 130, 246, 0.2)',
                 borderRadius: '3px', fontSize: '9px',
                 color: move > 0 ? '#f97316' : '#3b82f6', fontWeight: 700
-              }}>{move > 0 ? 'ð¥ STEAM' : 'ð FADE'}</span>
+              }}>{move > 0 ? '🏆¥ STEAM' : '🏆 FADE'}</span>
             )}
             <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.away_team}</span>
             {awayInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
-                ð {awayInjuries.length}
+                🏆 {awayInjuries.length}
               </span>
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.awayScore}</span>}
@@ -258,7 +258,7 @@ export default function GameCard({
             <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.home_team}</span>
             {homeInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
-                ð {homeInjuries.length}
+                🏆 {homeInjuries.length}
               </span>
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.homeScore}</span>}

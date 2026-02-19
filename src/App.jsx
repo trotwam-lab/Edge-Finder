@@ -41,7 +41,7 @@ export default function BettingApp() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedGame, setExpandedGame] = useState(null);
 
-  // ââ "Quick Bet" state ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+  // —— "Quick Bet" state ——————————————————————————————————————————————————————
   // When a user clicks on odds in a game, we store the bet info here.
   // This automatically switches to the TRACKER tab and pre-fills the form.
   const [pendingBet, setPendingBet] = useState(null);
@@ -95,7 +95,7 @@ export default function BettingApp() {
           display: 'flex', alignItems: 'center', gap: '10px',
           fontFamily: "'JetBrains Mono', monospace",
         }}>
-          ð Welcome to Edge Finder Pro! All features unlocked.
+          🎯 Welcome to Edge Finder Pro! All features unlocked.
           <button onClick={() => setShowCheckoutToast(false)} style={{
             background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px',
           }}>Ã</button>
@@ -111,7 +111,7 @@ export default function BettingApp() {
           zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
           fontFamily: "'JetBrains Mono', monospace",
         }}>
-          Checkout cancelled â no worries, you can upgrade anytime.
+          Checkout cancelled — no worries, you can upgrade anytime.
           <button onClick={() => setShowCancelToast(false)} style={{
             background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontSize: '16px', marginLeft: '10px',
           }}>Ã</button>
@@ -199,15 +199,15 @@ export default function BettingApp() {
 
       {activeTab === 'SETTINGS' && (
         <div style={{ padding: '20px 24px', maxWidth: '600px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>âï¸ Settings</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>⚙️ Settings</h2>
 
           {/* Subscription Status */}
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>ð Subscription</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>🎯 Subscription</div>
             {tier === 'pro' ? (
               <div>
                 <div style={{ fontSize: '14px', color: '#c4b5fd', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  â¡ You're on Edge Finder Pro
+                  ⚡ You're on Edge Finder Pro
                 </div>
                 <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
                   All features unlocked. Thank you for supporting Edge Finder!
@@ -228,8 +228,8 @@ export default function BettingApp() {
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>ð Sports</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledSports.length} of {Object.keys(SPORTS).length} active â only enabled sports will load</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>🎯 Sports</div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledSports.length} of {Object.keys(SPORTS).length} active — only enabled sports will load</div>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={() => setEnabledSports(Object.keys(SPORTS))} style={{ padding: '4px 10px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer' }}>All On</button>
@@ -257,8 +257,8 @@ export default function BettingApp() {
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>ð Sportsbooks</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledBooks.length} of {Object.keys(BOOKMAKERS).length} active â only enabled books show in game details</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>🎯 Sportsbooks</div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledBooks.length} of {Object.keys(BOOKMAKERS).length} active — only enabled books show in game details</div>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={() => setEnabledBooks(Object.keys(BOOKMAKERS))} style={{ padding: '4px 10px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer' }}>All On</button>
@@ -288,7 +288,7 @@ export default function BettingApp() {
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Live games refresh every 60s. Non-live games refresh every 120s.</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '12px', color: isConnected ? '#10b981' : '#ef4444' }}>
-                {isConnected ? 'â Connected' : 'â Disconnected'}
+                {isConnected ? '— Connected' : '— Disconnected'}
               </span>
               <span style={{ fontSize: '11px', color: '#64748b' }}>
                 | Next refresh in {countdown}s
@@ -298,7 +298,7 @@ export default function BettingApp() {
 
           {/* Watchlist */}
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>â­ Watchlist</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>—­ Watchlist</div>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
               {watchlist.length} game{watchlist.length !== 1 ? 's' : ''} saved
             </div>
@@ -318,7 +318,7 @@ export default function BettingApp() {
 
           {/* Clear Data */}
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>ðï¸ Clear Cached Data</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>🎯ï¸ Clear Cached Data</div>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Reset line history, manual openers, and prop tracking data.</div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
@@ -356,20 +356,20 @@ export default function BettingApp() {
 
           {/* About */}
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>ð Edge Finder Live Odds</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>🎯 Edge Finder Live Odds</div>
             <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.6' }}>
               Real-time odds comparison across 7 sportsbooks and 25+ sports. Track line movement, find value, and sharpen your edge.
             </div>
             <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <a href="https://edgefinder.beehiiv.com" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>ð° Newsletter</a>
-              <a href="https://wamclaw.gumroad.com/l/pro-bettors-dashboard" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>ð Pro Dashboard</a>
-              <a href="https://x.com/TROTWAM" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>ð¦ @TROTWAM</a>
+              <a href="https://edgefinder.beehiiv.com" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>🎯° Newsletter</a>
+              <a href="https://wamclaw.gumroad.com/l/pro-bettors-dashboard" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>🎯 Pro Dashboard</a>
+              <a href="https://x.com/TROTWAM" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>🎯¦ @TROTWAM</a>
             </div>
           </div>
 
           {/* Version */}
           <div style={{ textAlign: 'center', padding: '16px', fontSize: '10px', color: '#475569' }}>
-            Edge Finder v2.0 â¢ Built with ð¥ by WAM
+            Edge Finder v2.0 —¢ Built with 🎯¥ by WAM
           </div>
         </div>
       )}

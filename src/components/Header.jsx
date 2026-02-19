@@ -117,7 +117,7 @@ export default function Header({
               borderRadius: '6px', fontSize: '11px', fontWeight: 700, color: '#c4b5fd',
               display: 'flex', alignItems: 'center', gap: '4px',
             }}>
-              â¡ PRO
+              ⚡ PRO
             </span>
           ) : (
             <button onClick={() => setActiveTab('SETTINGS')} style={{

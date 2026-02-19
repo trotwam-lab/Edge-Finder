@@ -44,22 +44,22 @@ export const AFFILIATE_LINKS = {
   'default': 'https://www.fanduel.com/sportsbook'
 };
 
-// FREE_BOOKS â Free users only see these 3 sportsbooks
+// FREE_BOOKS ★ Free users only see these 3 sportsbooks
 // Pro users see ALL books (FanDuel, DraftKings, BetMGM, Caesars, BetOnline, Bovada, BetRivers)
 export const FREE_BOOKS = ['fanduel', 'draftkings', 'betmgm'];
 
-// PRO_FEATURES â What you get with Edge Finder Pro ($12.99/mo)
+// PRO_FEATURES ★ What you get with Edge Finder Pro ($12.99/mo)
 export const PRO_FEATURES = {
   price: '$12.99/mo',
   features: [
-    { icon: 'ð', text: 'All 7 sportsbooks (not just 3)' },
-    { icon: 'ð', text: 'Unlimited player props' },
-    { icon: 'ð', text: 'EV indicators on every line' },
-    { icon: 'ð¯', text: 'Implied probability overlays' },
-    { icon: 'â¡', text: 'Real-time edge alerts across all books' },
-    { icon: 'ð¯', text: 'Pick tracker with W/L, ROI & streaks' },
-    { icon: 'ð', text: 'Line movement alerts (coming soon)' },
-    { icon: 'ð°', text: 'Kelly Criterion bet sizing (coming soon)' },
+    { icon: '🏆', text: 'All 7 sportsbooks (not just 3)' },
+    { icon: '🏆', text: 'Unlimited player props' },
+    { icon: '🏆', text: 'EV indicators on every line' },
+    { icon: '🏆¯', text: 'Implied probability overlays' },
+    { icon: '⚡', text: 'Real-time edge alerts across all books' },
+    { icon: '🏆¯', text: 'Pick tracker with W/L, ROI & streaks' },
+    { icon: '🏆', text: 'Line movement alerts (coming soon)' },
+    { icon: '🏆°', text: 'Kelly Criterion bet sizing (coming soon)' },
   ],
 };
 

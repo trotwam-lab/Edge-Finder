@@ -123,13 +123,13 @@ export function getConsensusFairOdds(bookmakers, marketKey) {
 }
 
 // === EV CALCULATOR FUNCTIONS ===
-// EV = Expected Value â tells you if a bet is profitable long-term
+// EV = Expected Value ★ tells you if a bet is profitable long-term
 // Positive EV (+EV) means you'd make money over many bets at these odds
 
 /**
  * Calculate Expected Value percentage
- * @param {number} americanOdds â The odds being offered (e.g., -110, +150)
- * @param {number} trueProbability â The "real" chance of winning (0 to 1, e.g., 0.55 = 55%)
+ * @param {number} americanOdds ★ The odds being offered (e.g., -110, +150)
+ * @param {number} trueProbability ★ The "real" chance of winning (0 to 1, e.g., 0.55 = 55%)
  * @returns {number} EV as a percentage (positive = good bet, negative = bad bet)
  * 
  * THE MATH:
@@ -144,7 +144,7 @@ export function calculateEV(americanOdds, trueProbability) {
   return ((decimal * trueProbability) - 1) * 100;
 }
 
-// Kelly Criterion â tells you what % of your bankroll to bet
+// Kelly Criterion ★ tells you what % of your bankroll to bet
 // edge = your estimated probability - implied probability
 // kellyFraction = (bp - q) / b
 // b = decimal odds - 1, p = your probability, q = 1 - p
@@ -157,7 +157,7 @@ export function kellyBet(americanOdds, trueProbability) {
 }
 
 // ============================================================
-// Edge Scoreâ¢ â composite rating 1-100 for how "edgy" a bet is
+// Edge Score★¢ ★ composite rating 1-100 for how "edgy" a bet is
 // Factors: line movement, odds disagreement between books, implied value
 // Higher = more potential edge
 // ============================================================
