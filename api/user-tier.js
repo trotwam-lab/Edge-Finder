@@ -52,7 +52,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ tier: 'free' });
   } catch (error) {
-    console.error('Error checking user tier:', error);
-    return res.status(500).json({ error: 'Failed to check user tier' });
+    console.error('Error checking user tier:', error.message, error.type, error.statusCode);
+    return res.status(500).json({ error: 'Failed to check user tier', detail: error.message });
   }
 }
