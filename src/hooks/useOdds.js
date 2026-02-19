@@ -178,10 +178,15 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         return Array.from(updated.values());
       });
 
-      // Injuries
+      // Injuries - scoped by sport to avoid team name collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
       const injuriesByTeam = {};
       allInjuryList.forEach(inj => {
-        [inj.team, inj.team?.toLowerCase(), inj.teamShort, inj.teamShort?.toLowerCase()]
+        // Use full team name with sport prefix to avoid cross-league collisions
+        const sportPrefix = sportKey.split('_')[0]; // 'basketball' or 'americanfootball'
+        const fullKey = `${sportPrefix}:${inj.team}`;
+        const shortKey = `${sportPrefix}:${inj.teamShort}`;
+        
+        [fullKey, fullKey.toLowerCase(), shortKey, shortKey.toLowerCase(), inj.team, inj.team?.toLowerCase()]
           .filter(Boolean)
           .forEach(key => {
             if (!injuriesByTeam[key]) injuriesByTeam[key] = [];

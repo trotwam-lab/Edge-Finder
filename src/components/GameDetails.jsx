@@ -48,11 +48,18 @@ export default function GameDetails({
     });
   });
 
-  // Injury data
+  // Injury data - try new prefixed format first, then fall back to old format
+  // This prevents cross-league collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
+  const sportPrefix = game.sport_key?.split('_')[0] || 'basketball'; // basketball, americanfootball, etc.
   const awayKey = game.away_team?.split(' ')?.pop()?.toLowerCase();
   const homeKey = game.home_team?.split(' ')?.pop()?.toLowerCase();
-  const awayInjuries = injuries[game.away_team?.toLowerCase()] || injuries[awayKey] || [];
-  const homeInjuries = injuries[game.home_team?.toLowerCase()] || injuries[homeKey] || [];
+  const awayFullKey = `${sportPrefix}:${game.away_team}`?.toLowerCase();
+  const homeFullKey = `${sportPrefix}:${game.home_team}`?.toLowerCase();
+  const awayShortKey = `${sportPrefix}:${awayKey}`;
+  const homeShortKey = `${sportPrefix}:${homeKey}`;
+  
+  const awayInjuries = injuries[awayFullKey] || injuries[awayShortKey] || injuries[game.away_team?.toLowerCase()] || injuries[awayKey] || [];
+  const homeInjuries = injuries[homeFullKey] || injuries[homeShortKey] || injuries[game.home_team?.toLowerCase()] || injuries[homeKey] || [];
   const allInjuries = [...awayInjuries, ...homeInjuries];
 
   // Trend
