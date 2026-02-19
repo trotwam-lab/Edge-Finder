@@ -1,58 +1,33 @@
-// ==============================================
-// USER TIER CHECK — Vercel Serverless Function
-// ==============================================
-// Checks if a user has an active Pro subscription via Stripe.
-// Usage: GET /api/user-tier?email=user@example.com
-// Returns: { tier: 'pro', subscriptionId: 'sub_xxx' } or { tier: 'free' }
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-import Stripe from 'stripe';
-const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-export default async function handler(req, res) {
-  // --- CORS HEADERS ---
+module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed. Use GET.' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'Missing email' });
 
-    if (!email) {
-      return res.status(400).json({ error: 'Missing email query parameter.' });
-    }
+    const customers = await stripe.customers.list({ email, limit: 1 });
+    if (customers.data.length === 0) return res.json({ tier: 'free' });
 
-    const customers = await stripeClient.customers.list({ email: email, limit: 1 });
-
-    if (customers.data.length === 0) {
-      return res.status(200).json({ tier: 'free' });
-    }
-
-    const customer = customers.data[0];
-
-    const subscriptions = await stripeClient.subscriptions.list({
-      customer: customer.id,
+    const subs = await stripe.subscriptions.list({
+      customer: customers.data[0].id,
       status: 'active',
       limit: 1,
     });
 
-    if (subscriptions.data.length > 0) {
-      return res.status(200).json({
-        tier: 'pro',
-        subscriptionId: subscriptions.data[0].id,
-      });
+    if (subs.data.length > 0) {
+      return res.json({ tier: 'pro', subscriptionId: subs.data[0].id });
     }
-
-    return res.status(200).json({ tier: 'free' });
+    return res.json({ tier: 'free' });
   } catch (error) {
-    console.error('Error checking user tier:', error.message, error.type, error.statusCode);
-    return res.status(500).json({ error: 'Failed to check user tier', detail: error.message });
+    console.error('user-tier error:', error.message);
+    return res.status(500).json({ error: 'Failed to check tier', detail: error.message });
   }
-}
+};
