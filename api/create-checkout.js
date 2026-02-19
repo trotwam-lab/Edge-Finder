@@ -1,7 +1,6 @@
-const Stripe = require('stripe');
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+import Stripe from 'stripe';
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -9,7 +8,11 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return res.status(500).json({ error: 'STRIPE_SECRET_KEY not configured' });
+
   try {
+    const stripe = new Stripe(key);
     const { userId, email } = req.body;
     if (!userId || !email) return res.status(400).json({ error: 'Missing userId or email' });
 
@@ -25,7 +28,7 @@ module.exports = async (req, res) => {
 
     return res.json({ url: session.url });
   } catch (error) {
-    console.error('create-checkout error:', error.message);
+    console.error('create-checkout error:', error);
     return res.status(500).json({ error: 'Failed to create checkout', detail: error.message });
   }
-};
+}
