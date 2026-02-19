@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Trophy, XCircle, TrendingUp, Target, BarChart3,
-  Lock, Clock, Flame, ChevronDown, ChevronUp
+  Lock, Clock, Flame, ChevronDown, ChevronUp, Pencil, Save, X
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase.js';
 
 // ── Styles ─────────────────────────────────────────────────────────────────
@@ -40,6 +40,52 @@ export default function PickTracker() {
   const [loading, setLoading] = useState(true);
   const [expandedPick, setExpandedPick] = useState(null);
   const [filterResult, setFilterResult] = useState('ALL'); // ALL, WIN, LOSS, PUSH
+  const [editingPick, setEditingPick] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  // Edit handlers
+  const startEdit = (pick) => {
+    setEditingPick(pick.id);
+    setEditForm({
+      game: pick.game || '',
+      edge: pick.edge || pick.pick || '',
+      odds: pick.odds || '',
+      stake: pick.stake || '',
+      book: pick.book || '',
+      sport: pick.sport || '',
+      confidence: pick.confidence || '',
+      notes: pick.notes || '',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingPick(null);
+    setEditForm({});
+  };
+
+  const saveEdit = async (pickId) => {
+    setSaving(true);
+    try {
+      const updatedFields = {};
+      if (editForm.game) updatedFields.game = editForm.game;
+      if (editForm.edge) { updatedFields.edge = editForm.edge; updatedFields.pick = editForm.edge; }
+      if (editForm.odds !== '') updatedFields.odds = parseFloat(editForm.odds) || 0;
+      if (editForm.stake !== '') updatedFields.stake = parseFloat(editForm.stake) || 0;
+      if (editForm.book) updatedFields.book = editForm.book;
+      if (editForm.sport) updatedFields.sport = editForm.sport;
+      updatedFields.confidence = editForm.confidence;
+      updatedFields.notes = editForm.notes;
+      await updateDoc(doc(db, 'picks', pickId), updatedFields);
+      setEditingPick(null);
+      setEditForm({});
+    } catch (err) {
+      console.error('Error updating pick:', err);
+      alert('Failed to save changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Subscribe to Firebase picks collection
   useEffect(() => {
@@ -392,25 +438,116 @@ export default function PickTracker() {
                 <div style={{
                   marginTop: '12px', paddingTop: '12px',
                   borderTop: '1px solid rgba(71, 85, 105, 0.2)',
-                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
-                  fontSize: '11px', color: '#94a3b8',
                 }}>
-                  {pick.sport && <div><span style={{ color: '#64748b' }}>Sport:</span> {pick.sport}</div>}
-                  {pick.book && <div><span style={{ color: '#64748b' }}>Book:</span> {pick.book}</div>}
-                  {pick.odds && <div><span style={{ color: '#64748b' }}>Odds:</span> {pick.odds > 0 ? '+' : ''}{pick.odds}</div>}
-                  {pick.stake && <div><span style={{ color: '#64748b' }}>Stake:</span> ${pick.stake}</div>}
-                  {pick.ev && <div><span style={{ color: '#64748b' }}>EV:</span> {pick.ev}</div>}
-                  {pick.confidence && <div><span style={{ color: '#64748b' }}>Confidence:</span> {pick.confidence}</div>}
-                  {pick.timestamp && (
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <span style={{ color: '#64748b' }}>Date:</span>{' '}
-                      {new Date(pick.timestamp.seconds ? pick.timestamp.seconds * 1000 : pick.timestamp).toLocaleDateString()}
+                  {editingPick === pick.id ? (
+                    /* ── Edit Form ── */
+                    <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {[
+                          { label: 'Game', key: 'game', type: 'text' },
+                          { label: 'Pick / Edge', key: 'edge', type: 'text' },
+                          { label: 'Odds', key: 'odds', type: 'number' },
+                          { label: 'Stake ($)', key: 'stake', type: 'number' },
+                          { label: 'Book', key: 'book', type: 'text' },
+                          { label: 'Sport', key: 'sport', type: 'text' },
+                          { label: 'Confidence', key: 'confidence', type: 'text' },
+                        ].map(f => (
+                          <div key={f.key}>
+                            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, display: 'block', marginBottom: '3px' }}>{f.label}</label>
+                            <input
+                              type={f.type}
+                              value={editForm[f.key] || ''}
+                              onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                              style={{
+                                width: '100%', padding: '8px 10px', background: 'rgba(15, 23, 42, 0.8)',
+                                border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '6px',
+                                color: '#e2e8f0', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace",
+                                outline: 'none', boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, display: 'block', marginBottom: '3px' }}>Notes</label>
+                        <textarea
+                          value={editForm.notes || ''}
+                          onChange={e => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                          rows={2}
+                          style={{
+                            width: '100%', padding: '8px 10px', background: 'rgba(15, 23, 42, 0.8)',
+                            border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '6px',
+                            color: '#e2e8f0', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace",
+                            outline: 'none', resize: 'vertical', boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => saveEdit(pick.id)}
+                          disabled={saving}
+                          style={{
+                            padding: '8px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 700,
+                            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', border: 'none',
+                            color: '#fff', cursor: saving ? 'wait' : 'pointer', display: 'flex',
+                            alignItems: 'center', gap: '6px', fontFamily: "'JetBrains Mono', monospace",
+                            opacity: saving ? 0.7 : 1,
+                          }}
+                        >
+                          <Save size={12} /> {saving ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          disabled={saving}
+                          style={{
+                            padding: '8px 16px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                            background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.3)',
+                            color: '#94a3b8', cursor: 'pointer', display: 'flex',
+                            alignItems: 'center', gap: '6px', fontFamily: "'JetBrains Mono', monospace",
+                          }}
+                        >
+                          <X size={12} /> Cancel
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {pick.notes && (
-                    <div style={{ gridColumn: '1 / -1', color: '#cbd5e1', lineHeight: '1.5' }}>
-                      <span style={{ color: '#64748b' }}>Notes:</span> {pick.notes}
-                    </div>
+                  ) : (
+                    /* ── Normal expanded view ── */
+                    <>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px',
+                        fontSize: '11px', color: '#94a3b8',
+                      }}>
+                        {pick.sport && <div><span style={{ color: '#64748b' }}>Sport:</span> {pick.sport}</div>}
+                        {pick.book && <div><span style={{ color: '#64748b' }}>Book:</span> {pick.book}</div>}
+                        {pick.odds && <div><span style={{ color: '#64748b' }}>Odds:</span> {pick.odds > 0 ? '+' : ''}{pick.odds}</div>}
+                        {pick.stake && <div><span style={{ color: '#64748b' }}>Stake:</span> ${pick.stake}</div>}
+                        {pick.ev && <div><span style={{ color: '#64748b' }}>EV:</span> {pick.ev}</div>}
+                        {pick.confidence && <div><span style={{ color: '#64748b' }}>Confidence:</span> {pick.confidence}</div>}
+                        {pick.timestamp && (
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <span style={{ color: '#64748b' }}>Date:</span>{' '}
+                            {new Date(pick.timestamp.seconds ? pick.timestamp.seconds * 1000 : pick.timestamp).toLocaleDateString()}
+                          </div>
+                        )}
+                        {pick.notes && (
+                          <div style={{ gridColumn: '1 / -1', color: '#cbd5e1', lineHeight: '1.5' }}>
+                            <span style={{ color: '#64748b' }}>Notes:</span> {pick.notes}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); startEdit(pick); }}
+                        style={{
+                          marginTop: '10px', padding: '6px 14px', borderRadius: '6px', fontSize: '11px',
+                          fontWeight: 600, background: 'rgba(99, 102, 241, 0.15)',
+                          border: '1px solid rgba(99, 102, 241, 0.3)', color: '#818cf8',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}
+                      >
+                        <Pencil size={12} /> Edit Pick
+                      </button>
+                    </>
                   )}
                 </div>
               )}

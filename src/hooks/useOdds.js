@@ -79,21 +79,13 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   }, []);
 
   // Fetch player props via dedicated props endpoint
+  // Returns ALL props from ALL books (no grouping — PropsView handles display)
   const fetchPlayerProps = useCallback(async (sport) => {
     try {
       const res = await fetch(`/api/props?sport=${sport}`);
       if (!res.ok) return [];
       const allProps = await res.json();
-      
-      // Group by player-market and pick best price
-      const grouped = {};
-      allProps.forEach(prop => {
-        const key = `${prop.player}-${prop.market}`;
-        if (!grouped[key] || prop.price > grouped[key].price) {
-          grouped[key] = { ...prop, book: prop.bookTitle || prop.bookKey };
-        }
-      });
-      return Object.values(grouped);
+      return allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey }));
     } catch { return []; }
   }, []);
 
