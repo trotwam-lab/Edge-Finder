@@ -318,7 +318,7 @@ export default function BettingApp() {
 
           {/* Clear Data */}
           <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>🎯ï¸ Clear Cached Data</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>🎯 Clear Cached Data</div>
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Reset line history, manual openers, and prop tracking data.</div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button

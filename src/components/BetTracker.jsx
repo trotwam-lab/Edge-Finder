@@ -365,7 +365,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
 
       {/* ★★ ADD A BET BUTTON / FORM ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* If free user is at the limit, show the Pro upgrade banner instead */}
-      {atLimit ? (
+      {atLimit && (
         <div style={{ ...cardStyle, textAlign: 'center' }}>
           <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>
             🏆 Free accounts can track up to {FREE_BET_LIMIT} bets.
@@ -453,7 +453,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                   }}
                 >
-                  <RotateCcw size={13} /> Push ★©ï¸
+                  <RotateCcw size={13} /> Push
                 </button>
               </div>
             </div>

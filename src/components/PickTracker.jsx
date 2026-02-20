@@ -112,9 +112,58 @@ export default function PickTracker() {
     return () => unsubscribe();
   }, [tier, user]);
 
+  // ── Separate UFC/MMA picks from public picks ───────────────────────────
+  const publicPicks = useMemo(() => picks.filter(p => {
+    const sport = (p.sport || '').toLowerCase();
+    return !sport.includes('ufc') && !sport.includes('mma') && !sport.includes('boxing');
+  }), [picks]);
+  
+  const ufcPicks = useMemo(() => picks.filter(p => {
+    const sport = (p.sport || '').toLowerCase();
+    return sport.includes('ufc') || sport.includes('mma') || sport.includes('boxing');
+  }), [picks]);
+
   // ── Computed Stats ─────────────────────────────────────────────────────
 
-  const stats = useMemo(() => {
+  // Calculate stats for public picks only (NBA, NFL, etc - no UFC/MMA)
+  const publicStats = useMemo(() => {
+    const publicSettled = publicPicks.filter(p => p.result && p.result !== 'PENDING');
+    const wins = publicSettled.filter(p => p.result === 'WIN');
+    const losses = publicSettled.filter(p => p.result === 'LOSS');
+    const pushes = publicSettled.filter(p => p.result === 'PUSH');
+
+    const totalWagered = publicSettled.reduce((sum, p) => sum + (p.stake || 0), 0);
+    const totalProfit = publicSettled.reduce((sum, p) => sum + (p.profit || 0), 0);
+    const roi = totalWagered > 0 ? (totalProfit / totalWagered) * 100 : 0;
+
+    // Profit over time for chart
+    const profitData = [];
+    let runningProfit = 0;
+    const chronological = [...publicSettled].reverse();
+    chronological.forEach((pick, i) => {
+      runningProfit += pick.profit || 0;
+      profitData.push({
+        pick: i + 1,
+        profit: parseFloat(runningProfit.toFixed(2)),
+        label: pick.game || `Pick ${i + 1}`,
+      });
+    });
+
+    return {
+      total: publicSettled.length,
+      wins: wins.length,
+      losses: losses.length,
+      pushes: pushes.length,
+      winPct: publicSettled.length > 0 ? (wins.length / publicSettled.length) * 100 : 0,
+      totalWagered,
+      totalProfit,
+      roi,
+      profitData,
+    };
+  }, [publicPicks]);
+
+  // Calculate stats for all picks (Pro only)
+  const proStats = useMemo(() => {
     const settled = picks.filter(p => p.result && p.result !== 'PENDING');
     const wins = settled.filter(p => p.result === 'WIN');
     const losses = settled.filter(p => p.result === 'LOSS');
@@ -161,7 +210,7 @@ export default function PickTracker() {
         pick: i + 1,
         profit: parseFloat(runningProfit.toFixed(2)),
         label: pick.game || `Pick ${i + 1}`,
-      });
+      })
     });
 
     return {
@@ -180,12 +229,14 @@ export default function PickTracker() {
     };
   }, [picks]);
 
-  // Filtered picks
+  // Filtered picks (Pro sees all, free sees public only)
+  const displayPicks = tier === 'pro' ? picks : publicPicks;
+  
   const filteredPicks = useMemo(() => {
-    if (filterResult === 'ALL') return picks;
-    if (filterResult === 'PENDING') return picks.filter(p => !p.result || p.result === 'PENDING');
-    return picks.filter(p => p.result === filterResult);
-  }, [picks, filterResult]);
+    if (filterResult === 'ALL') return displayPicks;
+    if (filterResult === 'PENDING') return displayPicks.filter(p => !p.result || p.result === 'PENDING');
+    return displayPicks.filter(p => p.result === filterResult);
+  }, [displayPicks, filterResult]);
 
   // ── Free user gate ─────────────────────────────────────────────────────
 
