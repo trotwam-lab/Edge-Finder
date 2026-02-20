@@ -375,165 +375,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         </div>
       ) : (
         <div style={cardStyle}>
-          {/* Toggle button to show/hide the form */}
-          <button
-            onClick={() => setShowForm(!showForm)}
-            style={{
-              width: '100%',
-              padding: '10px',
-              background: showForm ? 'rgba(99, 102, 241, 0.15)' : 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3))',
-              border: '1px solid rgba(99, 102, 241, 0.4)',
-              borderRadius: '8px',
-              color: '#c4b5fd',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              fontFamily: "'JetBrains Mono', monospace",
-            }}
-          >
-            <PlusCircle size={16} />
-            {showForm ? 'Cancel' : 'Add a Bet'}
-          </button>
-
-          {/* The actual form ★ only visible when showForm is true */}
-          {showForm && (
-            <form onSubmit={handleAddBet} style={{
-              marginTop: '12px',
-              // Subtle indigo glow when the form was pre-filled from the Games tab
-              ...(isPreFilled ? {
-                border: '1px solid rgba(99, 102, 241, 0.5)',
-                borderRadius: '10px',
-                padding: '12px',
-                boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)',
-              } : {}),
-            }}>
-              {/* Pre-filled indicator ★ lets user know the data came from a game */}
-              {isPreFilled && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  marginBottom: '10px', padding: '8px 12px',
-                  background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px',
-                  fontSize: '11px', color: '#a78bfa', fontWeight: 600,
-                }}>
-                  <span>🏆 Pre-filled from Games ★ just add your wager!</span>
-                  <button
-                    type="button"
-                    onClick={() => { setIsPreFilled(false); if (onBetConsumed) onBetConsumed(); }}
-                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
-                  >Ã</button>
-                </div>
-              )}
-              {/* Two-column grid for the form fields (stacks on mobile) */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '10px',
-              }}>
-                {/* Game/Event input */}
-                <div>
-                  <label style={labelStyle}>Game / Event</label>
-                  <input
-                    type="text"
-                    placeholder="Lakers vs Celtics"
-                    value={game}
-                    onChange={e => setGame(e.target.value)}
-                    style={inputStyle}
-                    required
-                  />
-                </div>
-
-                {/* Bet Type dropdown */}
-                <div>
-                  <label style={labelStyle}>Bet Type</label>
-                  <select
-                    value={betType}
-                    onChange={e => setBetType(e.target.value)}
-                    style={{ ...inputStyle, cursor: 'pointer' }}
-                  >
-                    {BET_TYPES.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Pick/Selection input */}
-                <div>
-                  <label style={labelStyle}>Pick / Selection</label>
-                  <input
-                    type="text"
-                    placeholder="Lakers -3.5"
-                    value={pick}
-                    onChange={e => setPick(e.target.value)}
-                    style={inputStyle}
-                    required
-                  />
-                </div>
-
-                {/* Odds input (American format) */}
-                <div>
-                  <label style={labelStyle}>Odds (American)</label>
-                  <input
-                    type="number"
-                    placeholder="-110"
-                    value={odds}
-                    onChange={e => setOdds(e.target.value)}
-                    style={inputStyle}
-                    required
-                  />
-                </div>
-
-                {/* Wager amount */}
-                <div>
-                  <label style={labelStyle}>Wager ($)</label>
-                  <input
-                    type="number"
-                    placeholder="100"
-                    min="0"
-                    step="0.01"
-                    value={wager}
-                    onChange={e => setWager(e.target.value)}
-                    style={inputStyle}
-                    required
-                  />
-                </div>
-
-                {/* Date picker (defaults to today) */}
-                <div>
-                  <label style={labelStyle}>Date</label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={e => setDate(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              {/* Submit button */}
-              <button
-                type="submit"
-                style={{
-                  marginTop: '12px',
-                  width: '100%',
-                  padding: '12px',
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#fff',
-                  fontSize: '14px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}
-              >
-                🏆² Place Bet
-              </button>
-            </form>
-          )}
+          {/* Add a Bet button moved to bottom of results */}
         </div>
       )}
 
@@ -733,9 +575,172 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         </div>
       )}
 
+      {/* ★★ ADD A BET BUTTON (MOVED TO BOTTOM) ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
+      <div style={cardStyle}>
+        {/* Toggle button to show/hide the form */}
+        <button
+          onClick={() => setShowForm(!showForm)}
+          style={{
+            width: '100%',
+            padding: '10px',
+            background: showForm ? 'rgba(99, 102, 241, 0.15)' : 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3))',
+            border: '1px solid rgba(99, 102, 241, 0.4)',
+            borderRadius: '8px',
+            color: '#c4b5fd',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          <PlusCircle size={16} />
+          {showForm ? 'Cancel' : 'Add a Bet'}
+        </button>
+
+        {/* The actual form ★ only visible when showForm is true */}
+        {showForm && (
+          <form onSubmit={handleAddBet} style={{
+            marginTop: '12px',
+            // Subtle indigo glow when the form was pre-filled from the Games tab
+            ...(isPreFilled ? {
+              border: '1px solid rgba(99, 102, 241, 0.5)',
+              borderRadius: '10px',
+              padding: '12px',
+              boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)',
+            } : {}),
+          }}>
+            {/* Pre-filled indicator ★ lets user know the data came from a game */}
+            {isPreFilled && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: '10px', padding: '8px 12px',
+                background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px',
+                fontSize: '11px', color: '#a78bfa', fontWeight: 600,
+              }}>
+                <span>🏆 Pre-filled from Games ★ just add your wager!</span>
+                <button
+                  type="button"
+                  onClick={() => { setIsPreFilled(false); if (onBetConsumed) onBetConsumed(); }}
+                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px' }}
+                >×</button>
+              </div>
+            )}
+            {/* Two-column grid for the form fields (stacks on mobile) */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '10px',
+            }}>
+              {/* Game/Event input */}
+              <div>
+                <label style={labelStyle}>Game / Event</label>
+                <input
+                  type="text"
+                  placeholder="Lakers vs Celtics"
+                  value={game}
+                  onChange={e => setGame(e.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              {/* Bet Type dropdown */}
+              <div>
+                <label style={labelStyle}>Bet Type</label>
+                <select
+                  value={betType}
+                  onChange={e => setBetType(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  {BET_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Pick/Selection input */}
+              <div>
+                <label style={labelStyle}>Pick / Selection</label>
+                <input
+                  type="text"
+                  placeholder="Lakers -3.5"
+                  value={pick}
+                  onChange={e => setPick(e.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              {/* Odds input (American format) */}
+              <div>
+                <label style={labelStyle}>Odds (American)</label>
+                <input
+                  type="number"
+                  placeholder="-110"
+                  value={odds}
+                  onChange={e => setOdds(e.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              {/* Wager amount */}
+              <div>
+                <label style={labelStyle}>Wager ($)</label>
+                <input
+                  type="number"
+                  placeholder="100"
+                  min="0"
+                  step="0.01"
+                  value={wager}
+                  onChange={e => setWager(e.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              {/* Date picker (defaults to today) */}
+              <div>
+                <label style={labelStyle}>Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            {/* Submit button */}
+            <button
+              type="submit"
+              style={{
+                marginTop: '12px',
+                width: '100%',
+                padding: '12px',
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
+            >
+              🏆 Place Bet
+            </button>
+          </form>
+        )}
+      </div>
+
       {/* ★★ EMPTY STATE ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* Show a friendly message when there are no bets at all */}
-      {bets.length === 0 && (
+      {bets.length === 0 && !showForm && (
         <div style={{
           textAlign: 'center', padding: '40px 20px', color: '#475569',
         }}>
@@ -744,7 +749,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
             No bets tracked yet
           </div>
           <div style={{ fontSize: '12px', color: '#475569' }}>
-            Tap "Add a Bet" above to start tracking your action!
+            Tap "Add a Bet" below to start tracking your action!
           </div>
         </div>
       )}
