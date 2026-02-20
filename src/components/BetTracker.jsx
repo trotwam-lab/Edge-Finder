@@ -373,10 +373,6 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
           </div>
           <ProBanner />
         </div>
-      ) : (
-        <div style={cardStyle}>
-          {/* Add a Bet button moved to bottom of results */}
-        </div>
       )}
 
       {/* ★★ ACTIVE (PENDING) BETS ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
