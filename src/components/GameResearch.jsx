@@ -75,6 +75,16 @@ export default function GameResearch({ game }) {
             </div>
           ) : research ? (
             <>
+              {/* Data Source Badge */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                marginBottom: '10px',
+                fontSize: '10px',
+                color: research.source === 'ESPN' ? '#22c55e' : '#eab308',
+              }}>
+                {research.source === 'ESPN' ? '✓ Live ESPN Data' : '⚠ Data Unavailable'}
+              </div>
               {activeTab === 'form' && <RecentForm research={research} />}
               {activeTab === 'h2h' && <HeadToHead research={research} />}
               {activeTab === 'trends' && <KeyTrends research={research} />}
@@ -121,45 +131,45 @@ function RecentForm({ research }) {
             ))}
           </div>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            Record: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{awayTeam.recentForm.record}</span>
+            Record: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{awayForm.record}</span>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-            Avg: <span style={{ color: '#22c55e' }}>{awayTeam.recentForm.avgPoints} PPG</span> | 
-            <span style={{ color: '#f87171' }}> {awayTeam.recentForm.avgAllowed} allowed</span>
+            Avg: <span style={{ color: '#22c55e' }}>{awayForm.avgPoints} PPG</span> | 
+            <span style={{ color: '#f87171' }}> {awayForm.avgAllowed} allowed</span>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-            ATS: <span style={{ color: '#f8fafc' }}>{awayTeam.ats.last5}</span> (L5)
+            ATS: <span style={{ color: '#f8fafc' }}>{(awayTeam.ats || {}).last5 || 'N/A'}</span> (L5)
           </div>
         </div>
 
         {/* Home Team */}
         <div>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', marginBottom: '8px' }}>
-            {homeTeam.name}
+            {homeTeam.name || 'Home Team'}
           </div>
           <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
-            {homeTeam.recentForm.last5.map((result, i) => (
+            {(homeForm.last5 || ['?', '?', '?', '?', '?']).map((result, i) => (
               <span key={i} style={{
                 width: '24px', height: '24px', borderRadius: '4px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '10px', fontWeight: 700,
-                background: result === 'W' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)',
-                color: result === 'W' ? '#22c55e' : '#f87171',
-                border: `1px solid ${result === 'W' ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'}`,
+                background: result === 'W' ? 'rgba(34, 197, 94, 0.3)' : result === 'L' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(100, 100, 100, 0.3)',
+                color: result === 'W' ? '#22c55e' : result === 'L' ? '#f87171' : '#64748b',
+                border: `1px solid ${result === 'W' ? 'rgba(34, 197, 94, 0.5)' : result === 'L' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(100, 100, 100, 0.5)'}`,
               }}>
                 {result}
               </span>
             ))}
           </div>
           <div style={{ fontSize: '11px', color: '#64748b' }}>
-            Record: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{homeTeam.recentForm.record}</span>
+            Record: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{homeForm.record}</span>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-            Avg: <span style={{ color: '#22c55e' }}>{homeTeam.recentForm.avgPoints} PPG</span> | 
-            <span style={{ color: '#f87171' }}> {homeTeam.recentForm.avgAllowed} allowed</span>
+            Avg: <span style={{ color: '#22c55e' }}>{homeForm.avgPoints} PPG</span> | 
+            <span style={{ color: '#f87171' }}> {homeForm.avgAllowed} allowed</span>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-            ATS: <span style={{ color: '#f8fafc' }}>{homeTeam.ats.last5}</span> (L5)
+            ATS: <span style={{ color: '#f8fafc' }}>{(homeTeam.ats || {}).last5 || 'N/A'}</span> (L5)
           </div>
         </div>
       </div>
