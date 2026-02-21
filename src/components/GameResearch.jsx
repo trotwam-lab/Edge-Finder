@@ -27,23 +27,27 @@ export default function GameResearch({ game }) {
       style={{
         flex: 1,
         padding: '10px',
-        background: activeTab === id ? 'rgba(99, 102, 241, 0.3)' : 'rgba(30, 41, 59, 0.6)',
-        border: `1px solid ${activeTab === id ? 'rgba(99, 102, 241, 0.5)' : 'rgba(71, 85, 105, 0.3)'}`,
+        background: activeTab === id 
+          ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.5), rgba(139, 92, 246, 0.5))' 
+          : 'rgba(15, 23, 42, 0.8)',
+        border: `1px solid ${activeTab === id ? 'rgba(99, 102, 241, 0.8)' : 'rgba(71, 85, 105, 0.4)'}`,
         borderRadius: '8px',
-        color: activeTab === id ? '#f8fafc' : '#94a3b8',
+        color: activeTab === id ? '#ffffff' : '#64748b',
         fontSize: '12px',
-        fontWeight: 600,
+        fontWeight: activeTab === id ? 700 : 600,
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: '6px',
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: "'JetBrains Mono', monospace',
+        boxShadow: activeTab === id ? '0 0 15px rgba(99, 102, 241, 0.3)' : 'none',
+        transition: 'all 0.2s ease',
       }}
     >
-      <Icon size={14} />
-      {label}
-      {activeTab === id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      <Icon size={14} color={activeTab === id ? '#c4b5fd' : '#64748b'} />
+      <span style={{ color: activeTab === id ? '#f8fafc' : '#94a3b8' }}>{label}</span>
+      {activeTab === id ? <ChevronUp size={14} color="#c4b5fd" /> : <ChevronDown size={14} color="#64748b" />}
     </button>
   );
 
@@ -59,10 +63,11 @@ export default function GameResearch({ game }) {
       {/* Tab Content */}
       {activeTab && (
         <div style={{
-          background: 'rgba(30, 41, 59, 0.5)',
+          background: 'rgba(15, 23, 42, 0.9)',
           borderRadius: '10px',
           padding: '14px',
-          border: '1px solid rgba(71, 85, 105, 0.3)',
+          border: '1px solid rgba(99, 102, 241, 0.4)',
+          boxShadow: '0 4px 20px rgba(99, 102, 241, 0.15)',
         }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '20px', color: '#64748b', fontSize: '13px' }}>
