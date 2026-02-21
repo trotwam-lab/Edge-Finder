@@ -1,32 +1,90 @@
-// api/game-research.js — Working version with Odds API historical scores
-// Uses scores endpoint with completed games (daysFrom 1-3)
+// api/game-research.js — Hybrid: ESPN (historical) + Odds API (props/live odds)
 
 const cache = {};
 const TTL = 60 * 1000;
 
-// Team abbreviations
-const TEAM_ABBRS = {
-  'Atlanta Hawks': 'ATL', 'Boston Celtics': 'BOS', 'Brooklyn Nets': 'BKN',
-  'Charlotte Hornets': 'CHA', 'Chicago Bulls': 'CHI', 'Cleveland Cavaliers': 'CLE',
-  'Dallas Mavericks': 'DAL', 'Denver Nuggets': 'DEN', 'Detroit Pistons': 'DET',
-  'Golden State Warriors': 'GSW', 'Houston Rockets': 'HOU', 'Indiana Pacers': 'IND',
-  'LA Clippers': 'LAC', 'Los Angeles Clippers': 'LAC', 'Los Angeles Lakers': 'LAL',
-  'Memphis Grizzlies': 'MEM', 'Miami Heat': 'MIA', 'Milwaukee Bucks': 'MIL',
-  'Minnesota Timberwolves': 'MIN', 'New Orleans Pelicans': 'NOP', 'New York Knicks': 'NYK',
-  'Oklahoma City Thunder': 'OKC', 'Orlando Magic': 'ORL', 'Philadelphia 76ers': 'PHI',
-  'Phoenix Suns': 'PHX', 'Portland Trail Blazers': 'POR', 'Sacramento Kings': 'SAC',
-  'San Antonio Spurs': 'SAS', 'Toronto Raptors': 'TOR', 'Utah Jazz': 'UTA',
-  'Washington Wizards': 'WSH',
+// ESPN team abbreviations
+const ESPN_TEAMS = {
+  'Atlanta Hawks': 1, 'Boston Celtics': 2, 'Brooklyn Nets': 17, 'Charlotte Hornets': 30,
+  'Chicago Bulls': 4, 'Cleveland Cavaliers': 5, 'Dallas Mavericks': 6, 'Denver Nuggets': 7,
+  'Detroit Pistons': 8, 'Golden State Warriors': 9, 'Houston Rockets': 10, 'Indiana Pacers': 11,
+  'LA Clippers': 12, 'Los Angeles Clippers': 12, 'Los Angeles Lakers': 13, 'Memphis Grizzlies': 29,
+  'Miami Heat': 14, 'Milwaukee Bucks': 15, 'Minnesota Timberwolves': 16, 'New Orleans Pelicans': 3,
+  'New York Knicks': 18, 'Oklahoma City Thunder': 25, 'Orlando Magic': 19, 'Philadelphia 76ers': 20,
+  'Phoenix Suns': 21, 'Portland Trail Blazers': 22, 'Sacramento Kings': 23, 'San Antonio Spurs': 24,
+  'Toronto Raptors': 28, 'Utah Jazz': 26, 'Washington Wizards': 27,
 };
 
-function getTeamAbbr(name) {
-  return TEAM_ABBRS[name] || name.split(' ').pop().substring(0, 3).toUpperCase();
+function getESPNId(teamName) {
+  return ESPN_TEAMS[teamName] || null;
 }
 
-// Fetch completed games from Odds API (daysFrom: 1-3 looks back)
-async function fetchRecentGames(teamName, sport, apiKey) {
+// Source 1: ESPN API (historical data - last 10 games)
+async function fetchFromESPN(teamName, teamId) {
   try {
-    // Try max range first
+    if (!teamId) {
+      return { games: [], source: 'ESPN', count: 0, error: 'Team not found' };
+    }
+    
+    const res = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${teamId}/schedule`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const data = await res.json();
+    const events = data.events || [];
+    
+    // Get completed games with scores
+    const completedGames = events
+      .filter(e => {
+        const status = e.competitions?.[0]?.status;
+        return status?.type?.completed === true;
+      })
+      .slice(0, 10)
+      .map(e => {
+        const comp = e.competitions[0];
+        const homeTeam = comp.competitors[0];
+        const awayTeam = comp.competitors[1];
+        
+        // Determine if our team is home or away
+        const isHome = homeTeam.team.displayName === teamName || 
+                      homeTeam.team.name === teamName;
+        const teamComp = isHome ? homeTeam : awayTeam;
+        const oppComp = isHome ? awayTeam : homeTeam;
+        
+        const teamScore = parseInt(teamComp.score?.displayValue || teamComp.score?.value || 0);
+        const oppScore = parseInt(oppComp.score?.displayValue || oppComp.score?.value || 0);
+        
+        return {
+          date: e.date,
+          opponent: oppComp.team.displayName,
+          opponentAbbr: oppComp.team.abbreviation,
+          isHome,
+          teamScore,
+          opponentScore: oppScore,
+          won: teamScore > oppScore,
+          source: 'ESPN',
+        };
+      })
+      .filter(g => g.teamScore > 0 || g.opponentScore > 0); // Valid games only
+    
+    return {
+      games: completedGames,
+      source: 'ESPN',
+      count: completedGames.length,
+      totalAvailable: events.length,
+    };
+  } catch (error) {
+    console.error('ESPN error:', error.message);
+    return { games: [], source: 'ESPN', count: 0, error: error.message };
+  }
+}
+
+// Source 2: Odds API (recent games within 3 days)
+async function fetchFromOddsAPI(teamName, sport, apiKey) {
+  try {
     const res = await fetch(
       `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
       { signal: AbortSignal.timeout(10000) }
@@ -36,8 +94,7 @@ async function fetchRecentGames(teamName, sport, apiKey) {
     
     const games = await res.json();
     
-    // Filter for this team and completed games
-    return games
+    const teamGames = games
       .filter(g => 
         g.completed === true && 
         (g.home_team.includes(teamName.split(' ').pop()) || 
@@ -57,21 +114,24 @@ async function fetchRecentGames(teamName, sport, apiKey) {
         return {
           date: g.commence_time,
           opponent: isHome ? g.away_team : g.home_team,
-          opponentAbbr: getTeamAbbr(isHome ? g.away_team : g.home_team),
+          opponentAbbr: isHome ? g.away_team?.split(' ').pop() : g.home_team?.split(' ').pop(),
           isHome,
           teamScore,
           opponentScore: oppScore,
           won: teamScore > oppScore,
+          source: 'OddsAPI',
         };
-      });
-      
-  } catch (e) {
-    console.error(`Error fetching ${teamName} games:`, e.message);
-    return [];
+      })
+      .filter(g => g.teamScore > 0 || g.opponentScore > 0);
+    
+    return { games: teamGames, source: 'OddsAPI', count: teamGames.length };
+  } catch (error) {
+    console.error('Odds API error:', error.message);
+    return { games: [], source: 'OddsAPI', count: 0, error: error.message };
   }
 }
 
-// Fetch H2H games between two teams
+// Fetch H2H from Odds API
 async function fetchH2H(homeTeam, awayTeam, sport, apiKey) {
   try {
     const res = await fetch(
@@ -106,7 +166,7 @@ async function fetchH2H(homeTeam, awayTeam, sport, apiKey) {
   }
 }
 
-// Fetch player props
+// Fetch player props from Odds API
 async function fetchPlayerProps(eventId, sport, apiKey) {
   if (!eventId) return [];
   
@@ -170,14 +230,13 @@ async function fetchPlayerProps(eventId, sport, apiKey) {
   }
 }
 
-// Calculate stats from games
+// Calculate stats
 function calculateStats(games) {
   if (!games || games.length === 0) return null;
   
   const wins = games.filter(g => g.won).length;
   const losses = games.filter(g => !g.won).length;
   
-  // Calculate streak
   let streak = 0, streakType = '';
   for (const game of games) {
     if (streakType === '') {
@@ -197,8 +256,14 @@ function calculateStats(games) {
     wins,
     losses,
     streak: streak > 0 ? `${streakType}${streak}` : '-',
-    homeRecord: { wins: homeGames.filter(g => g.won).length, losses: homeGames.filter(g => !g.won).length },
-    awayRecord: { wins: awayGames.filter(g => g.won).length, losses: awayGames.filter(g => !g.won).length },
+    homeRecord: { 
+      wins: homeGames.filter(g => g.won).length, 
+      losses: homeGames.filter(g => !g.won).length 
+    },
+    awayRecord: { 
+      wins: awayGames.filter(g => g.won).length, 
+      losses: awayGames.filter(g => !g.won).length 
+    },
     recentGames: games.slice(0, 5),
   };
 }
@@ -243,7 +308,6 @@ function calculateTrends(homeStats, awayStats, h2hGames) {
   }
   
   if (h2hGames && h2hGames.length > 0) {
-    const homeWins = h2hGames.filter(g => parseInt(g.homeScore) > parseInt(g.awayScore)).length;
     trends.push({
       type: 'H2H',
       label: '🎯 Recent Matchup',
@@ -278,13 +342,23 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Fetch all data
-    const [homeGames, awayGames, h2hGames, playerProps] = await Promise.all([
-      fetchRecentGames(homeTeam, sport, apiKey),
-      fetchRecentGames(awayTeam, sport, apiKey),
+    // Get ESPN team IDs
+    const homeESPNId = getESPNId(homeTeam);
+    const awayESPNId = getESPNId(awayTeam);
+    
+    // Fetch from both sources in parallel
+    const [espnHome, espnAway, oddsHome, oddsAway, h2hGames, playerProps] = await Promise.all([
+      fetchFromESPN(homeTeam, homeESPNId),
+      fetchFromESPN(awayTeam, awayESPNId),
+      fetchFromOddsAPI(homeTeam, sport, apiKey),
+      fetchFromOddsAPI(awayTeam, sport, apiKey),
       fetchH2H(homeTeam, awayTeam, sport, apiKey),
       fetchPlayerProps(gameId, sport, apiKey),
     ]);
+    
+    // Use ESPN as primary (more historical data), Odds API as supplement
+    const homeGames = espnHome.count > 0 ? espnHome.games : oddsHome.games;
+    const awayGames = espnAway.count > 0 ? espnAway.games : oddsAway.games;
     
     // Calculate stats
     const homeStats = calculateStats(homeGames);
@@ -297,8 +371,8 @@ export default async function handler(req, res) {
       homeTeam,
       awayTeam,
       accurate: homeGames.length > 0 || awayGames.length > 0,
-      dataSource: 'The Odds API',
-      dataWindow: 'Last 3 days',
+      dataSource: espnHome.count > 0 ? 'ESPN + Odds API' : 'Odds API',
+      dataWindow: espnHome.count > 0 ? `Last ${espnHome.count} games` : 'Last 3 days',
       timestamp: new Date().toISOString(),
       teams: {
         home: homeStats,
@@ -311,7 +385,8 @@ export default async function handler(req, res) {
       meta: {
         homeGamesFound: homeGames.length,
         awayGamesFound: awayGames.length,
-        h2hGamesFound: h2hGames.length,
+        espnGames: espnHome.count + espnAway.count,
+        oddsGames: oddsHome.count + oddsAway.count,
         trendCount: trends.length,
       },
     };
