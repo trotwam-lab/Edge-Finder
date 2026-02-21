@@ -113,10 +113,18 @@ function getSportFromBet(bet) {
   if (!bet.game) return 'OTHER';
   const g = bet.game.toLowerCase();
   if (g.includes('ufc') || g.includes('mma')) return 'UFC';
-  if (g.includes('nba') || g.includes('basketball')) return 'NBA';
-  if (g.includes('nfl') || g.includes('football')) return 'NFL';
+  if (g.includes('ncaa') && g.includes('basketball')) return 'NCAAB';
+  if (g.includes('ncaa') && g.includes('football')) return 'NCAAF';
+  if (g.includes('nba')) return 'NBA';
+  if (g.includes('nfl')) return 'NFL';
   if (g.includes('nhl') || g.includes('hockey')) return 'NHL';
   if (g.includes('mlb') || g.includes('baseball')) return 'MLB';
+  if (g.includes('wnba')) return 'WNBA';
+  // Check for college basketball teams
+  const collegeBasketballTeams = ['duke', 'north carolina', 'kentucky', 'kansas', 'gonzaga', 'baylor', 'michigan', 'ucla', 'arizona', 'alabama', 'houston', 'purdue', 'tennessee', 'texas', 'iowa state', 'illinois', 'creighton', 'marquette', 'florida', 'auburn'];
+  if (collegeBasketballTeams.some(team => g.includes(team))) return 'NCAAB';
+  if (g.includes('basketball')) return 'NBA'; // fallback
+  if (g.includes('football')) return 'NFL'; // fallback
   return 'OTHER';
 }
 
@@ -210,7 +218,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       if (selectedSport !== 'ALL') {
         const betSport = getSportFromBet(bet);
         if (selectedSport === 'OTHER') {
-          if (['NBA', 'NFL', 'UFC', 'NHL', 'MLB'].includes(betSport)) return false;
+          if (['NBA', 'NCAAB', 'NFL', 'NCAAF', 'UFC', 'NHL', 'MLB', 'WNBA'].includes(betSport)) return false;
         } else if (betSport !== selectedSport) {
           return false;
         }

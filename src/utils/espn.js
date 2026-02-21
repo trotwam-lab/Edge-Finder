@@ -6,9 +6,12 @@ const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 // Map our sport keys to ESPN sport paths
 const SPORT_PATHS = {
   'basketball_nba': 'basketball/nba',
+  'basketball_ncaab': 'basketball/mens-college-basketball',
   'americanfootball_nfl': 'football/nfl',
+  'americanfootball_ncaaf': 'football/college-football',
   'icehockey_nhl': 'hockey/nhl',
   'baseball_mlb': 'baseball/mlb',
+  'basketball_wnba': 'basketball/wnba',
 };
 
 /**
