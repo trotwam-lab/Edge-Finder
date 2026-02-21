@@ -14,11 +14,42 @@ const SPORT_PATHS = {
   'basketball_wnba': 'basketball/wnba',
 };
 
+// Static NBA team data (embedded to avoid fetch issues on Vercel)
+const NBA_TEAMS = [
+  { id: '1', name: 'hawks', displayName: 'Atlanta Hawks', shortDisplayName: 'Hawks', abbreviation: 'ATL', location: 'Atlanta' },
+  { id: '2', name: 'celtics', displayName: 'Boston Celtics', shortDisplayName: 'Celtics', abbreviation: 'BOS', location: 'Boston' },
+  { id: '17', name: 'nets', displayName: 'Brooklyn Nets', shortDisplayName: 'Nets', abbreviation: 'BKN', location: 'Brooklyn' },
+  { id: '4', name: 'hornets', displayName: 'Charlotte Hornets', shortDisplayName: 'Hornets', abbreviation: 'CHA', location: 'Charlotte' },
+  { id: '5', name: 'bulls', displayName: 'Chicago Bulls', shortDisplayName: 'Bulls', abbreviation: 'CHI', location: 'Chicago' },
+  { id: '6', name: 'cavaliers', displayName: 'Cleveland Cavaliers', shortDisplayName: 'Cavaliers', abbreviation: 'CLE', location: 'Cleveland' },
+  { id: '7', name: 'mavericks', displayName: 'Dallas Mavericks', shortDisplayName: 'Mavericks', abbreviation: 'DAL', location: 'Dallas' },
+  { id: '8', name: 'nuggets', displayName: 'Denver Nuggets', shortDisplayName: 'Nuggets', abbreviation: 'DEN', location: 'Denver' },
+  { id: '9', name: 'pistons', displayName: 'Detroit Pistons', shortDisplayName: 'Pistons', abbreviation: 'DET', location: 'Detroit' },
+  { id: '10', name: 'warriors', displayName: 'Golden State Warriors', shortDisplayName: 'Warriors', abbreviation: 'GS', location: 'Golden State' },
+  { id: '11', name: 'rockets', displayName: 'Houston Rockets', shortDisplayName: 'Rockets', abbreviation: 'HOU', location: 'Houston' },
+  { id: '12', name: 'pacers', displayName: 'Indiana Pacers', shortDisplayName: 'Pacers', abbreviation: 'IND', location: 'Indiana' },
+  { id: '13', name: 'clippers', displayName: 'LA Clippers', shortDisplayName: 'Clippers', abbreviation: 'LAC', location: 'LA' },
+  { id: '14', name: 'lakers', displayName: 'Los Angeles Lakers', shortDisplayName: 'Lakers', abbreviation: 'LAL', location: 'Los Angeles' },
+  { id: '15', name: 'grizzlies', displayName: 'Memphis Grizzlies', shortDisplayName: 'Grizzlies', abbreviation: 'MEM', location: 'Memphis' },
+  { id: '16', name: 'heat', displayName: 'Miami Heat', shortDisplayName: 'Heat', abbreviation: 'MIA', location: 'Miami' },
+  { id: '18', name: 'bucks', displayName: 'Milwaukee Bucks', shortDisplayName: 'Bucks', abbreviation: 'MIL', location: 'Milwaukee' },
+  { id: '19', name: 'timberwolves', displayName: 'Minnesota Timberwolves', shortDisplayName: 'Timberwolves', abbreviation: 'MIN', location: 'Minnesota' },
+  { id: '20', name: 'pelicans', displayName: 'New Orleans Pelicans', shortDisplayName: 'Pelicans', abbreviation: 'NO', location: 'New Orleans' },
+  { id: '21', name: 'knicks', displayName: 'New York Knicks', shortDisplayName: 'Knicks', abbreviation: 'NY', location: 'New York' },
+  { id: '22', name: 'thunder', displayName: 'Oklahoma City Thunder', shortDisplayName: 'Thunder', abbreviation: 'OKC', location: 'Oklahoma City' },
+  { id: '23', name: 'magic', displayName: 'Orlando Magic', shortDisplayName: 'Magic', abbreviation: 'ORL', location: 'Orlando' },
+  { id: '24', name: '76ers', displayName: 'Philadelphia 76ers', shortDisplayName: '76ers', abbreviation: 'PHI', location: 'Philadelphia' },
+  { id: '25', name: 'suns', displayName: 'Phoenix Suns', shortDisplayName: 'Suns', abbreviation: 'PHX', location: 'Phoenix' },
+  { id: '26', name: 'trail blazers', displayName: 'Portland Trail Blazers', shortDisplayName: 'Trail Blazers', abbreviation: 'POR', location: 'Portland' },
+  { id: '27', name: 'kings', displayName: 'Sacramento Kings', shortDisplayName: 'Kings', abbreviation: 'SAC', location: 'Sacramento' },
+  { id: '28', name: 'spurs', displayName: 'San Antonio Spurs', shortDisplayName: 'Spurs', abbreviation: 'SA', location: 'San Antonio' },
+  { id: '29', name: 'raptors', displayName: 'Toronto Raptors', shortDisplayName: 'Raptors', abbreviation: 'TOR', location: 'Toronto' },
+  { id: '30', name: 'jazz', displayName: 'Utah Jazz', shortDisplayName: 'Jazz', abbreviation: 'UTAH', location: 'Utah' },
+  { id: '31', name: 'wizards', displayName: 'Washington Wizards', shortDisplayName: 'Wizards', abbreviation: 'WSH', location: 'Washington' },
+];
+
 const cache = {};
 const TTL = 5 * 60 * 1000; // 5 minutes
-
-// Clear cache on deploy
-Object.keys(cache).forEach(key => delete cache[key]);
 
 async function getTeamId(teamName, sport = 'basketball_nba') {
   const sportPath = SPORT_PATHS[sport] || 'basketball/nba';
