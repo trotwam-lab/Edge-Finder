@@ -13,6 +13,12 @@ import Stripe from 'stripe';
 // Admin emails — always Pro, no Stripe subscription needed
 const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com'];
 
+// Friends & Family — complimentary Pro access
+const FRIEND_EMAILS = [
+  // Add your friends' emails here for free Pro access
+  // Example: 'friend@email.com',
+];
+
 export default async function handler(req, res) {
   // --- CORS HEADERS ---
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,6 +45,11 @@ export default async function handler(req, res) {
     // Check admin list first — skip Stripe entirely
     if (ADMIN_EMAILS.includes(email.toLowerCase())) {
       return res.status(200).json({ tier: 'pro', admin: true });
+    }
+
+    // Check friends & family list — complimentary Pro access
+    if (FRIEND_EMAILS.includes(email.toLowerCase())) {
+      return res.status(200).json({ tier: 'pro', complimentary: true });
     }
 
     // Initialize Stripe only when needed (after admin check)

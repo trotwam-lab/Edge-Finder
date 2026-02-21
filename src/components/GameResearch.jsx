@@ -130,8 +130,8 @@ function TeamStatsCard({ teamData, isHome }) {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      {stats && (stats.ppg || stats.papg) && (
+      {/* Stats Grid - HIDDEN: Data fetching still works but display removed until stats are accurate */}
+      {/* {stats && (stats.ppg || stats.papg) && (
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: '1fr 1fr', 
@@ -163,7 +163,7 @@ function TeamStatsCard({ teamData, isHome }) {
             </div>
           )}
         </div>
-      )}
+      )} */}
 
       {/* Recent Games */}
       <div style={{ marginTop: '12px' }}>
