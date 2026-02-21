@@ -47,32 +47,46 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
   }
 }
 
-// Source 1: Basketball-Reference (via unofficial API/scraping endpoint)
+// Source 1: Basketball-Reference (via balldontlie.io API)
 // BBR has the most accurate historic data
+// Free tier: 60 requests/min, no API key required for basic endpoints
 async function fetchFromBBR(teamAbbr, sport) {
-  // Note: BBR doesn't have a public API, so we use a proxy/aggregator service
-  // or parse their data. For now, we'll use a fallback approach.
-  // In production, you'd want to use a service like https://api.balldontlie.io or similar
-  
   try {
-    // Using balldontlie as a proxy for BBR-style data (free tier available)
+    const teamId = getBalldontlieTeamId(teamAbbr);
+    if (!teamId) {
+      return { games: [], source: 'BasketballReference', count: 0, error: 'Team not mapped' };
+    }
+    
+    // Build headers - API key optional for free tier
+    const headers = {};
+    const apiKey = process.env.BALLDONTLIE_API_KEY;
+    if (apiKey && apiKey.length > 5) {
+      headers['Authorization'] = apiKey;
+    }
+    
+    // Using balldontlie as a proxy for BBR-style data
     const res = await fetchWithTimeout(
-      `https://api.balldontlie.io/v1/games?team_ids[]=${getBalldontlieTeamId(teamAbbr)}&per_page=10&seasons[]=2024`,
-      { headers: { 'Authorization': process.env.BALLDONTLIE_API_KEY || '' } },
+      `https://api.balldontlie.io/v1/games?team_ids[]=${teamId}&per_page=10&seasons[]=2024`,
+      { headers },
       10000
     );
     
     if (!res.ok) {
-      // If no API key or rate limited, return empty to fall through
-      return { games: [], source: 'BasketballReference', count: 0, error: 'API unavailable' };
+      const errorText = await res.text().catch(() => 'Unknown error');
+      console.error(`Balldontlie API error: ${res.status} - ${errorText}`);
+      return { games: [], source: 'BasketballReference', count: 0, error: `HTTP ${res.status}` };
     }
     
     const data = await res.json();
     
+    if (!data.data || !Array.isArray(data.data)) {
+      return { games: [], source: 'BasketballReference', count: 0, error: 'Invalid response format' };
+    }
+    
     const games = data.data
-      ?.filter(g => g.status === 'Final')
-      ?.slice(0, 10)
-      ?.map(g => {
+      .filter(g => g.status === 'Final')
+      .slice(0, 10)
+      .map(g => {
         const isHome = g.home_team.abbreviation === teamAbbr;
         const teamScore = isHome ? g.home_team_score : g.visitor_team_score;
         const oppScore = isHome ? g.visitor_team_score : g.home_team_score;
@@ -88,7 +102,7 @@ async function fetchFromBBR(teamAbbr, sport) {
           won: teamScore > oppScore,
           source: 'BasketballReference',
         };
-      }) || [];
+      });
     
     return { games, source: 'BasketballReference', count: games.length };
   } catch (error) {
