@@ -11,14 +11,24 @@ export default function GameResearch({ game }) {
   useEffect(() => {
     if (!activeTab || research) return;
     
+    const awayTeam = game.away_team || '';
+    const homeTeam = game.home_team || '';
+    const sport = game.sport_key || 'basketball_nba';
+    
+    console.log('Fetching research for:', awayTeam, '@', homeTeam);
+    
     setLoading(true);
-    fetch(`/api/game-research?homeTeam=${encodeURIComponent(game.home_team)}&awayTeam=${encodeURIComponent(game.away_team)}&sport=${game.sport_key}`)
+    fetch(`/api/game-research?homeTeam=${encodeURIComponent(homeTeam)}&awayTeam=${encodeURIComponent(awayTeam)}&sport=${sport}`)
       .then(r => r.json())
       .then(data => {
+        console.log('Research data:', data);
         setResearch(data);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(err => {
+        console.error('Research fetch error:', err);
+        setLoading(false);
+      });
   }, [activeTab, game]);
 
   const TabButton = ({ id, icon: Icon, label }) => (
