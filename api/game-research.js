@@ -219,16 +219,21 @@ async function fetchFromESPN(teamAbbr, sport) {
         
         if (!teamComp || !oppComp) return null;
         
+        // Only include games with valid scores (not 0-0 placeholders)
         const teamScore = parseInt(teamComp.score);
         const oppScore = parseInt(oppComp.score);
+        
+        if (isNaN(teamScore) || isNaN(oppScore) || (teamScore === 0 && oppScore === 0)) {
+          return null; // Skip games without real scores
+        }
         
         return {
           date: e.date,
           opponent: oppComp.team?.displayName?.split(' ').pop() || 'Unknown',
           opponentAbbr: oppComp.team?.abbreviation || '???',
           isHome: teamComp.homeAway === 'home',
-          teamScore: isNaN(teamScore) ? 0 : teamScore,
-          opponentScore: isNaN(oppScore) ? 0 : oppScore,
+          teamScore,
+          opponentScore: oppScore,
           won: teamScore > oppScore,
           source: 'ESPN',
         };
@@ -245,17 +250,17 @@ async function fetchFromESPN(teamAbbr, sport) {
 // Triple-source validation
 // Returns data only if 2+ sources agree OR single high-confidence source
 function validateTripleSource(bbrData, oddsData, espnData) {
-  const sources = [bbrData, oddsData, espnData].filter(s => s.count > 0);
+  // Filter to only sources with actual game data (valid scores)
+  const validSources = [bbrData, oddsData, espnData].filter(s => 
+    s.count > 0 && s.games.every(g => g.teamScore > 0 || g.opponentScore > 0)
+  );
   
-  // If we have 3 sources with data
-  if (sources.length >= 2) {
-    // Check if sources agree on recent games (within reasonable tolerance)
-    // For now, use the highest priority source that has the most games
-    const bestSource = sources.sort((a, b) => {
-      // First by priority
+  // If we have 2+ valid sources
+  if (validSources.length >= 2) {
+    // Use highest priority source with most games
+    const bestSource = validSources.sort((a, b) => {
       const prioDiff = SOURCE_PRIORITY[a.source] - SOURCE_PRIORITY[b.source];
       if (prioDiff !== 0) return prioDiff;
-      // Then by count
       return b.count - a.count;
     })[0];
     
@@ -263,20 +268,20 @@ function validateTripleSource(bbrData, oddsData, espnData) {
       games: bestSource.games,
       source: bestSource.source,
       confidence: 'high',
-      sourcesUsed: sources.map(s => s.source),
-      verified: sources.length >= 2,
+      sourcesUsed: validSources.map(s => s.source),
+      verified: true,
     };
   }
   
-  // If only 1 source has data
-  if (sources.length === 1) {
-    const source = sources[0];
-    // Only trust if it's BBR or has 5+ games
-    if (source.source === 'BasketballReference' || source.count >= 5) {
+  // If only 1 valid source
+  if (validSources.length === 1) {
+    const source = validSources[0];
+    // Require at least 3 games with real data
+    if (source.count >= 3) {
       return {
         games: source.games,
         source: source.source,
-        confidence: 'medium',
+        confidence: source.source === 'BasketballReference' ? 'high' : 'medium',
         sourcesUsed: [source.source],
         verified: false,
       };
