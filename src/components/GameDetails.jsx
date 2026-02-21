@@ -411,9 +411,6 @@ export default function GameDetails({
         </div>
       )}
 
-      {/* Game Research Section */}
-      <GameResearch game={game} />
-
       <div style={{ fontSize: '11px', color: '#64748b' }}>
         Last updated: {new Date(game.commence_time).toLocaleString()}
       </div>
