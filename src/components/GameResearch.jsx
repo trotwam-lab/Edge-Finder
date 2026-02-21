@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, History, Activity, AlertCircle, CheckCircle, RefreshCw, BarChart3, Home, Plane, Clock, Zap } from 'lucide-react';
+import { TrendingUp, History, Activity, AlertCircle, CheckCircle, RefreshCw, BarChart3, Home, Plane, Clock, Zap, Users, Trophy } from 'lucide-react';
 
 // Get trend color based on confidence
 function getTrendColor(confidence) {
@@ -385,6 +385,131 @@ function Trends({ trends }) {
   );
 }
 
+// Player Props Component
+function PlayerProps({ props, homeTeam, awayTeam }) {
+  if (!props || props.length === 0) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+        <Users size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
+        <div style={{ fontSize: '13px', marginBottom: '4px' }}>No player props available</div>
+        <div style={{ fontSize: '11px', opacity: 0.7 }}>Props may not be released yet for this game</div>
+      </div>
+    );
+  }
+
+  // Group by market type
+  const marketLabels = {
+    'player_points': '🏀 Points',
+    'player_rebounds': '💪 Rebounds', 
+    'player_assists': '🎯 Assists',
+    'player_threes': '👌 3-Pointers',
+    'player_passing_tds': '🏈 Passing TDs',
+    'player_rushing_yards': '🏃 Rushing Yards',
+    'player_receiving_yards': '✋ Receiving Yards',
+  };
+
+  const grouped = props.reduce((acc, prop) => {
+    if (!acc[prop.market]) acc[prop.market] = [];
+    acc[prop.market].push(prop);
+    return acc;
+  }, {});
+
+  return (
+    <div style={{ padding: '16px' }}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px',
+        marginBottom: '16px',
+        padding: '10px 14px',
+        background: 'rgba(99, 102, 241, 0.1)',
+        borderRadius: '8px',
+      }}>
+        <Trophy size={16} color="#818cf8" />
+        <span style={{ fontSize: '12px', color: '#818cf8', fontWeight: 600 }}>
+          {props.length} Player Props Available
+        </span>
+      </div>
+
+      {Object.entries(grouped).map(([market, marketProps]) => (
+        <div key={market} style={{ marginBottom: '16px' }}>
+          <div style={{ 
+            fontSize: '12px', 
+            fontWeight: 700, 
+            color: '#f8fafc',
+            marginBottom: '10px',
+            padding: '8px 12px',
+            background: 'rgba(30, 41, 59, 0.5)',
+            borderRadius: '6px',
+          }}>
+            {marketLabels[market] || market.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {marketProps.slice(0, 5).map((prop, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px',
+                  background: 'rgba(30, 41, 59, 0.4)',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 600, color: '#f8fafc' }}>{prop.player}</span>
+                  <span style={{ color: '#64748b' }}>@{prop.line}</span>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {prop.over && (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ 
+                        fontSize: '11px', 
+                        color: '#22c55e',
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        background: 'rgba(34, 197, 94, 0.15)',
+                        borderRadius: '4px',
+                      }}>
+                        O {prop.over.price > 0 ? '+' : ''}{prop.over.price}
+                      </div>
+                      <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>{prop.over.book}</div>
+                    </div>
+                  )}
+                  {prop.under && (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ 
+                        fontSize: '11px', 
+                        color: '#ef4444',
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        borderRadius: '4px',
+                      }}>
+                        U {prop.under.price > 0 ? '+' : ''}{prop.under.price}
+                      </div>
+                      <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>{prop.under.book}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {marketProps.length > 5 && (
+              <div style={{ textAlign: 'center', padding: '8px', color: '#64748b', fontSize: '11px' }}>
+                +{marketProps.length - 5} more {marketLabels[market] || market} props
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Loading State
 function LoadingState() {
   return (
@@ -568,7 +693,8 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
           { key: 'form', label: 'Team Form', icon: Activity, count: null },
           { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length || null },
           { key: 'trends', label: 'Trends', icon: TrendingUp, count: trendCount > 0 ? trendCount : null },
-        ].map((tab) => (
+          { key: 'props', label: 'Props', icon: Users, count: data?.meta?.playerPropsCount > 0 ? data.meta.playerPropsCount : null, hideCount: !data?.hasPlayerProps },
+        ].filter(tab => !tab.hideCount || tab.count).map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -626,29 +752,56 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
         {activeTab === 'trends' && (
           <Trends trends={data?.trends} />
         )}
+        
+        {activeTab === 'props' && (
+          <PlayerProps 
+            props={data?.playerProps}
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+          />
+        )}
       </div>
 
       {/* Footer */}
       <div style={{
-        padding: '10px 16px',
+        padding: '12px 16px',
         borderTop: '1px solid rgba(71, 85, 105, 0.2)',
-        fontSize: '10px',
-        color: '#64748b',
         textAlign: 'center',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '8px',
       }}>
-        <span>Source: {data?.dataSource || 'Unknown'}</span>
-        <span>•</span>
-        <span>{data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'N/A'}</span>
-        {data?.meta?.highConfidenceTrends > 0 && (
-          <>
-            <span>•</span>
-            <span style={{ color: '#22c55e' }}>{data.meta.highConfidenceTrends} 🔥 trends</span>
-          </>
-        )}
+        <div style={{
+          fontSize: '10px',
+          color: '#64748b',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          marginBottom: '8px',
+        }}>
+          <span>Source: {data?.dataSource || 'Unknown'}</span>
+          <span>•</span>
+          <span>{data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'N/A'}</span>
+          {data?.meta?.highConfidenceTrends > 0 && (
+            <>
+              <span>•</span>
+              <span style={{ color: '#22c55e' }}>{data.meta.highConfidenceTrends} 🔥 trends</span>
+            </>
+          )}
+        </div>
+        
+        {/* Tagline */}
+        <div style={{
+          fontSize: '11px',
+          fontWeight: 700,
+          color: '#818cf8',
+          letterSpacing: '0.5px',
+          textTransform: 'uppercase',
+          padding: '8px 0',
+          borderTop: '1px solid rgba(71, 85, 105, 0.15)',
+        }}>
+          <span style={{ marginRight: '6px' }}>⚡</span>
+          Engineered by Pros for Pros
+          <span style={{ marginLeft: '6px' }}>⚡</span>
+        </div>
       </div>
     </div>
   );

@@ -273,6 +273,74 @@ async function fetchConsensusOdds(sport, apiKey) {
   }
 }
 
+// Fetch player props for a specific game
+async function fetchPlayerProps(eventId, sport, apiKey) {
+  // Only fetch for sports that support player props
+  const supportedSports = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
+  if (!supportedSports.includes(sport)) return null;
+  
+  const markets = ['player_points', 'player_rebounds', 'player_assists', 'player_threes'];
+  
+  try {
+    const url = `https://api.the-odds-api.com/v4/sports/${sport}/events/${eventId}/odds?apiKey=${apiKey}&regions=us&markets=${markets.join(',')}&oddsFormat=american`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    if (!data.bookmakers) return null;
+    
+    // Aggregate props across bookmakers to find best lines
+    const propsMap = new Map();
+    
+    data.bookmakers.forEach(book => {
+      book.markets?.forEach(market => {
+        const marketKey = market.key;
+        market.outcomes?.forEach(outcome => {
+          const key = `${outcome.description}-${marketKey}-${outcome.name}`;
+          const existing = propsMap.get(key);
+          
+          if (!existing || outcome.price > existing.price) {
+            propsMap.set(key, {
+              player: outcome.description,
+              market: marketKey,
+              line: outcome.point,
+              outcome: outcome.name,
+              price: outcome.price,
+              book: book.title,
+              bookKey: book.key,
+            });
+          }
+        });
+      });
+    });
+    
+    // Group by player and market
+    const grouped = {};
+    propsMap.forEach(prop => {
+      const key = `${prop.player}-${prop.market}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          player: prop.player,
+          market: prop.market,
+          line: prop.line,
+          over: null,
+          under: null,
+        };
+      }
+      if (prop.outcome === 'Over') {
+        grouped[key].over = { price: prop.price, book: prop.book };
+      } else {
+        grouped[key].under = { price: prop.price, book: prop.book };
+      }
+    });
+    
+    return Object.values(grouped).sort((a, b) => a.player.localeCompare(b.player));
+  } catch (e) {
+    console.error('Error fetching player props:', e);
+    return null;
+  }
+}
+
 // Calculate comprehensive trends
 function calculateAdvancedTrends(homeData, awayData, h2hGames) {
   const trends = [];
@@ -501,10 +569,11 @@ export default async function handler(req, res) {
     const awayAbbr = normalizeTeamName(awayTeam);
     
     // Fetch all data in parallel
-    const [homeData, awayData, h2hGames] = await Promise.all([
+    const [homeData, awayData, h2hGames, playerProps] = await Promise.all([
       fetchTeamData(homeAbbr, normalizedSport),
       fetchTeamData(awayAbbr, normalizedSport),
       fetchH2HData(homeTeam, awayTeam, normalizedSport, apiKey),
+      fetchPlayerProps(gameId, normalizedSport, apiKey),
     ]);
     
     // Calculate trends
@@ -539,10 +608,13 @@ export default async function handler(req, res) {
         away: awayData,
       },
       h2h: h2hGames || [],
+      playerProps: playerProps || [],
+      hasPlayerProps: playerProps && playerProps.length > 0,
       trends,
       meta: {
         trendCount: trends.length,
         highConfidenceTrends: trends.filter(t => t.confidence === 'high').length,
+        playerPropsCount: playerProps?.length || 0,
       }
     };
     
