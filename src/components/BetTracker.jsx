@@ -103,10 +103,14 @@ function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
-// ★★★ Helper: detect sport from game name ★★★
-function getSportFromGame(game) {
-  if (!game) return 'OTHER';
-  const g = game.toLowerCase();
+// ★★★ Helper: detect sport from bet ★★★
+function getSportFromBet(bet) {
+  // First check if sport is explicitly stored
+  if (bet.sport) return bet.sport;
+  
+  // Fallback to detecting from game name
+  if (!bet.game) return 'OTHER';
+  const g = bet.game.toLowerCase();
   if (g.includes('ufc') || g.includes('mma')) return 'UFC';
   if (g.includes('nba') || g.includes('basketball')) return 'NBA';
   if (g.includes('nfl') || g.includes('football')) return 'NFL';
@@ -148,6 +152,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
 
   // ★★ Form state: these control the "Add a Bet" form inputs ★★
   const [game, setGame] = useState('');           // e.g. "Lakers vs Celtics"
+  const [sport, setSport] = useState('NBA');      // sport selection
   const [betType, setBetType] = useState('Spread'); // dropdown selection
   const [pick, setPick] = useState('');            // e.g. "Lakers -3.5"
   const [odds, setOdds] = useState('');            // American odds, e.g. -110
@@ -171,6 +176,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   useEffect(() => {
     if (pendingBet) {
       setGame(pendingBet.game || '');
+      setSport(pendingBet.sport || 'NBA');
       setBetType(pendingBet.type || 'Spread');
       setPick(pendingBet.pick || '');
       setOdds(pendingBet.odds != null ? String(pendingBet.odds) : '');
@@ -186,7 +192,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     return bets.filter(bet => {
       // Sport filter
       if (selectedSport !== 'ALL') {
-        const betSport = getSportFromGame(bet.game);
+        const betSport = getSportFromBet(bet);
         if (selectedSport === 'OTHER') {
           if (['NBA', 'NFL', 'UFC', 'NHL', 'MLB'].includes(betSport)) return false;
         } else if (betSport !== selectedSport) {
@@ -290,6 +296,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     const newBet = {
       id: Date.now(),                    // unique identifier
       game,                               // "Lakers vs Celtics"
+      sport,                              // "NBA", "NFL", etc.
       type: betType,                      // "Spread", "Moneyline", etc.
       pick,                               // "Lakers -3.5"
       odds: Number(odds),                 // -110 (American format)
@@ -305,6 +312,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
 
     // Reset the form fields so user can enter another bet
     setGame('');
+    setSport('NBA');
     setPick('');
     setOdds('');
     setWager('');
@@ -866,6 +874,20 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   style={inputStyle}
                   required
                 />
+              </div>
+
+              {/* Sport dropdown */}
+              <div>
+                <label style={labelStyle}>Sport</label>
+                <select
+                  value={sport}
+                  onChange={e => setSport(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  {SPORTS.filter(s => s.key !== 'ALL').map(s => (
+                    <option key={s.key} value={s.key}>{s.emoji} {s.label}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Bet Type dropdown */}
