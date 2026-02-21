@@ -493,90 +493,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         </div>
       </div>
 
-      {/* ★★ CHARTS ROW ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
-      {/* Only show charts if we have enough data to make them useful */}
-      {settledBets.length >= 2 && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: pieData.length > 0 ? '2fr 1fr' : '1fr',
-          gap: '12px',
-          marginBottom: '16px',
-        }}>
-          {/* Cumulative P&L line chart */}
-          <div style={cardStyle}>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
-              🏆 Cumulative P&L
-            </div>
-            <ResponsiveContainer width="100%" height={140}>
-              <LineChart data={plChartData}>
-                <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={45} />
-                <Tooltip
-                  contentStyle={{
-                    background: '#1e293b', border: '1px solid #334155',
-                    borderRadius: '8px', fontSize: '11px', color: '#e2e8f0',
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
-                  formatter={(val) => [`$${val}`, 'P&L']}
-                />
-                {/* The line itself ★ green if profitable, red if not */}
-                <Line
-                  type="monotone"
-                  dataKey="pnl"
-                  stroke={stats.netPL >= 0 ? '#22c55e' : '#f87171'}
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Bet type breakdown pie chart */}
-          {pieData.length > 0 && (
-            <div style={cardStyle}>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
-                🏆¯ Bet Types
-              </div>
-              <ResponsiveContainer width="100%" height={140}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={30}
-                    outerRadius={50}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {/* Each slice gets a different color from our PIE_COLORS array */}
-                    {pieData.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: '#1e293b', border: '1px solid #334155',
-                      borderRadius: '8px', fontSize: '11px', color: '#e2e8f0',
-                      fontFamily: "'JetBrains Mono', monospace",
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              {/* Legend: shows which color = which bet type */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px', justifyContent: 'center' }}>
-                {pieData.map((d, i) => (
-                  <span key={i} style={{ fontSize: '9px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: PIE_COLORS[i % PIE_COLORS.length], display: 'inline-block' }} />
-                    {d.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ★★ ADD A BET BUTTON / FORM ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
+      {/* ★★ ADD A BET BUTTON / FORM ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
       {/* If free user is at the limit, show the Pro upgrade banner instead */}
       {atLimit && (
         <div style={{ ...cardStyle, textAlign: 'center' }}>
@@ -798,6 +715,86 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   );
                 });
               })()}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ★★ CHARTS ROW ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
+      {/* Charts moved to bottom so bets are visible first */}
+      {settledBets.length >= 2 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: pieData.length > 0 ? '2fr 1fr' : '1fr',
+          gap: '12px',
+          marginBottom: '16px',
+        }}>
+          {/* Cumulative P&L line chart */}
+          <div style={cardStyle}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
+              Cumulative P&L
+            </div>
+            <ResponsiveContainer width="100%" height={140}>
+              <LineChart data={plChartData}>
+                <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={45} />
+                <Tooltip
+                  contentStyle={{
+                    background: '#1e293b', border: '1px solid #334155',
+                    borderRadius: '8px', fontSize: '11px', color: '#e2e8f0',
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                  formatter={(val) => [`$${val}`, 'P&L']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="pnl"
+                  stroke={stats.netPL >= 0 ? '#22c55e' : '#f87171'}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Bet type breakdown pie chart */}
+          {pieData.length > 0 && (
+            <div style={cardStyle}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px' }}>
+                Bet Types
+              </div>
+              <ResponsiveContainer width="100%" height={140}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={30}
+                    outerRadius={50}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {pieData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: '#1e293b', border: '1px solid #334155',
+                      borderRadius: '8px', fontSize: '11px', color: '#e2e8f0',
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px', justifyContent: 'center' }}>
+                {pieData.map((d, i) => (
+                  <span key={i} style={{ fontSize: '9px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: PIE_COLORS[i % PIE_COLORS.length], display: 'inline-block' }} />
+                    {d.name}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
