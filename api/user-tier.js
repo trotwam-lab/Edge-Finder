@@ -16,6 +16,8 @@ const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com'];
 // Friends & Family — complimentary Pro access
 const FRIEND_EMAILS = [
   'mrxprofit@gmail.com',
+  'diajdaley@gmail.com',
+  'Wb_sportstalk@yahoo.com',
 ];
 
 export default async function handler(req, res) {
