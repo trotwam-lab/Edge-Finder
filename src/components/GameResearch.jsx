@@ -20,16 +20,21 @@ function getTrendBg(confidence) {
 
 // Team Stats Card Component
 function TeamStatsCard({ teamData, isHome }) {
+  // Handle completely missing data
   if (!teamData) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
-        <AlertCircle size={24} style={{ marginBottom: '8px', opacity: 0.5 }} />
-        <div style={{ fontSize: '12px' }}>No data available</div>
+      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+        <AlertCircle size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
+        <div style={{ fontSize: '13px', marginBottom: '4px' }}>Team data unavailable</div>
+        <div style={{ fontSize: '11px', opacity: 0.7 }}>ESPN API may be temporarily down</div>
       </div>
     );
   }
 
-  const { team, record, wins, losses, streak, homeRecord, awayRecord, restDays, stats, logo } = teamData;
+  const { team, record, wins, losses, streak, homeRecord, awayRecord, restDays, stats, logo, recentGames } = teamData;
+  
+  // Check if we have actual game data
+  const hasGameData = recentGames && recentGames.length > 0;
   const winPct = wins + losses > 0 ? (wins / (wins + losses)) : 0;
   
   return (
@@ -46,11 +51,11 @@ function TeamStatsCard({ teamData, isHome }) {
         <div style={{ 
           padding: '6px 12px', 
           borderRadius: '8px', 
-          background: winPct > 0.6 ? 'rgba(34, 197, 94, 0.2)' : winPct < 0.4 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)',
+          background: !hasGameData ? 'rgba(100, 116, 139, 0.2)' : winPct > 0.6 ? 'rgba(34, 197, 94, 0.2)' : winPct < 0.4 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: winPct > 0.6 ? '#22c55e' : winPct < 0.4 ? '#ef4444' : '#eab308' }}>
-            {wins}-{losses}
+          <div style={{ fontSize: '18px', fontWeight: 700, color: !hasGameData ? '#64748b' : winPct > 0.6 ? '#22c55e' : winPct < 0.4 ? '#ef4444' : '#eab308' }}>
+            {!hasGameData ? '—' : `${wins}-${losses}`}
           </div>
           <div style={{ fontSize: '10px', color: '#64748b' }}>Last 10</div>
         </div>
@@ -163,6 +168,18 @@ function TeamStatsCard({ teamData, isHome }) {
       {/* Recent Games */}
       <div style={{ marginTop: '12px' }}>
         <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Last 5 Games</div>
+        {!hasGameData ? (
+          <div style={{ 
+            padding: '12px', 
+            background: 'rgba(30, 41, 59, 0.5)', 
+            borderRadius: '6px',
+            textAlign: 'center',
+            color: '#64748b',
+            fontSize: '12px'
+          }}>
+            No recent game data available
+          </div>
+        ) : (
         <div style={{ display: 'flex', gap: '4px' }}>
           {teamData.recentGames?.slice(0, 5).map((game, idx) => (
             <div
@@ -189,6 +206,7 @@ function TeamStatsCard({ teamData, isHome }) {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );

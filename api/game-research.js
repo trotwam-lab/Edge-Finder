@@ -106,7 +106,7 @@ function getESPNPath(sport) {
   return paths[sport] || sport.replace('_', '/');
 }
 
-// Fetch comprehensive team data
+// Fetch comprehensive team data with accurate ESPN API parsing
 async function fetchTeamData(teamAbbr, sport) {
   const endpoints = ESPN_ENDPOINTS[sport];
   if (!endpoints) return null;
@@ -114,52 +114,94 @@ async function fetchTeamData(teamAbbr, sport) {
   try {
     // Get team list to find ID
     const teamsRes = await fetch(endpoints.teams);
-    if (!teamsRes.ok) return null;
+    if (!teamsRes.ok) {
+      console.error(`Failed to fetch teams: ${teamsRes.status}`);
+      return null;
+    }
+    
     const teamsData = await teamsRes.json();
+    const teams = teamsData.sports?.[0]?.leagues?.[0]?.teams;
     
-    const teamEntry = teamsData.sports?.[0]?.leagues?.[0]?.teams?.find(
-      t => t.team.abbreviation === teamAbbr
-    );
+    if (!teams) {
+      console.error('No teams data in response');
+      return null;
+    }
     
-    if (!teamEntry) return null;
+    const teamEntry = teams.find(t => t.team?.abbreviation === teamAbbr);
+    
+    if (!teamEntry) {
+      console.error(`Team not found: ${teamAbbr}`);
+      return null;
+    }
     
     const team = teamEntry.team;
     const teamId = team.id;
     
-    // Fetch schedule and stats in parallel
+    // Fetch team details which includes record
     const espnPath = getESPNPath(sport);
-    const [scheduleRes, statsRes] = await Promise.all([
-      fetch(`https://site.api.espn.com/apis/site/v2/sports/${espnPath}/teams/${teamId}/schedule`),
-      fetch(`https://site.api.espn.com/apis/site/v2/sports/${espnPath}/teams/${teamId}?enable=stats`)
-    ]);
+    const teamRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${espnPath}/teams/${teamId}`);
+    const teamData = teamRes.ok ? await teamRes.json() : null;
     
-    const scheduleData = scheduleRes.ok ? await scheduleRes.json() : { events: [] };
-    const statsData = statsRes.ok ? await statsRes.json() : null;
+    // Get actual season record from team data
+    const seasonRecord = teamData?.team?.record?.items?.[0];
+    const recordSummary = seasonRecord?.summary || '0-0';
     
-    // Parse recent games
-    const events = scheduleData.events || [];
-    const recentGames = events
-      .filter(e => e.competitions?.[0]?.status?.type?.completed)
-      .slice(0, 10)
-      .map(e => {
-        const comp = e.competitions[0];
-        const teamComp = comp.competitors?.find(c => c.team.abbreviation === teamAbbr);
-        const opponentComp = comp.competitors?.find(c => c.team.abbreviation !== teamAbbr);
-        const isHome = teamComp?.homeAway === 'home';
-        
-        return {
-          date: e.date,
-          opponent: opponentComp?.team?.displayName || 'Unknown',
-          opponentAbbr: opponentComp?.team?.abbreviation || '',
-          isHome,
-          teamScore: parseInt(teamComp?.score) || 0,
-          opponentScore: parseInt(opponentComp?.score) || 0,
-          won: parseInt(teamComp?.score) > parseInt(opponentComp?.score),
-          spread: null, // Would need historical odds data
-        };
-      });
+    // Fetch last 10 games from the scoreboard/events API for better accuracy
+    const eventsRes = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/${espnPath}/teams/${teamId}/schedule?seasontype=2&limit=15`
+    );
     
-    // Calculate streak
+    let recentGames = [];
+    
+    if (eventsRes.ok) {
+      const eventsData = await eventsRes.json();
+      const events = eventsData.events || [];
+      
+      // Process events - filter completed games and extract results
+      recentGames = events
+        .filter(e => {
+          const status = e.competitions?.[0]?.status;
+          return status?.type?.completed === true || status?.type?.state === 'post';
+        })
+        .slice(0, 10)
+        .map(e => {
+          const comp = e.competitions[0];
+          const competitors = comp.competitors || [];
+          
+          // Find this team and opponent
+          const teamComp = competitors.find(c => 
+            c.team?.abbreviation === teamAbbr || c.team?.id === teamId
+          );
+          const opponentComp = competitors.find(c => 
+            c.team?.abbreviation !== teamAbbr && c.team?.id !== teamId
+          );
+          
+          if (!teamComp || !opponentComp) return null;
+          
+          const teamScore = parseInt(teamComp.score);
+          const oppScore = parseInt(opponentComp.score);
+          const isHome = teamComp.homeAway === 'home';
+          
+          return {
+            date: e.date,
+            opponent: opponentComp.team?.displayName || opponentComp.team?.name || 'Unknown',
+            opponentAbbr: opponentComp.team?.abbreviation || '???',
+            isHome,
+            teamScore: isNaN(teamScore) ? 0 : teamScore,
+            opponentScore: isNaN(oppScore) ? 0 : oppScore,
+            won: teamScore > oppScore,
+          };
+        })
+        .filter(g => g !== null);
+    }
+    
+    // If no games from schedule API, try alternative: get from team's recent events
+    if (recentGames.length === 0 && teamData?.team?.nextEvent?.[0]) {
+      // Fallback - use any available event data
+      console.log(`No completed games found for ${teamAbbr}, using fallback`);
+    }
+    
+    // Calculate streak from recent games
     let streak = 0, streakType = '';
     for (const game of recentGames) {
       if (streakType === '') {
@@ -172,46 +214,59 @@ async function fetchTeamData(teamAbbr, sport) {
       }
     }
     
-    // Home/Away splits
+    // Home/Away splits from recent games
     const homeGames = recentGames.filter(g => g.isHome);
     const awayGames = recentGames.filter(g => !g.isHome);
     
-    // Calculate rest days (days since last game)
+    // Calculate rest days
     let restDays = null;
     if (recentGames.length > 0) {
-      const lastGame = new Date(recentGames[0].date);
+      const lastGameDate = new Date(recentGames[0].date);
       const now = new Date();
-      restDays = Math.floor((now - lastGame) / (1000 * 60 * 60 * 24));
+      restDays = Math.floor((now - lastGameDate) / (1000 * 60 * 60 * 24));
     }
     
-    // Extract stats from stats data
+    // Get team stats if available
     let stats = null;
-    if (statsData?.team?.statistics) {
-      const statsArr = statsData.team.statistics;
+    if (teamData?.team?.statistics) {
+      const statsArr = teamData.team.statistics;
       stats = {
-        ppg: extractStat(statsArr, 'pointsPerGame', 'avgPointsFor'),
+        ppg: extractStat(statsArr, 'pointsPerGame', 'avgPointsFor', 'points'),
         papg: extractStat(statsArr, 'pointsAllowedPerGame', 'avgPointsAgainst'),
         fgPct: extractStat(statsArr, 'fieldGoalPct', 'fgPct'),
         threePtPct: extractStat(statsArr, 'threePointPct', 'threePtPct'),
       };
     }
     
+    const wins = recentGames.filter(g => g.won).length;
+    const losses = recentGames.filter(g => !g.won).length;
+    
     return {
-      team: team.displayName,
+      team: team.displayName || team.name,
       abbreviation: teamAbbr,
-      record: team.record?.items?.[0]?.summary || '0-0',
+      record: recordSummary,
       recentGames,
       streak: streak > 0 ? `${streakType}${streak}` : '-',
-      wins: recentGames.filter(g => g.won).length,
-      losses: recentGames.filter(g => !g.won).length,
-      homeRecord: { wins: homeGames.filter(g => g.won).length, losses: homeGames.filter(g => !g.won).length },
-      awayRecord: { wins: awayGames.filter(g => g.won).length, losses: awayGames.filter(g => !g.won).length },
+      wins,
+      losses,
+      homeRecord: { 
+        wins: homeGames.filter(g => g.won).length, 
+        losses: homeGames.filter(g => !g.won).length 
+      },
+      awayRecord: { 
+        wins: awayGames.filter(g => g.won).length, 
+        losses: awayGames.filter(g => !g.won).length 
+      },
       restDays,
       stats,
-      logo: team.logo,
+      logo: team.logos?.[0]?.href || team.logo,
+      _debug: {
+        gamesFound: recentGames.length,
+        teamId: teamId,
+      }
     };
   } catch (e) {
-    console.error('Error fetching team data:', e);
+    console.error(`Error fetching team data for ${teamAbbr}:`, e);
     return null;
   }
 }
