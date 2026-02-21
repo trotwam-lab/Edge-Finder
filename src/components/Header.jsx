@@ -16,11 +16,11 @@ export default function Header({
 
   return (
     <header style={{
-      padding: '16px 24px',
+      padding: '10px 24px',
       borderBottom: '1px solid rgba(56, 189, 248, 0.1)',
       background: 'rgba(15, 23, 42, 0.9)',
       position: 'sticky', top: 0, zIndex: 100
-    }}>
+    }}
       <div className="header-inner" style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         flexWrap: 'wrap', gap: '12px'
