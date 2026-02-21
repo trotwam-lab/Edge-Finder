@@ -10,7 +10,6 @@ const tabs = [
   { key: 'EV CALC', label: 'EV Calc', icon: Calculator },
   { key: 'KELLY', label: 'Kelly', icon: DollarSign },
   { key: 'TRACKER', label: 'Tracker', icon: TrendingUp },
-  { key: 'PICKS', label: 'Picks', icon: Crosshair },
   { key: 'SETTINGS', label: 'Settings', icon: Settings },
 ];
 

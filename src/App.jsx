@@ -12,7 +12,6 @@ import PropsView from './components/PropsView.jsx';
 import EVCalculator from './components/EVCalculator.jsx';
 import BetTracker from './components/BetTracker.jsx';
 import EdgeAlerts from './components/EdgeAlerts.jsx';
-import PickTracker from './components/PickTracker.jsx';
 import LineMovement from './components/LineMovement.jsx';
 import KellyCriterion from './components/KellyCriterion.jsx';
 import MobileNav from './components/MobileNav.jsx';
@@ -201,10 +200,6 @@ export default function BettingApp() {
           pendingBet={pendingBet}
           onBetConsumed={() => setPendingBet(null)}
         />
-      )}
-
-      {activeTab === 'PICKS' && (
-        <PickTracker />
       )}
 
       {activeTab === 'SETTINGS' && (

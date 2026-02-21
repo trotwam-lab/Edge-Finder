@@ -712,8 +712,7 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
           { key: 'form', label: 'Team Form', icon: Activity, count: (data?.meta?.homeGamesFound || 0) + (data?.meta?.awayGamesFound || 0) },
           { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length || 0 },
           { key: 'trends', label: 'Trends', icon: TrendingUp, count: trendCount },
-          { key: 'props', label: 'Props', icon: Users, count: data?.hasPlayerProps ? data.playerProps.length : 0 },
-        ].filter(tab => tab.count > 0 || tab.key === 'form' || tab.key === 'props').map((tab) => (
+        ].filter(tab => tab.count > 0 || tab.key === 'form').map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -770,14 +769,6 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
         
         {activeTab === 'trends' && (
           <Trends trends={data?.trends} />
-        )}
-        
-        {activeTab === 'props' && (
-          <PlayerProps 
-            props={data?.playerProps}
-            homeTeam={homeTeam}
-            awayTeam={awayTeam}
-          />
         )}
       </div>
 
