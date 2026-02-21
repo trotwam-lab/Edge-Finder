@@ -1,8 +1,8 @@
 // api/game-research.js — Fetches detailed research for specific games
-// Uses ESPN API for accurate, real-time data
-// NOTE: ESPN functions inlined here to avoid Vercel path issues
+// Uses ESPN API first, falls back to The Odds API for stats
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
+const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
 const SPORT_PATHS = {
   'basketball_nba': 'basketball/nba',
