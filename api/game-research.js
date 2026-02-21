@@ -160,11 +160,19 @@ async function fetchResearch(awayTeam, homeTeam, sport = 'basketball_nba') {
     throw new Error(`Could not find team IDs: away=${awayId}, home=${homeId}`);
   }
   
-  const [awayRecent, homeRecent, h2h] = await Promise.all([
-    getTeamRecentForm(awayId, sport, 5),
-    getTeamRecentForm(homeId, sport, 5),
-    getHeadToHistory(awayId, homeId, sport, 5),
-  ]);
+  // Try to get schedule data, but use fallback if it fails
+  let awayRecent = [], homeRecent = [], h2h = [];
+  try {
+    awayRecent = await getTeamRecentForm(awayId, sport, 5);
+  } catch (e) { console.log('Away schedule failed:', e.message); }
+  
+  try {
+    homeRecent = await getTeamRecentForm(homeId, sport, 5);
+  } catch (e) { console.log('Home schedule failed:', e.message); }
+  
+  try {
+    h2h = await getHeadToHistory(awayId, homeId, sport, 5);
+  } catch (e) { console.log('H2H failed:', e.message); }
   
   const awayAvgPoints = awayRecent.reduce((sum, g) => sum + g.teamScore, 0) / awayRecent.length || 0;
   const awayAvgAllowed = awayRecent.reduce((sum, g) => sum + g.oppScore, 0) / awayRecent.length || 0;
