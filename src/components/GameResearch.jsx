@@ -9,19 +9,22 @@ export default function GameResearch({ game }) {
 
   // Fetch research when expanded
   useEffect(() => {
-    if (!activeTab || research) return;
+    if (!activeTab) return;
     
     const awayTeam = game.away_team || '';
     const homeTeam = game.home_team || '';
     const sport = game.sport_key || 'basketball_nba';
     
+    // Always fetch fresh data when tab is clicked
     console.log('Fetching research for:', awayTeam, '@', homeTeam);
     
     setLoading(true);
-    fetch(`/api/game-research?homeTeam=${encodeURIComponent(homeTeam)}&awayTeam=${encodeURIComponent(awayTeam)}&sport=${sport}`)
+    setResearch(null); // Clear old data
+    
+    fetch(`/api/game-research?homeTeam=${encodeURIComponent(homeTeam)}&awayTeam=${encodeURIComponent(awayTeam)}&sport=${sport}&_t=${Date.now()}`)
       .then(r => r.json())
       .then(data => {
-        console.log('Research data:', data);
+        console.log('Research data received:', JSON.stringify(data, null, 2).substring(0, 500));
         setResearch(data);
         setLoading(false);
       })
@@ -29,7 +32,7 @@ export default function GameResearch({ game }) {
         console.error('Research fetch error:', err);
         setLoading(false);
       });
-  }, [activeTab, game]);
+  }, [activeTab]); // Only depend on activeTab, not game
 
   const TabButton = ({ id, icon: Icon, label }) => (
     <button
@@ -63,6 +66,22 @@ export default function GameResearch({ game }) {
 
   return (
     <div style={{ marginTop: '16px', borderTop: '1px solid rgba(71, 85, 105, 0.3)', paddingTop: '16px' }}>
+      {/* Refresh Button */}
+      {research && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <button 
+            onClick={() => { setResearch(null); setActiveTab(null); setTimeout(() => setActiveTab('form'), 10); }}
+            style={{
+              fontSize: '10px', padding: '4px 8px', background: 'rgba(99,102,241,0.2)',
+              border: '1px solid rgba(99,102,241,0.4)', borderRadius: '4px',
+              color: '#818cf8', cursor: 'pointer'
+            }}
+          >
+            🔄 Refresh Data
+          </button>
+        </div>
+      )}
+      
       {/* Research Tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
         <TabButton id="form" icon={Activity} label="Recent Form" />
