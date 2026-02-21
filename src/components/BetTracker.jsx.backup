@@ -5,8 +5,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   PlusCircle, Trophy, XCircle, RotateCcw, TrendingUp,
-  DollarSign, Target, BarChart3, Trash2, ChevronDown, ChevronUp,
-  Search
+  DollarSign, Target, BarChart3, Trash2, ChevronDown, ChevronUp
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -26,34 +25,6 @@ const PIE_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#22c55e', '#f59e0b', '#647
 
 // How many bets free users can track before hitting the paywall
 const FREE_BET_LIMIT = 5;
-
-// ★★★ Sport Tabs Configuration ★★★
-const SPORTS = [
-  { key: 'ALL', label: 'All', emoji: '🏆' },
-  { key: 'NBA', label: 'NBA', emoji: '🏀' },
-  { key: 'NFL', label: 'NFL', emoji: '🏈' },
-  { key: 'UFC', label: 'UFC', emoji: '🥊' },
-  { key: 'NHL', label: 'NHL', emoji: '🏒' },
-  { key: 'MLB', label: 'MLB', emoji: '⚾' },
-  { key: 'OTHER', label: 'Other', emoji: '🎯' },
-];
-
-// ★★★ Time Range Options ★★★
-const TIME_RANGES = [
-  { key: '7', label: 'Last 7 Days' },
-  { key: '30', label: 'Last 30 Days' },
-  { key: '90', label: 'Last 90 Days' },
-  { key: 'all', label: 'All Time' },
-];
-
-// ★★★ Status Filter Options ★★★
-const STATUS_FILTERS = [
-  { key: 'ALL', label: 'All Bets' },
-  { key: 'pending', label: 'Pending' },
-  { key: 'settled', label: 'Settled' },
-  { key: 'won', label: 'Won' },
-  { key: 'lost', label: 'Lost' },
-];
 
 // ★★★ Shared Styles ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // Reusable style objects so we don't repeat ourselves everywhere
@@ -103,35 +74,6 @@ function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
-// ★★★ Helper: detect sport from game name ★★★
-function getSportFromGame(game) {
-  if (!game) return 'OTHER';
-  const g = game.toLowerCase();
-  if (g.includes('ufc') || g.includes('mma')) return 'UFC';
-  if (g.includes('nba') || g.includes('basketball')) return 'NBA';
-  if (g.includes('nfl') || g.includes('football')) return 'NFL';
-  if (g.includes('nhl') || g.includes('hockey')) return 'NHL';
-  if (g.includes('mlb') || g.includes('baseball')) return 'MLB';
-  return 'OTHER';
-}
-
-// ★★★ Helper: format date label (Today, Yesterday, or date) ★★★
-function formatDateLabel(dateStr) {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const diffTime = today - date;
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  
-  return date.toLocaleDateString('en-US', { 
-    weekday: 'short', 
-    month: 'short', 
-    day: 'numeric' 
-  });
-}
-
 // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // MAIN COMPONENT
 // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
@@ -159,12 +101,6 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   const [historySortAsc, setHistorySortAsc] = useState(false); // sort direction for history
   const [showHistory, setShowHistory] = useState(true);       // toggle history section
   const [isPreFilled, setIsPreFilled] = useState(false);     // shows indicator when form was pre-filled
-  
-  // ★★ NEW: Filter states ★★
-  const [selectedSport, setSelectedSport] = useState('ALL');  // filter by sport tab
-  const [timeRange, setTimeRange] = useState('all');          // filter by time range
-  const [statusFilter, setStatusFilter] = useState('ALL');    // filter by bet status
-  const [searchQuery, setSearchQuery] = useState('');         // search bets
 
   // ★★ Pre-fill from pendingBet (when user clicks odds in Games tab) ★★
   // useEffect runs whenever pendingBet changes. If it's not null, we fill the form.
@@ -181,58 +117,18 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     }
   }, [pendingBet]);
 
-  // ★★ Filter bets based on selected criteria ★★
-  const filteredBets = useMemo(() => {
-    return bets.filter(bet => {
-      // Sport filter
-      if (selectedSport !== 'ALL') {
-        const betSport = getSportFromGame(bet.game);
-        if (selectedSport === 'OTHER') {
-          if (['NBA', 'NFL', 'UFC', 'NHL', 'MLB'].includes(betSport)) return false;
-        } else if (betSport !== selectedSport) {
-          return false;
-        }
-      }
-      
-      // Time range filter
-      if (timeRange !== 'all') {
-        const days = parseInt(timeRange);
-        const betDate = new Date(bet.date);
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - days);
-        if (betDate < cutoffDate) return false;
-      }
-      
-      // Status filter
-      if (statusFilter !== 'ALL') {
-        if (statusFilter === 'pending' && bet.status !== 'pending') return false;
-        if (statusFilter === 'settled' && bet.status === 'pending') return false;
-        if (statusFilter === 'won' && bet.status !== 'won') return false;
-        if (statusFilter === 'lost' && bet.status !== 'lost') return false;
-      }
-      
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const searchable = `${bet.game} ${bet.pick} ${bet.type}`.toLowerCase();
-        if (!searchable.includes(query)) return false;
-      }
-      
-      return true;
-    });
-  }, [bets, selectedSport, timeRange, statusFilter, searchQuery]);
-
-  // ★★ Derived data: split filtered bets into pending vs settled ★★
-  const pendingBets = useMemo(() => filteredBets.filter(b => b.status === 'pending'), [filteredBets]);
+  // ★★ Derived data: split bets into pending vs settled ★★
+  // useMemo = only recalculate when `bets` changes (performance optimization)
+  const pendingBets = useMemo(() => bets.filter(b => b.status === 'pending'), [bets]);
   const settledBets = useMemo(() => {
     // Sort settled bets by settledDate (most recent first, or oldest first)
-    const settled = filteredBets.filter(b => b.status !== 'pending');
+    const settled = bets.filter(b => b.status !== 'pending');
     return settled.sort((a, b) => {
       const da = new Date(a.settledDate || a.date);
       const db = new Date(b.settledDate || b.date);
       return historySortAsc ? da - db : db - da;
     });
-  }, [filteredBets, historySortAsc]);
+  }, [bets, historySortAsc]);
 
   // ★★ Stats: calculated from settled bets ★★
   const stats = useMemo(() => {
@@ -382,107 +278,6 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
             <div style={{ fontSize: '16px', fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
         ))}
-      </div>
-
-      {/* ★★ SPORT TABS ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
-      <div style={{
-        display: 'flex',
-        gap: '6px',
-        overflowX: 'auto',
-        marginBottom: '12px',
-        paddingBottom: '4px',
-      }}>
-        {SPORTS.map(sport => (
-          <button
-            key={sport.key}
-            onClick={() => setSelectedSport(sport.key)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '20px',
-              border: 'none',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              fontFamily: "'JetBrains Mono', monospace",
-              background: selectedSport === sport.key 
-                ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(139, 92, 246, 0.4))'
-                : 'rgba(30, 41, 59, 0.6)',
-              color: selectedSport === sport.key ? '#f8fafc' : '#94a3b8',
-              border: `1px solid ${selectedSport === sport.key ? 'rgba(99, 102, 241, 0.5)' : 'rgba(71, 85, 105, 0.3)'}`,
-            }}
-          >
-            {sport.emoji} {sport.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ★★ FILTER BAR ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
-      <div style={{
-        display: 'flex',
-        gap: '8px',
-        marginBottom: '16px',
-        flexWrap: 'wrap',
-      }}>
-        {/* Time Range Dropdown */}
-        <select
-          value={timeRange}
-          onChange={(e) => setTimeRange(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            background: 'rgba(30, 41, 59, 0.6)',
-            border: '1px solid rgba(71, 85, 105, 0.3)',
-            borderRadius: '8px',
-            color: '#e2e8f0',
-            fontSize: '12px',
-            fontFamily: "'JetBrains Mono', monospace",
-            cursor: 'pointer',
-          }}
-        >
-          {TIME_RANGES.map(range => (
-            <option key={range.key} value={range.key}>{range.label}</option>
-          ))}
-        </select>
-
-        {/* Status Filter */}
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            background: 'rgba(30, 41, 59, 0.6)',
-            border: '1px solid rgba(71, 85, 105, 0.3)',
-            borderRadius: '8px',
-            color: '#e2e8f0',
-            fontSize: '12px',
-            fontFamily: "'JetBrains Mono', monospace",
-            cursor: 'pointer',
-          }}
-        >
-          {STATUS_FILTERS.map(status => (
-            <option key={status.key} value={status.key}>{status.label}</option>
-          ))}
-        </select>
-
-        {/* Search */}
-        <div style={{
-          flex: 1,
-          minWidth: '150px',
-          position: 'relative',
-        }}>
-          <Search size={14} color="#64748b" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Search bets..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              ...inputStyle,
-              paddingLeft: '32px',
-              fontSize: '12px',
-            }}
-          />
-        </div>
       </div>
 
       {/* ★★ CHARTS ROW ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★ */}
@@ -682,113 +477,94 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                 fontFamily: "'JetBrains Mono', monospace", padding: 0,
               }}
             >
-              📊 Bet History ({settledBets.length})
-              {showHistory ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              🏆 Bet History ({settledBets.length})
+              {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
             {showHistory && (
               <button
                 onClick={() => setHistorySortAsc(!historySortAsc)}
                 style={{
                   background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.3)',
-                  borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
-                  color: '#94a3b8', fontSize: '11px', fontFamily: "'JetBrains Mono', monospace",
+                  borderRadius: '6px', padding: '4px 10px', cursor: 'pointer',
+                  color: '#94a3b8', fontSize: '10px', fontFamily: "'JetBrains Mono', monospace",
                 }}
               >
-                {historySortAsc ? 'Oldest First' : 'Newest First'}
+                {historySortAsc ? 'Oldest First ★' : 'Newest First ★'}
               </button>
             )}
           </div>
 
-          {/* The history table ★ grouped by date */}
+          {/* The history table ★ each settled bet shown as a row */}
           {showHistory && (
-            <div>
+            <div style={{ overflowX: 'auto' }}>
+              {/* Running P&L tracker ★ we calculate as we render each row */}
               {(() => {
-                // Group bets by date
-                const grouped = {};
-                settledBets.forEach(bet => {
-                  const dateKey = bet.date;
-                  if (!grouped[dateKey]) grouped[dateKey] = [];
-                  grouped[dateKey].push(bet);
+                // Sort by date ascending to compute running P&L correctly
+                const chronological = [...settledBets].sort((a, b) =>
+                  new Date(a.settledDate || a.date) - new Date(b.settledDate || b.date)
+                );
+                // Build a map of id ★ running P&L
+                const runningMap = {};
+                let running = 0;
+                chronological.forEach(b => {
+                  running += (b.profit || 0);
+                  runningMap[b.id] = running;
                 });
-                
-                // Sort dates
-                const sortedDates = Object.keys(grouped).sort((a, b) => {
-                  return historySortAsc 
-                    ? new Date(a) - new Date(b)
-                    : new Date(b) - new Date(a);
-                });
-                
-                return sortedDates.map(date => {
-                  const label = formatDateLabel(date);
-                  const dateBets = grouped[date];
-                  
-                  return (
-                    <div key={date} style={{ marginBottom: '16px' }}>
-                      <div style={{
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        color: label === 'Today' ? '#22c55e' : label === 'Yesterday' ? '#818cf8' : '#64748b',
-                        marginBottom: '8px',
-                        paddingLeft: '8px',
-                        borderLeft: `3px solid ${label === 'Today' ? '#22c55e' : label === 'Yesterday' ? '#818cf8' : '#475569'}`,
-                      }}>
-                        {label}
-                      </div>
-                      
-                      {dateBets.map(bet => (
-                        <div key={bet.id} style={{
-                          ...cardStyle,
-                          padding: '12px 14px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          borderLeft: `3px solid ${
-                            bet.status === 'won' ? '#22c55e' : 
-                            bet.status === 'lost' ? '#ef4444' : '#eab308'
+
+                // Now render in the user's chosen sort order
+                return settledBets.map(bet => (
+                  <div key={bet.id} style={{
+                    ...cardStyle,
+                    padding: '10px 14px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto',
+                    gap: '8px',
+                    alignItems: 'center',
+                  }}>
+                    {/* Left side: bet details */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {/* Result badge: green/red/yellow */}
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px',
+                          background: bet.status === 'won' ? 'rgba(34,197,94,0.2)' :
+                                     bet.status === 'lost' ? 'rgba(239,68,68,0.2)' :
+                                     'rgba(234,179,8,0.2)',
+                          color: bet.status === 'won' ? '#22c55e' :
+                                 bet.status === 'lost' ? '#f87171' :
+                                 '#eab308',
+                          border: `1px solid ${
+                            bet.status === 'won' ? 'rgba(34,197,94,0.4)' :
+                            bet.status === 'lost' ? 'rgba(239,68,68,0.4)' :
+                            'rgba(234,179,8,0.4)'
                           }`,
+                          textTransform: 'uppercase',
                         }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <span style={{
-                                fontSize: '10px', fontWeight: 700, padding: '3px 8px', borderRadius: '4px',
-                                background: bet.status === 'won' ? 'rgba(34,197,94,0.2)' :
-                                           bet.status === 'lost' ? 'rgba(239,68,68,0.2)' :
-                                           'rgba(234,179,8,0.2)',
-                                color: bet.status === 'won' ? '#22c55e' :
-                                       bet.status === 'lost' ? '#f87171' :
-                                       '#eab308',
-                                textTransform: 'uppercase',
-                              }}>
-                                {bet.status}
-                              </span>
-                              <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>
-                                {bet.game}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                              {bet.type} · {bet.pick} · {formatOdds(bet.odds)} · ${Number(bet.wager).toFixed(0)}
-                            </div>
-                          </div>
-                          
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{
-                              fontSize: '15px', fontWeight: 700,
-                              color: bet.profit > 0 ? '#22c55e' : bet.profit < 0 ? '#f87171' : '#eab308',
-                            }}>
-                              {formatMoney(bet.profit)}
-                            </div>
-                            <button
-                              onClick={() => deleteBet(bet.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#475569', padding: '4px', marginTop: '4px' }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                          {bet.status}
+                        </span>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{bet.game}</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                        {bet.date} ★¢ {bet.type} ★¢ {bet.pick} ★¢ {formatOdds(bet.odds)} ★¢ ${Number(bet.wager).toFixed(2)}
+                      </div>
                     </div>
-                  );
-                });
+                    {/* Right side: profit and running P&L */}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{
+                        fontSize: '14px', fontWeight: 700,
+                        color: bet.profit > 0 ? '#22c55e' : bet.profit < 0 ? '#f87171' : '#eab308',
+                      }}>
+                        {formatMoney(bet.profit)}
+                      </div>
+                      <div style={{
+                        fontSize: '10px',
+                        color: runningMap[bet.id] >= 0 ? '#22c55e80' : '#f8717180',
+                      }}>
+                        P&L: {formatMoney(runningMap[bet.id])}
+                      </div>
+                    </div>
+                  </div>
+                ));
               })()}
             </div>
           )}
