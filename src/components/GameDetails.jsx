@@ -373,6 +373,17 @@ export default function GameDetails({
         <p style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>Enter the true opening line to track movement from there</p>
       </div>
 
+      {/* Game Research - Recent Form, H2H, Trends */}
+      <div style={{ marginBottom: '16px' }}>
+        <GameResearch 
+          gameId={game.id}
+          sport={game.sport_key || 'basketball_nba'}
+          homeTeam={game.home_team}
+          awayTeam={game.away_team}
+          commenceTime={game.commence_time}
+        />
+      </div>
+
       {/* Injury Report */}
       {allInjuries.length > 0 && (
         <div style={{ marginBottom: '16px' }}>

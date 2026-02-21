@@ -3,7 +3,7 @@ import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { calculateEV, kellyBet, americanToDecimal, americanToImplied, formatOdds } from '../utils/odds-math.js';
 
-// EV Calculator ★ Pro-only tool that helps you figure out if a bet is worth making.
+// EV Calculator â Pro-only tool that helps you figure out if a bet is worth making.
 // It uses Expected Value (EV) and Kelly Criterion to give you a mathematical edge.
 
 export default function EVCalculator() {
@@ -21,7 +21,7 @@ export default function EVCalculator() {
   if (tier !== 'pro') {
     return (
       <div style={{ padding: '20px 24px', maxWidth: '600px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px', color: '#f8fafc' }}>🏆§® EV Calculator</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px', color: '#f8fafc' }}>ð§® EV Calculator</h2>
         <ProBanner />
       </div>
     );
@@ -31,15 +31,15 @@ export default function EVCalculator() {
   const oddsNum = parseInt(odds, 10);
   // isValid checks: odds can't be 0 or between -99 and 99 (invalid American odds)
   const isValid = !isNaN(oddsNum) && (oddsNum >= 100 || oddsNum <= -100);
-  const trueProbability = prob / 100; // convert % to decimal (55% ★ 0.55)
+  const trueProbability = prob / 100; // convert % to decimal (55% â 0.55)
 
-  // EV% ★ positive means profitable long-term
+  // EV% â positive means profitable long-term
   const ev = isValid ? calculateEV(oddsNum, trueProbability) : null;
-  // Kelly% ★ what fraction of bankroll to bet
+  // Kelly% â what fraction of bankroll to bet
   const kelly = isValid ? kellyBet(oddsNum, trueProbability) : null;
-  // Implied probability ★ what the sportsbook thinks the chance is
+  // Implied probability â what the sportsbook thinks the chance is
   const impliedProb = isValid ? americanToImplied(oddsNum) : null;
-  // Decimal odds ★ another way to express the odds (used in Kelly formula)
+  // Decimal odds â another way to express the odds (used in Kelly formula)
   const decimalOdds = isValid ? americanToDecimal(oddsNum) : null;
 
   // If user entered a bankroll, calculate the dollar amount to bet
@@ -75,7 +75,7 @@ export default function EVCalculator() {
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: '600px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#f8fafc' }}>🏆§® EV Calculator</h2>
+      <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#f8fafc' }}>ð§® EV Calculator</h2>
       <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
         Enter odds and your estimated win probability to see if a bet has positive expected value.
       </p>
@@ -107,7 +107,7 @@ export default function EVCalculator() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px' }}>
               <span style={{ color: '#64748b' }}>Book implied: <span style={{ color: '#94a3b8', fontWeight: 600 }}>{(impliedProb * 100).toFixed(1)}%</span></span>
               <span style={{ color: trueProbability > impliedProb ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
-                {trueProbability > impliedProb ? '★ You see edge' : '★ No edge'}
+                {trueProbability > impliedProb ? 'â You see edge' : 'â No edge'}
               </span>
             </div>
           )}
@@ -115,7 +115,7 @@ export default function EVCalculator() {
 
         {/* Optional Bankroll Input */}
         <div>
-          <label style={labelStyle}>Bankroll $ (optional ★ for Kelly bet sizing)</label>
+          <label style={labelStyle}>Bankroll $ (optional â for Kelly bet sizing)</label>
           <input
             type="number"
             value={bankroll}
@@ -136,10 +136,10 @@ export default function EVCalculator() {
             : 'rgba(239, 68, 68, 0.06)',
         }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: isPositive ? '#22c55e' : '#ef4444', marginBottom: '12px' }}>
-            {isPositive ? '★ POSITIVE EV ★ This bet has edge!' : '★ NEGATIVE EV ★ No edge here'}
+            {isPositive ? '✅ POSITIVE EV — This bet has edge!' : '❌ NEGATIVE EV — No edge here'}
           </div>
 
-          {/* Results grid ★ 2 columns on mobile-friendly layout */}
+          {/* Results grid â 2 columns on mobile-friendly layout */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {/* EV% */}
             <div style={{ padding: '12px', background: 'rgba(15, 23, 42, 0.5)', borderRadius: '8px' }}>
@@ -203,16 +203,16 @@ export default function EVCalculator() {
 
       {/* --- EXPLAINER CARD --- */}
       <div style={{ ...cardStyle, borderColor: 'rgba(99, 102, 241, 0.2)' }}>
-        <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#c4b5fd', marginBottom: '8px' }}>🏆 What do these numbers mean?</h3>
+        <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#c4b5fd', marginBottom: '8px' }}>ð What do these numbers mean?</h3>
         <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.7 }}>
           <p style={{ marginBottom: '8px' }}>
-            <strong style={{ color: '#e2e8f0' }}>Expected Value (EV)</strong> ★ If you made this bet 1,000 times, EV tells you your average profit/loss per bet. Positive EV = profitable long-term.
+            <strong style={{ color: '#e2e8f0' }}>Expected Value (EV)</strong> â If you made this bet 1,000 times, EV tells you your average profit/loss per bet. Positive EV = profitable long-term.
           </p>
           <p style={{ marginBottom: '8px' }}>
-            <strong style={{ color: '#e2e8f0' }}>Kelly Criterion</strong> ★ A formula that tells you the optimal % of your bankroll to bet. It maximizes long-term growth while managing risk. Many sharps use "half Kelly" (bet half the suggested amount) to be safer.
+            <strong style={{ color: '#e2e8f0' }}>Kelly Criterion</strong> â A formula that tells you the optimal % of your bankroll to bet. It maximizes long-term growth while managing risk. Many sharps use "half Kelly" (bet half the suggested amount) to be safer.
           </p>
           <p>
-            <strong style={{ color: '#e2e8f0' }}>Implied Probability</strong> ★ The win % the sportsbook's odds suggest. If your estimate is higher than theirs, you've found edge.
+            <strong style={{ color: '#e2e8f0' }}>Implied Probability</strong> â The win % the sportsbook's odds suggest. If your estimate is higher than theirs, you've found edge.
           </p>
         </div>
       </div>

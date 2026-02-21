@@ -13,6 +13,8 @@ import EVCalculator from './components/EVCalculator.jsx';
 import BetTracker from './components/BetTracker.jsx';
 import EdgeAlerts from './components/EdgeAlerts.jsx';
 import PickTracker from './components/PickTracker.jsx';
+import LineMovement from './components/LineMovement.jsx';
+import KellyCriterion from './components/KellyCriterion.jsx';
 import MobileNav from './components/MobileNav.jsx';
 
 export default function BettingApp() {
@@ -178,12 +180,20 @@ export default function BettingApp() {
         <EdgeAlerts />
       )}
 
+      {activeTab === 'LINES' && (
+        <LineMovement />
+      )}
+
       {activeTab === 'PROPS' && (
         <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} />
       )}
 
       {activeTab === 'EV CALC' && (
         <EVCalculator />
+      )}
+
+      {activeTab === 'KELLY' && (
+        <KellyCriterion />
       )}
 
       {activeTab === 'TRACKER' && (

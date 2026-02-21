@@ -1,33 +1,32 @@
 // ==============================================
-// FIREBASE CONFIG ★ The central setup file for Firebase
+// FIREBASE CONFIG — The central setup file for Firebase
 // ==============================================
 // Firebase gives us: Authentication (login) and Firestore (database).
 // This file initializes both and exports them for use throughout the app.
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 // Firestore = Firebase's database. We use it to store user data.
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// Your Firebase project config (from Firebase Console ★ Project Settings)
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBGKVFcZm8rurc9XXYoQ6uWkx7IGhXR6m4",
-  authDomain: "edgefinder-betting.firebaseapp.com",
-  projectId: "edgefinder-betting",
-  storageBucket: "edgefinder-betting.firebasestorage.app",
-  messagingSenderId: "665349381911",
-  appId: "1:665349381911:web:faf37ffdc535459399e152",
-  measurementId: "G-DWHYZXCS3G"
+  apiKey: "AIzaSyDjJdLghs8ycbkQZhUVIuvnQ92IyhM3xmQ",
+  authDomain: "edgefinder-9d42e.firebaseapp.com",
+  projectId: "edgefinder-9d42e",
+  storageBucket: "edgefinder-9d42e.firebasestorage.app",
+  messagingSenderId: "245989656973",
+  appId: "1:245989656973:web:61aeb07f555ecfa3b215c4",
+  measurementId: "G-7YFFZ71VN6"
 };
 
 // Initialize the Firebase app
 const app = initializeApp(firebaseConfig);
 
-// Auth ★ handles user login/signup
+// Auth — handles user login/signup
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
 
-// Firestore ★ our database for storing user data (like subscription tier)
+// Firestore — our database for storing user data (like subscription tier)
 export const db = getFirestore(app);
 
 // Helper: check a user's subscription tier by calling our API endpoint

@@ -1,4 +1,4 @@
-// ProBanner.jsx ★ The upgrade CTA component
+// ProBanner.jsx â The upgrade CTA component
 // Shows free users what they're missing and gives them a button to subscribe
 // When they click "Upgrade", we call our API to create a Stripe checkout session,
 // then redirect them to Stripe's payment page
@@ -44,7 +44,7 @@ export default function ProBanner({ compact = false }) {
     }
   };
 
-  // Compact version ★ small inline banner for locked features
+  // Compact version â small inline banner for locked features
   if (compact) {
     return (
       <div style={{
@@ -56,7 +56,7 @@ export default function ProBanner({ compact = false }) {
       }}>
         <Lock size={16} color="#818cf8" />
         <span style={{ fontSize: '12px', color: '#c4b5fd', flex: 1 }}>
-          Pro feature ★ unlock all sportsbooks & tools
+          Pro feature â unlock all sportsbooks & tools
         </span>
         <button onClick={handleUpgrade} disabled={loading} style={{
           padding: '6px 14px',
@@ -73,7 +73,7 @@ export default function ProBanner({ compact = false }) {
     );
   }
 
-  // Full version ★ premium-looking upgrade banner with feature list
+  // Full version â premium-looking upgrade banner with feature list
   return (
     <div style={{
       padding: '28px',
@@ -135,11 +135,11 @@ export default function ProBanner({ compact = false }) {
         position: 'relative',
         transition: 'transform 0.15s',
       }}>
-        {loading ? 'Creating checkout...' : `Upgrade to Pro ★ ${PRO_FEATURES.price}`}
+        {loading ? 'Creating checkout...' : `Upgrade to Pro â ${PRO_FEATURES.price}`}
       </button>
 
       <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: '#64748b' }}>
-        Cancel anytime ★¢ Secure payment via Stripe
+        Cancel anytime · Secure payment via Stripe
       </div>
     </div>
   );

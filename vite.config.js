@@ -29,6 +29,11 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // Force new SW to take over immediately
+        skipWaiting: true,
+        clientsClaim: true,
+        // Cache version bump forces SW update on all clients
+        additionalManifestEntries: [{ url: '/cache-bust-v3', revision: Date.now().toString() }],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

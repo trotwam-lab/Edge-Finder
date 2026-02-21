@@ -16,7 +16,7 @@ export default function Header({
 
   return (
     <header style={{
-      padding: '10px 24px',
+      padding: '16px 24px',
       borderBottom: '1px solid rgba(56, 189, 248, 0.1)',
       background: 'rgba(15, 23, 42, 0.9)',
       position: 'sticky', top: 0, zIndex: 100
@@ -83,63 +83,63 @@ export default function Header({
           }}><TrendingUp size={14} /> Tracker</button>
         </div>
 
-        {/* Status - Compact inline with header */}
-        <div className="header-status" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        {/* Status */}
+        <div className="header-status" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '4px',
-            padding: '4px 8px',
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '6px 12px',
             background: isConnected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
             border: `1px solid ${isConnected ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-            borderRadius: '4px', fontSize: '10px', fontWeight: 600,
+            borderRadius: '6px', fontSize: '11px',
             color: isConnected ? '#10b981' : '#ef4444'
           }}>
-            {isConnected ? <Wifi size={10} /> : <WifiOff size={10} />}
+            {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
             {isConnected ? 'LIVE' : 'OFFLINE'}
           </div>
-          <div style={{ fontSize: '10px', color: '#64748b' }}>
-            {loading ? '...' : lastUpdatedText || `${countdown}s`}
+          <div style={{ fontSize: '11px', color: '#64748b' }}>
+            {loading ? 'Updating...' : lastUpdatedText || `${countdown}s`}
           </div>
           <button onClick={onRefresh} disabled={loading} style={{
-            padding: '4px 8px',
+            padding: '6px 12px',
             background: 'rgba(99, 102, 241, 0.3)',
             border: '1px solid rgba(99, 102, 241, 0.5)',
-            borderRadius: '4px', color: '#f8fafc',
-            fontSize: '10px', cursor: loading ? 'not-allowed' : 'pointer'
+            borderRadius: '6px', color: '#f8fafc',
+            fontSize: '11px', cursor: loading ? 'not-allowed' : 'pointer'
           }}>
-            <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+            <RefreshCw size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           </button>
           {/* Pro badge or Upgrade link */}
           {tier === 'pro' ? (
             <span style={{
-              padding: '3px 6px',
+              padding: '5px 10px',
               background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3))',
               border: '1px solid rgba(139, 92, 246, 0.5)',
-              borderRadius: '4px', fontSize: '10px', fontWeight: 700, color: '#c4b5fd',
-              display: 'flex', alignItems: 'center', gap: '2px',
+              borderRadius: '6px', fontSize: '11px', fontWeight: 700, color: '#c4b5fd',
+              display: 'flex', alignItems: 'center', gap: '4px',
             }}>
-              PRO
+              ⚡ PRO
             </span>
           ) : (
             <button onClick={() => setActiveTab('SETTINGS')} style={{
-              padding: '3px 6px',
+              padding: '5px 10px',
               background: 'rgba(99, 102, 241, 0.15)',
               border: '1px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: '4px', fontSize: '10px', color: '#818cf8',
+              borderRadius: '6px', fontSize: '11px', color: '#818cf8',
               cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace",
             }}>
-              UPGRADE
+              Upgrade
             </button>
           )}
 
           <button onClick={logout} title={user?.email || 'Sign Out'} style={{
-            padding: '4px 8px',
+            padding: '6px 12px',
             background: 'rgba(239, 68, 68, 0.2)',
             border: '1px solid rgba(239, 68, 68, 0.4)',
-            borderRadius: '4px', color: '#f87171',
-            fontSize: '10px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '4px'
+            borderRadius: '6px', color: '#f87171',
+            fontSize: '11px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '6px'
           }}>
-            <LogOut size={10} />
+            <LogOut size={12} /> Sign Out
           </button>
         </div>
       </div>
