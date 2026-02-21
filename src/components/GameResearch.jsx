@@ -95,13 +95,16 @@ export default function GameResearch({ game }) {
 
 function TeamForm({ team }) {
   const form = team?.recentForm || {};
-  const last5 = form.last5 || [];
+  const last5 = form?.last5 || [];
+  
+  // Debug
+  console.log('[TeamForm]', team?.name, 'last5:', last5, 'record:', form?.record);
   
   return (
     <div>
-      <div style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', marginBottom: '8px' }}>{team?.name}</div>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', marginBottom: '8px' }}>{team?.name || 'Unknown'}</div>
       
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', minHeight: '24px' }}>
         {last5.length > 0 ? last5.map((r, i) => (
           <span key={i} style={{
             width: '24px', height: '24px', borderRadius: '4px',
@@ -111,11 +114,11 @@ function TeamForm({ team }) {
             color: r === 'W' ? '#22c55e' : '#f87171',
             border: `1px solid ${r === 'W' ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)'}`,
           }}>{r}</span>
-        )) : <span style={{ color: '#64748b', fontSize: '11px' }}>No games</span>}
+        )) : <span style={{ color: '#f87171', fontSize: '11px' }}>Error: No last 5 data</span>}
       </div>
       
       <div style={{ fontSize: '11px', color: '#64748b' }}>
-        Record: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{form.record || 'N/A'}</span>
+        Last 5 Record: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{form?.record || 'N/A'}</span>
       </div>
       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
         PPG: <span style={{ color: '#22c55e' }}>{form.avgPoints || '0.0'}</span> | 
