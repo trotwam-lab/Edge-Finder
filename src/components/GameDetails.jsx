@@ -5,6 +5,7 @@ import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds } from '../utils/odds-math.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
+import GameResearch from './GameResearch.jsx';
 
 function HoldBadge({ hold }) {
   if (hold === null || hold === undefined) return null;
@@ -398,6 +399,9 @@ export default function GameDetails({
           </div>
         </div>
       )}
+
+      {/* Game Research Section */}
+      <GameResearch game={game} />
 
       <div style={{ fontSize: '11px', color: '#64748b' }}>
         Last updated: {new Date(game.commence_time).toLocaleString()}
