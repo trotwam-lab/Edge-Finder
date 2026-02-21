@@ -708,11 +708,11 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
         borderBottom: '1px solid rgba(71, 85, 105, 0.2)',
       }}>
         {[
-          { key: 'form', label: 'Team Form', icon: Activity, count: null },
-          { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length || null },
-          { key: 'trends', label: 'Trends', icon: TrendingUp, count: trendCount > 0 ? trendCount : null },
-          { key: 'props', label: 'Props', icon: Users, count: data?.meta?.playerPropsCount > 0 ? data.meta.playerPropsCount : null, hideCount: !data?.hasPlayerProps },
-        ].filter(tab => !tab.hideCount || tab.count).map((tab) => (
+          { key: 'form', label: 'Team Form', icon: Activity, count: data?.meta?.homeGamesFound || data?.meta?.awayGamesFound },
+          { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length },
+          { key: 'trends', label: 'Trends', icon: TrendingUp, count: trends.length },
+          { key: 'props', label: 'Props', icon: Users, count: data?.hasPlayerProps ? data.playerProps.length : null },
+        ].filter(tab => tab.count > 0 || tab.key === 'form' || tab.key === 'props').map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
