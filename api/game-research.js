@@ -1,7 +1,7 @@
 // api/game-research.js — Fetches detailed research for specific games
 // Uses ESPN API for accurate, real-time data
 
-import { fetchGameResearch } from '../src/utils/espn.js';
+import { fetchGameResearch } from './_espn.js';
 
 const cache = {};
 const TTL = 10 * 60 * 1000; // 10 minutes - fresher data for live games
