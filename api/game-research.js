@@ -28,13 +28,22 @@ export default async function handler(req, res) {
     
     const games = await scoresRes.json();
     
+    // Normalize team names for matching
+    const normalize = (name) => name.toLowerCase().replace(/\s+/g, ' ').trim();
+    const searchAway = normalize(awayTeam);
+    const searchHome = normalize(homeTeam);
+    
+    console.log(`[OddsAPI] Searching for: ${searchAway} vs ${searchHome}`);
+    console.log(`[OddsAPI] Total games: ${games.length}, completed: ${games.filter(g => g.completed).length}`);
+    
     // Find games for each team
-    const awayGames = games.filter(g => 
-      g.completed && (
-        g.home_team?.toLowerCase().includes(awayTeam.toLowerCase()) ||
-        g.away_team?.toLowerCase().includes(awayTeam.toLowerCase())
-      )
-    ).sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time)).slice(0, 5);
+    const awayGames = games.filter(g => {
+      if (!g.completed) return false;
+      const home = normalize(g.home_team || '');
+      const away = normalize(g.away_team || '');
+      return home.includes(searchAway) || away.includes(searchAway) || 
+             searchAway.includes(home.split(' ').pop()) || searchAway.includes(away.split(' ').pop());
+    }).sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time)).slice(0, 5);
     
     const homeGames = games.filter(g => 
       g.completed && (
