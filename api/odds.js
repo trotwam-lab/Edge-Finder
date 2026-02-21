@@ -1,5 +1,5 @@
 const cache = {};
-const TTL = 2 * 60 * 1000; // 2 minutes
+const TTL = 30 * 1000; // 30 seconds - fresher lines for live betting
 
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', markets = 'h2h,spreads,totals' } = req.query;

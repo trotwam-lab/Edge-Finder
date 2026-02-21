@@ -3,7 +3,7 @@
 // Caches results for 15 minutes to save API credits
 
 const cache = { data: null, ts: 0 };
-const TTL = 15 * 60 * 1000; // 15 minutes
+const TTL = 60 * 1000; // 1 minute - fresher edges for live betting
 
 const TRACKED_SPORTS = [
   'basketball_nba',
