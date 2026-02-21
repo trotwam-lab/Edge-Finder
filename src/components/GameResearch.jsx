@@ -16,12 +16,13 @@ export default function GameResearch({ game }) {
     const sport = game.sport_key || 'basketball_nba';
     
     // Always fetch fresh data when tab is clicked
-    console.log('Fetching research for:', awayTeam, '@', homeTeam);
+    console.log('[GameResearch v2] Fetching for:', awayTeam, '@', homeTeam);
     
     setLoading(true);
     setResearch(null); // Clear old data
     
-    fetch(`/api/game-research?homeTeam=${encodeURIComponent(homeTeam)}&awayTeam=${encodeURIComponent(awayTeam)}&sport=${sport}&_t=${Date.now()}`)
+    const cacheBuster = Date.now();
+    fetch(`/api/game-research?homeTeam=${encodeURIComponent(homeTeam)}&awayTeam=${encodeURIComponent(awayTeam)}&sport=${sport}&_cb=${cacheBuster}`)
       .then(r => r.json())
       .then(data => {
         console.log('Research data received:', JSON.stringify(data, null, 2).substring(0, 500));
