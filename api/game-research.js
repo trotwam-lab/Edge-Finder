@@ -26,8 +26,10 @@ function getTeamAbbr(name) {
 // Fetch recent scores from Odds API
 async function fetchRecentScores(teamName, sport, apiKey) {
   try {
+    // daysFrom=1 to 3 looks at upcoming games, we need historical data
+    // Odds API scores endpoint shows games within the daysFrom window
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=30`,
+      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=1`,
       { signal: AbortSignal.timeout(10000) }
     );
     
@@ -74,7 +76,7 @@ async function fetchRecentScores(teamName, sport, apiKey) {
 async function fetchH2H(homeTeam, awayTeam, sport, apiKey) {
   try {
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=90`,
+      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
       { signal: AbortSignal.timeout(10000) }
     );
     

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EdgeFinder API Test</title>
+  <style>
+    body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f172a; color: #f8fafc; }
+    pre { background: #1e293b; padding: 15px; border-radius: 8px; overflow-x: auto; }
+    button { background: #6366f1; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin: 5px; }
+    button:hover { background: #4f46e5; }
+    .error { color: #ef4444; }
+    .success { color: #22c55e; }
+    input, select { padding: 8px; margin: 5px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; }
+  </style>
+</head>
+<body>
+  <h1>🎮 EdgeFinder API Test</h1>
+  
+  <h3>Test Game Research API</h3>
+  <div>
+    <select id="sport">
+      <option value="basketball_nba">NBA</option>
+      <option value="icehockey_nhl" selected>NHL (active)</option>
+      <option value="americanfootball_nfl">NFL</option>
+    </select>
+    <input type="text" id="homeTeam" placeholder="Home Team" value="Boston Bruins">
+    <input type="text" id="awayTeam" placeholder="Away Team" value="Vegas Golden Knights">
+    <button onclick="testAPI()">Test API</button>
+  </div>
+  
+  <h3>Results:</h3>
+  <pre id="output">Click "Test API" to see results...</pre>
+  
+  <script>
+    async function testAPI() {
+      const output = document.getElementById('output');
+      const sport = document.getElementById('sport').value;
+      const homeTeam = document.getElementById('homeTeam').value;
+      const awayTeam = document.getElementById('awayTeam').value;
+      
+      output.textContent = 'Loading...';
+      
+      try {
+        // For local testing, you'd need to run the API locally or use a proxy
+        // This tests the production endpoint
+        const res = await fetch(`https://edgefinderdaily.com/api/game-research?gameId=test-local&sport=${sport}&homeTeam=${encodeURIComponent(homeTeam)}&awayTeam=${encodeURIComponent(awayTeam)}`);
+        
+        const data = await res.json();
+        output.innerHTML = `<span class="${data.accurate ? 'success' : 'error'}">${JSON.stringify(data, null, 2)}</span>`;
+      } catch (e) {
+        output.innerHTML = `<span class="error">Error: ${e.message}</span>`;
+      }
+    }
+    
+    // Run on load
+    testAPI();
+  </script>
+</body>
+</html>
