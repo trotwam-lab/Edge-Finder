@@ -40,6 +40,7 @@ const SPORTS = [
 
 // ★★★ Time Range Options ★★★
 const TIME_RANGES = [
+  { key: '3', label: 'Last 3' },
   { key: '7', label: 'Last 7 Days' },
   { key: '30', label: 'Last 30 Days' },
   { key: '90', label: 'Last 90 Days' },
