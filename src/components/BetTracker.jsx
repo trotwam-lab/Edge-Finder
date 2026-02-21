@@ -136,6 +136,13 @@ function formatDateLabel(dateStr) {
   });
 }
 
+// Source options for tracking personal vs pro bets
+const SOURCE_OPTIONS = [
+  { key: 'ALL', label: 'All Sources' },
+  { key: 'personal', label: 'Personal 🎯' },
+  { key: 'pro', label: 'Pro Telegram 💎' },
+];
+
 // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 // MAIN COMPONENT
 // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
@@ -153,6 +160,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   // ★★ Form state: these control the "Add a Bet" form inputs ★★
   const [game, setGame] = useState('');           // e.g. "Lakers vs Celtics"
   const [sport, setSport] = useState('NBA');      // sport selection
+  const [source, setSource] = useState('personal'); // 'personal' or 'pro'
   const [betType, setBetType] = useState('Spread'); // dropdown selection
   const [pick, setPick] = useState('');            // e.g. "Lakers -3.5"
   const [odds, setOdds] = useState('');            // American odds, e.g. -110
@@ -167,6 +175,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   
   // ★★ NEW: Filter states ★★
   const [selectedSport, setSelectedSport] = useState('ALL');  // filter by sport tab
+  const [selectedSource, setSelectedSource] = useState('ALL'); // filter by source (personal/pro)
   const [timeRange, setTimeRange] = useState('all');          // filter by time range
   const [statusFilter, setStatusFilter] = useState('ALL');    // filter by bet status
   const [searchQuery, setSearchQuery] = useState('');         // search bets
@@ -190,6 +199,12 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   // ★★ Filter bets based on selected criteria ★★
   const filteredBets = useMemo(() => {
     return bets.filter(bet => {
+      // Source filter (personal vs pro)
+      if (selectedSource !== 'ALL') {
+        const betSource = bet.source || 'personal'; // default to personal for old bets
+        if (betSource !== selectedSource) return false;
+      }
+      
       // Sport filter
       if (selectedSport !== 'ALL') {
         const betSport = getSportFromBet(bet);
@@ -226,7 +241,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       
       return true;
     });
-  }, [bets, selectedSport, timeRange, statusFilter, searchQuery]);
+  }, [bets, selectedSource, selectedSport, timeRange, statusFilter, searchQuery]);
 
   // ★★ Derived data: split filtered bets into pending vs settled ★★
   const pendingBets = useMemo(() => filteredBets.filter(b => b.status === 'pending'), [filteredBets]);
@@ -297,6 +312,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       id: Date.now(),                    // unique identifier
       game,                               // "Lakers vs Celtics"
       sport,                              // "NBA", "NFL", etc.
+      source,                             // "personal" or "pro"
       type: betType,                      // "Spread", "Moneyline", etc.
       pick,                               // "Lakers -3.5"
       odds: Number(odds),                 // -110 (American format)
@@ -313,6 +329,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     // Reset the form fields so user can enter another bet
     setGame('');
     setSport('NBA');
+    setSource('personal');
     setPick('');
     setOdds('');
     setWager('');
@@ -469,6 +486,26 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         >
           {STATUS_FILTERS.map(status => (
             <option key={status.key} value={status.key}>{status.label}</option>
+          ))}
+        </select>
+
+        {/* Source Filter (Personal vs Pro) */}
+        <select
+          value={selectedSource}
+          onChange={(e) => setSelectedSource(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            background: 'rgba(30, 41, 59, 0.6)',
+            border: '1px solid rgba(71, 85, 105, 0.3)',
+            borderRadius: '8px',
+            color: '#e2e8f0',
+            fontSize: '12px',
+            fontFamily: "'JetBrains Mono', monospace",
+            cursor: 'pointer',
+          }}
+        >
+          {SOURCE_OPTIONS.map(src => (
+            <option key={src.key} value={src.key}>{src.label}</option>
           ))}
         </select>
 
@@ -884,6 +921,19 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                   {SPORTS.filter(s => s.key !== 'ALL').map(s => (
                     <option key={s.key} value={s.key}>{s.emoji} {s.label}</option>
                   ))}
+                </select>
+              </div>
+
+              {/* Source dropdown */}
+              <div>
+                <label style={labelStyle}>Source</label>
+                <select
+                  value={source}
+                  onChange={e => setSource(e.target.value)}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  <option value="personal">🎯 Personal</option>
+                  <option value="pro">💎 Pro Telegram</option>
                 </select>
               </div>
 
