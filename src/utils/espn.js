@@ -26,18 +26,35 @@ async function getTeamId(teamName, sport = 'basketball_nba') {
     const res = await fetch(`${ESPN_BASE}/${sportPath}/teams`);
     const data = await res.json();
     
-    // Search for team by name (case insensitive, partial match)
-    const searchName = teamName.toLowerCase();
+    // Search for team by name (case insensitive, smart matching)
+    const searchName = teamName.toLowerCase().trim();
+    const searchWords = searchName.split(/\s+/); // Split "Brooklyn Nets" into ["brooklyn", "nets"]
+    
     const team = data.sports[0].leagues[0].teams.find(t => {
       const displayName = t.team.displayName.toLowerCase();
       const shortName = t.team.shortDisplayName.toLowerCase();
       const abbreviation = t.team.abbreviation.toLowerCase();
       const nickname = t.team.name.toLowerCase();
+      const location = t.team.location?.toLowerCase() || '';
       
-      return displayName.includes(searchName) ||
-             shortName.includes(searchName) ||
-             abbreviation === searchName ||
-             nickname.includes(searchName);
+      // Check exact match first
+      if (abbreviation === searchName) return true;
+      if (nickname === searchName) return true;
+      if (displayName === searchName) return true;
+      
+      // Check if search contains team nickname ("Brooklyn Nets" includes "nets")
+      if (searchName.includes(nickname)) return true;
+      
+      // Check if any search word matches nickname (for "LA Lakers", check if "lakers" matches)
+      if (searchWords.some(word => word === nickname || word === abbreviation)) return true;
+      
+      // Check if display name contains all search words
+      if (searchWords.every(word => displayName.includes(word))) return true;
+      
+      // Check if search contains location + nickname combination
+      if (searchName.includes(location) && searchName.includes(nickname)) return true;
+      
+      return false;
     });
     
     return team ? team.team.id : null;
