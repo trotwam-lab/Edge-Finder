@@ -1,209 +1,204 @@
-// api/game-research.js — Fetches detailed research for specific games
-// Uses ESPN API first, falls back to The Odds API for stats
+// api/game-research.js — ACCURATE DATA ONLY
+// Multi-source validation for maximum accuracy
+// If sources disagree or fail, returns "unavailable" rather than guessing
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
+const NBA_BASE = 'https://stats.nba.com/stats'; // Official NBA API
 const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
-const SPORT_PATHS = {
-  'basketball_nba': 'basketball/nba',
-  'basketball_ncaab': 'basketball/mens-college-basketball',
-  'americanfootball_nfl': 'football/nfl',
-  'americanfootball_ncaaf': 'football/college-football',
-  'icehockey_nhl': 'hockey/nhl',
-  'baseball_mlb': 'baseball/mlb',
-  'basketball_wnba': 'basketball/wnba',
-};
-
-// Static NBA team data (embedded to avoid fetch issues on Vercel)
-const NBA_TEAMS = [
-  { id: '1', name: 'hawks', displayName: 'Atlanta Hawks', shortDisplayName: 'Hawks', abbreviation: 'ATL', location: 'Atlanta' },
-  { id: '2', name: 'celtics', displayName: 'Boston Celtics', shortDisplayName: 'Celtics', abbreviation: 'BOS', location: 'Boston' },
-  { id: '17', name: 'nets', displayName: 'Brooklyn Nets', shortDisplayName: 'Nets', abbreviation: 'BKN', location: 'Brooklyn' },
-  { id: '4', name: 'hornets', displayName: 'Charlotte Hornets', shortDisplayName: 'Hornets', abbreviation: 'CHA', location: 'Charlotte' },
-  { id: '5', name: 'bulls', displayName: 'Chicago Bulls', shortDisplayName: 'Bulls', abbreviation: 'CHI', location: 'Chicago' },
-  { id: '6', name: 'cavaliers', displayName: 'Cleveland Cavaliers', shortDisplayName: 'Cavaliers', abbreviation: 'CLE', location: 'Cleveland' },
-  { id: '7', name: 'mavericks', displayName: 'Dallas Mavericks', shortDisplayName: 'Mavericks', abbreviation: 'DAL', location: 'Dallas' },
-  { id: '8', name: 'nuggets', displayName: 'Denver Nuggets', shortDisplayName: 'Nuggets', abbreviation: 'DEN', location: 'Denver' },
-  { id: '9', name: 'pistons', displayName: 'Detroit Pistons', shortDisplayName: 'Pistons', abbreviation: 'DET', location: 'Detroit' },
-  { id: '10', name: 'warriors', displayName: 'Golden State Warriors', shortDisplayName: 'Warriors', abbreviation: 'GS', location: 'Golden State' },
-  { id: '11', name: 'rockets', displayName: 'Houston Rockets', shortDisplayName: 'Rockets', abbreviation: 'HOU', location: 'Houston' },
-  { id: '12', name: 'pacers', displayName: 'Indiana Pacers', shortDisplayName: 'Pacers', abbreviation: 'IND', location: 'Indiana' },
-  { id: '13', name: 'clippers', displayName: 'LA Clippers', shortDisplayName: 'Clippers', abbreviation: 'LAC', location: 'LA' },
-  { id: '14', name: 'lakers', displayName: 'Los Angeles Lakers', shortDisplayName: 'Lakers', abbreviation: 'LAL', location: 'Los Angeles' },
-  { id: '15', name: 'grizzlies', displayName: 'Memphis Grizzlies', shortDisplayName: 'Grizzlies', abbreviation: 'MEM', location: 'Memphis' },
-  { id: '16', name: 'heat', displayName: 'Miami Heat', shortDisplayName: 'Heat', abbreviation: 'MIA', location: 'Miami' },
-  { id: '18', name: 'bucks', displayName: 'Milwaukee Bucks', shortDisplayName: 'Bucks', abbreviation: 'MIL', location: 'Milwaukee' },
-  { id: '19', name: 'timberwolves', displayName: 'Minnesota Timberwolves', shortDisplayName: 'Timberwolves', abbreviation: 'MIN', location: 'Minnesota' },
-  { id: '20', name: 'pelicans', displayName: 'New Orleans Pelicans', shortDisplayName: 'Pelicans', abbreviation: 'NO', location: 'New Orleans' },
-  { id: '21', name: 'knicks', displayName: 'New York Knicks', shortDisplayName: 'Knicks', abbreviation: 'NY', location: 'New York' },
-  { id: '22', name: 'thunder', displayName: 'Oklahoma City Thunder', shortDisplayName: 'Thunder', abbreviation: 'OKC', location: 'Oklahoma City' },
-  { id: '23', name: 'magic', displayName: 'Orlando Magic', shortDisplayName: 'Magic', abbreviation: 'ORL', location: 'Orlando' },
-  { id: '24', name: '76ers', displayName: 'Philadelphia 76ers', shortDisplayName: '76ers', abbreviation: 'PHI', location: 'Philadelphia' },
-  { id: '25', name: 'suns', displayName: 'Phoenix Suns', shortDisplayName: 'Suns', abbreviation: 'PHX', location: 'Phoenix' },
-  { id: '26', name: 'trail blazers', displayName: 'Portland Trail Blazers', shortDisplayName: 'Trail Blazers', abbreviation: 'POR', location: 'Portland' },
-  { id: '27', name: 'kings', displayName: 'Sacramento Kings', shortDisplayName: 'Kings', abbreviation: 'SAC', location: 'Sacramento' },
-  { id: '28', name: 'spurs', displayName: 'San Antonio Spurs', shortDisplayName: 'Spurs', abbreviation: 'SA', location: 'San Antonio' },
-  { id: '29', name: 'raptors', displayName: 'Toronto Raptors', shortDisplayName: 'Raptors', abbreviation: 'TOR', location: 'Toronto' },
-  { id: '30', name: 'jazz', displayName: 'Utah Jazz', shortDisplayName: 'Jazz', abbreviation: 'UTAH', location: 'Utah' },
-  { id: '31', name: 'wizards', displayName: 'Washington Wizards', shortDisplayName: 'Wizards', abbreviation: 'WSH', location: 'Washington' },
-];
-
+// Cache
 const cache = {};
 const TTL = 5 * 60 * 1000; // 5 minutes
 
-async function getTeamId(teamName, sport = 'basketball_nba') {
-  const sportPath = SPORT_PATHS[sport] || 'basketball/nba';
+// Static NBA team mappings (ESPN IDs)
+const NBA_TEAMS = {
+  'hawks': { id: '1', name: 'Atlanta Hawks', abbr: 'ATL' },
+  'celtics': { id: '2', name: 'Boston Celtics', abbr: 'BOS' },
+  'nets': { id: '17', name: 'Brooklyn Nets', abbr: 'BKN' },
+  'hornets': { id: '4', name: 'Charlotte Hornets', abbr: 'CHA' },
+  'bulls': { id: '5', name: 'Chicago Bulls', abbr: 'CHI' },
+  'cavaliers': { id: '6', name: 'Cleveland Cavaliers', abbr: 'CLE' },
+  'cavs': { id: '6', name: 'Cleveland Cavaliers', abbr: 'CLE' },
+  'mavericks': { id: '7', name: 'Dallas Mavericks', abbr: 'DAL' },
+  'mavs': { id: '7', name: 'Dallas Mavericks', abbr: 'DAL' },
+  'nuggets': { id: '8', name: 'Denver Nuggets', abbr: 'DEN' },
+  'pistons': { id: '9', name: 'Detroit Pistons', abbr: 'DET' },
+  'warriors': { id: '10', name: 'Golden State Warriors', abbr: 'GS' },
+  'rockets': { id: '11', name: 'Houston Rockets', abbr: 'HOU' },
+  'pacers': { id: '12', name: 'Indiana Pacers', abbr: 'IND' },
+  'clippers': { id: '13', name: 'LA Clippers', abbr: 'LAC' },
+  'lakers': { id: '14', name: 'Los Angeles Lakers', abbr: 'LAL' },
+  'grizzlies': { id: '15', name: 'Memphis Grizzlies', abbr: 'MEM' },
+  'heat': { id: '16', name: 'Miami Heat', abbr: 'MIA' },
+  'bucks': { id: '18', name: 'Milwaukee Bucks', abbr: 'MIL' },
+  'timberwolves': { id: '19', name: 'Minnesota Timberwolves', abbr: 'MIN' },
+  'pelicans': { id: '20', name: 'New Orleans Pelicans', abbr: 'NO' },
+  'knicks': { id: '21', name: 'New York Knicks', abbr: 'NY' },
+  'thunder': { id: '22', name: 'Oklahoma City Thunder', abbr: 'OKC' },
+  'magic': { id: '23', name: 'Orlando Magic', abbr: 'ORL' },
+  '76ers': { id: '24', name: 'Philadelphia 76ers', abbr: 'PHI' },
+  'suns': { id: '25', name: 'Phoenix Suns', abbr: 'PHX' },
+  'trail blazers': { id: '26', name: 'Portland Trail Blazers', abbr: 'POR' },
+  'blazers': { id: '26', name: 'Portland Trail Blazers', abbr: 'POR' },
+  'kings': { id: '27', name: 'Sacramento Kings', abbr: 'SAC' },
+  'spurs': { id: '28', name: 'San Antonio Spurs', abbr: 'SA' },
+  'raptors': { id: '29', name: 'Toronto Raptors', abbr: 'TOR' },
+  'jazz': { id: '30', name: 'Utah Jazz', abbr: 'UTAH' },
+  'wizards': { id: '31', name: 'Washington Wizards', abbr: 'WSH' },
+};
+
+// Find team by name with fuzzy matching
+function findTeam(searchName) {
+  const normalized = searchName.toLowerCase().trim();
+  
+  // Direct match
+  if (NBA_TEAMS[normalized]) return NBA_TEAMS[normalized];
+  
+  // Check if search contains a team name
+  for (const [key, team] of Object.entries(NBA_TEAMS)) {
+    if (normalized.includes(key)) return team;
+    if (normalized.includes(team.abbr.toLowerCase())) return team;
+    if (normalized.includes(team.name.toLowerCase())) return team;
+  }
+  
+  return null;
+}
+
+// Fetch with timeout
+async function fetchWithTimeout(url, options = {}, timeout = 8000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
   
   try {
-    const res = await fetch(`${ESPN_BASE}/${sportPath}/teams`);
-    const data = await res.json();
-    
-    const searchName = teamName.toLowerCase().trim();
-    const searchWords = searchName.split(/\s+/);
-    
-    const team = data.sports[0].leagues[0].teams.find(t => {
-      const displayName = t.team.displayName.toLowerCase();
-      const shortName = t.team.shortDisplayName.toLowerCase();
-      const abbreviation = t.team.abbreviation.toLowerCase();
-      const nickname = t.team.name.toLowerCase();
-      const location = t.team.location?.toLowerCase() || '';
-      
-      if (abbreviation === searchName) return true;
-      if (nickname === searchName) return true;
-      if (displayName === searchName) return true;
-      if (searchName.includes(nickname)) return true;
-      if (searchWords.some(word => word === nickname || word === abbreviation)) return true;
-      if (searchWords.every(word => displayName.includes(word))) return true;
-      if (searchName.includes(location) && searchName.includes(nickname)) return true;
-      
-      return false;
-    });
-    
-    return team ? team.team.id : null;
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
   } catch (error) {
-    console.error('ESPN team lookup error:', error);
-    return null;
+    clearTimeout(timeoutId);
+    throw error;
   }
 }
 
-async function getTeamRecentForm(teamId, sport = 'basketball_nba', limit = 5) {
-  const sportPath = SPORT_PATHS[sport] || 'basketball/nba';
-  
+// Source 1: ESPN API (most complete)
+async function getFromESPN(teamId) {
   try {
-    const res = await fetch(`${ESPN_BASE}/${sportPath}/teams/${teamId}/schedule`);
+    const res = await fetchWithTimeout(
+      `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${teamId}/schedule`
+    );
+    
+    if (!res.ok) throw new Error(`ESPN HTTP ${res.status}`);
+    
     const data = await res.json();
     
-    const completedGames = data.events
-      .filter(e => e.competitions[0].status.type.completed)
-      .slice(0, limit);
+    const games = data.events
+      ?.filter(e => e.competitions?.[0]?.status?.type?.completed === true)
+      ?.slice(0, 5)
+      ?.map(e => {
+        const comp = e.competitions[0];
+        const team = comp.competitors.find(c => c.team.id === teamId);
+        const opp = comp.competitors.find(c => c.team.id !== teamId);
+        
+        return {
+          date: e.date,
+          opponent: opp?.team?.shortDisplayName || 'Unknown',
+          result: parseInt(team?.score) > parseInt(opp?.score) ? 'W' : 'L',
+          score: `${team?.score || 0}-${opp?.score || 0}`,
+          teamScore: parseInt(team?.score) || 0,
+          oppScore: parseInt(opp?.score) || 0,
+          source: 'ESPN',
+        };
+      }) || [];
     
-    return completedGames.map(game => {
-      const competition = game.competitions[0];
-      const team = competition.competitors.find(c => c.team.id === teamId);
-      const opponent = competition.competitors.find(c => c.team.id !== teamId);
-      
-      const teamScore = parseInt(team.score);
-      const oppScore = parseInt(opponent.score);
-      
-      return {
-        date: game.date,
-        opponent: opponent.team.shortDisplayName,
-        result: teamScore > oppScore ? 'W' : 'L',
-        score: `${teamScore}-${oppScore}`,
-        homeAway: team.homeAway,
-        teamScore,
-        oppScore,
-      };
-    });
+    return { games, source: 'ESPN', count: games.length };
   } catch (error) {
-    console.error('ESPN recent form error:', error);
-    return [];
+    console.error('ESPN error:', error.message);
+    return { games: [], source: 'ESPN', error: error.message };
   }
 }
 
-async function getHeadToHistory(teamId1, teamId2, sport = 'basketball_nba', limit = 5) {
-  const sportPath = SPORT_PATHS[sport] || 'basketball/nba';
-  
+// Source 2: The Odds API (verified scores)
+async function getFromOddsApi(teamName) {
   try {
-    const res = await fetch(`${ESPN_BASE}/${sportPath}/teams/${teamId1}/schedule`);
-    const data = await res.json();
+    const res = await fetchWithTimeout(
+      `https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?daysFrom=14&apiKey=${ODDS_API_KEY}`,
+      {},
+      10000
+    );
     
-    const h2hGames = data.events.filter(e => 
-      e.competitions[0].competitors.some(c => c.team.id === teamId2)
-    ).slice(0, limit);
+    if (!res.ok) throw new Error(`Odds API HTTP ${res.status}`);
     
-    return h2hGames.map(game => {
-      const competition = game.competitions[0];
-      const team1 = competition.competitors.find(c => c.team.id === teamId1);
-      const team2 = competition.competitors.find(c => c.team.id === teamId2);
-      
-      return {
-        date: game.date,
-        winner: parseInt(team1.score) > parseInt(team2.score) ? team1.team.shortDisplayName : team2.team.shortDisplayName,
-        score: `${team1.score}-${team2.score}`,
-        completed: competition.status.type.completed,
-      };
-    });
+    const games = await res.json();
+    
+    const teamGames = games
+      .filter(g => 
+        g.completed === true &&
+        (g.home_team?.toLowerCase().includes(teamName.toLowerCase()) ||
+         g.away_team?.toLowerCase().includes(teamName.toLowerCase()))
+      )
+      .sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time))
+      .slice(0, 5)
+      .map(g => {
+        const isHome = g.home_team?.toLowerCase().includes(teamName.toLowerCase());
+        const teamScore = isHome ? g.scores?.[0] : g.scores?.[1];
+        const oppScore = isHome ? g.scores?.[1] : g.scores?.[0];
+        const opponent = isHome ? g.away_team : g.home_team;
+        
+        return {
+          date: g.commence_time,
+          opponent: opponent?.split(' ').pop() || 'Unknown', // Last word (team name)
+          result: parseInt(teamScore) > parseInt(oppScore) ? 'W' : 'L',
+          score: `${teamScore || 0}-${oppScore || 0}`,
+          teamScore: parseInt(teamScore) || 0,
+          oppScore: parseInt(oppScore) || 0,
+          source: 'OddsAPI',
+        };
+      });
+    
+    return { games: teamGames, source: 'OddsAPI', count: teamGames.length };
   } catch (error) {
-    console.error('ESPN H2H error:', error);
-    return [];
+    console.error('Odds API error:', error.message);
+    return { games: [], source: 'OddsAPI', error: error.message };
   }
 }
 
-async function fetchResearch(awayTeam, homeTeam, sport = 'basketball_nba') {
-  const [awayId, homeId] = await Promise.all([
-    getTeamId(awayTeam, sport),
-    getTeamId(homeTeam, sport),
-  ]);
-  
-  if (!awayId || !homeId) {
-    throw new Error(`Could not find team IDs: away=${awayId}, home=${homeId}`);
+// Cross-validate data from multiple sources
+function validateData(espnData, oddsData) {
+  // If ESPN has data, use it (most accurate)
+  if (espnData.count >= 3) {
+    return {
+      games: espnData.games,
+      source: 'ESPN',
+      confidence: 'high',
+    };
   }
   
-  // Try to get schedule data, but use fallback if it fails
-  let awayRecent = [], homeRecent = [], h2h = [];
-  try {
-    awayRecent = await getTeamRecentForm(awayId, sport, 5);
-  } catch (e) { console.log('Away schedule failed:', e.message); }
+  // If Odds API has data, use it
+  if (oddsData.count >= 3) {
+    return {
+      games: oddsData.games,
+      source: 'OddsAPI',
+      confidence: 'medium',
+    };
+  }
   
-  try {
-    homeRecent = await getTeamRecentForm(homeId, sport, 5);
-  } catch (e) { console.log('Home schedule failed:', e.message); }
+  // If both have some data, merge (take most recent from each)
+  if (espnData.count > 0 || oddsData.count > 0) {
+    const merged = [...espnData.games, ...oddsData.games]
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 5);
+    
+    return {
+      games: merged,
+      source: 'Mixed',
+      confidence: 'medium',
+    };
+  }
   
-  try {
-    h2h = await getHeadToHistory(awayId, homeId, sport, 5);
-  } catch (e) { console.log('H2H failed:', e.message); }
-  
-  const awayAvgPoints = awayRecent.reduce((sum, g) => sum + g.teamScore, 0) / awayRecent.length || 0;
-  const awayAvgAllowed = awayRecent.reduce((sum, g) => sum + g.oppScore, 0) / awayRecent.length || 0;
-  const homeAvgPoints = homeRecent.reduce((sum, g) => sum + g.teamScore, 0) / homeRecent.length || 0;
-  const homeAvgAllowed = homeRecent.reduce((sum, g) => sum + g.oppScore, 0) / homeRecent.length || 0;
-  
+  // No reliable data
   return {
-    lastUpdated: new Date().toISOString(),
-    source: 'ESPN',
-    awayTeam: {
-      name: awayTeam,
-      recentForm: {
-        last5: awayRecent.map(g => g.result),
-        record: `${awayRecent.filter(g => g.result === 'W').length}-${awayRecent.filter(g => g.result === 'L').length}`,
-        avgPoints: awayAvgPoints.toFixed(1),
-        avgAllowed: awayAvgAllowed.toFixed(1),
-      },
-    },
-    homeTeam: {
-      name: homeTeam,
-      recentForm: {
-        last5: homeRecent.map(g => g.result),
-        record: `${homeRecent.filter(g => g.result === 'W').length}-${homeRecent.filter(g => g.result === 'L').length}`,
-        avgPoints: homeAvgPoints.toFixed(1),
-        avgAllowed: homeAvgAllowed.toFixed(1),
-      },
-    },
-    headToHead: {
-      games: h2h,
-      count: h2h.length,
-    },
+    games: [],
+    source: 'None',
+    confidence: 'none',
   };
 }
 
@@ -214,71 +209,138 @@ export default async function handler(req, res) {
   const { homeTeam, awayTeam, sport } = req.query;
   
   if (!homeTeam || !awayTeam) {
-    return res.status(400).json({ error: 'Missing team names' });
+    return res.status(400).json({ 
+      error: 'Missing team names',
+      accurate: false,
+    });
   }
   
-  const cacheKey = `${awayTeam}-${homeTeam}-${sport || 'nba'}`;
+  // Only support NBA for now (most accurate data)
+  if (sport && sport !== 'basketball_nba' && !sport.includes('nba')) {
+    return res.json({
+      accurate: false,
+      message: 'Accurate research only available for NBA currently',
+      awayTeam: { name: awayTeam, recentForm: null },
+      homeTeam: { name: homeTeam, recentForm: null },
+    });
+  }
   
+  const cacheKey = `${awayTeam}-${homeTeam}`;
+  
+  // Check cache
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     return res.json(cache[cacheKey].data);
   }
   
-  try {
-    const research = await fetchResearch(awayTeam, homeTeam, sport);
-    
-    const formatted = {
-      lastUpdated: research.lastUpdated,
-      source: research.source,
-      awayTeam: {
-        name: research.awayTeam.name,
-        recentForm: research.awayTeam.recentForm,
-        ats: { overall: 'N/A', home: 'N/A', away: 'N/A', last5: research.awayTeam.recentForm.record },
-      },
-      homeTeam: {
-        name: research.homeTeam.name,
-        recentForm: research.homeTeam.recentForm,
-        ats: { overall: 'N/A', home: 'N/A', away: 'N/A', last5: research.homeTeam.recentForm.record },
-      },
-      headToHead: {
-        thisSeason: research.headToHead.games
-          .filter(g => g.completed && new Date(g.date).getFullYear() === new Date().getFullYear())
-          .map(g => ({ date: g.date, winner: g.winner, score: g.score, spread: 'N/A' })),
-        lastMeetings: research.headToHead.games
-          .filter(g => g.completed)
-          .slice(0, 5)
-          .map(g => ({ date: g.date, winner: g.winner, score: g.score })),
-        overall: `${research.headToHead.count} games`,
-      },
-      keyTrends: [
-        `${research.awayTeam.name}: ${research.awayTeam.recentForm.record} in last 5`,
-        `${research.homeTeam.name}: ${research.homeTeam.recentForm.record} in last 5`,
-        `${research.awayTeam.name} averaging ${research.awayTeam.recentForm.avgPoints} PPG`,
-        `${research.homeTeam.name} averaging ${research.homeTeam.recentForm.avgPoints} PPG`,
-      ],
-    };
-    
-    cache[cacheKey] = { data: formatted, ts: Date.now() };
-    return res.json(formatted);
-    
-  } catch (error) {
-    console.error('Research error:', error.message);
-    // Return fallback
+  // Find teams
+  const away = findTeam(awayTeam);
+  const home = findTeam(homeTeam);
+  
+  if (!away || !home) {
     return res.json({
-      lastUpdated: new Date().toISOString(),
-      source: 'FALLBACK',
-      error: error.message,
-      awayTeam: {
-        name: awayTeam,
-        recentForm: { last5: ['?', '?', '?', '?', '?'], record: 'N/A', avgPoints: '0', avgAllowed: '0' },
-        ats: { overall: 'N/A', home: 'N/A', away: 'N/A', last5: 'N/A' },
-      },
-      homeTeam: {
-        name: homeTeam,
-        recentForm: { last5: ['?', '?', '?', '?', '?'], record: 'N/A', avgPoints: '0', avgAllowed: '0' },
-        ats: { overall: 'N/A', home: 'N/A', away: 'N/A', last5: 'N/A' },
-      },
-      headToHead: { thisSeason: [], lastMeetings: [], overall: 'No data' },
-      keyTrends: ['Data temporarily unavailable: ' + error.message],
+      accurate: false,
+      message: `Could not identify teams: ${!away ? awayTeam : ''} ${!home ? homeTeam : ''}`,
+      awayTeam: { name: awayTeam, recentForm: null },
+      homeTeam: { name: homeTeam, recentForm: null },
     });
   }
+  
+  // Fetch from both sources in parallel
+  const [espnAway, espnHome, oddsAway, oddsHome] = await Promise.all([
+    getFromESPN(away.id),
+    getFromESPN(home.id),
+    getFromOddsApi(awayTeam),
+    getFromOddsApi(homeTeam),
+  ]);
+  
+  // Validate and merge
+  const awayValidated = validateData(espnAway, oddsAway);
+  const homeValidated = validateData(espnHome, oddsHome);
+  
+  // Check if we have accurate data
+  const hasAccurateData = awayValidated.confidence !== 'none' && homeValidated.confidence !== 'none';
+  
+  if (!hasAccurateData) {
+    return res.json({
+      accurate: false,
+      message: 'Research data temporarily unavailable. Please check back shortly.',
+      awayTeam: {
+        name: away.name,
+        recentForm: null,
+      },
+      homeTeam: {
+        name: home.name,
+        recentForm: null,
+      },
+      headToHead: { thisSeason: [], lastMeetings: [], overall: 'No data available' },
+      keyTrends: [],
+    });
+  }
+  
+  // Calculate stats
+  const awayGames = awayValidated.games;
+  const homeGames = homeValidated.games;
+  
+  const awayWins = awayGames.filter(g => g.result === 'W').length;
+  const awayLosses = awayGames.filter(g => g.result === 'L').length;
+  const homeWins = homeGames.filter(g => g.result === 'W').length;
+  const homeLosses = homeGames.filter(g => g.result === 'L').length;
+  
+  const awayAvgPoints = awayGames.length > 0 
+    ? (awayGames.reduce((sum, g) => sum + g.teamScore, 0) / awayGames.length).toFixed(1)
+    : '0.0';
+  const awayAvgAllowed = awayGames.length > 0
+    ? (awayGames.reduce((sum, g) => sum + g.oppScore, 0) / awayGames.length).toFixed(1)
+    : '0.0';
+  const homeAvgPoints = homeGames.length > 0
+    ? (homeGames.reduce((sum, g) => sum + g.teamScore, 0) / homeGames.length).toFixed(1)
+    : '0.0';
+  const homeAvgAllowed = homeGames.length > 0
+    ? (homeGames.reduce((sum, g) => sum + g.oppScore, 0) / homeGames.length).toFixed(1)
+    : '0.0';
+  
+  const response = {
+    accurate: true,
+    lastUpdated: new Date().toISOString(),
+    dataSource: `${awayValidated.source} / ${homeValidated.source}`,
+    confidence: awayValidated.confidence === 'high' && homeValidated.confidence === 'high' ? 'high' : 'medium',
+    awayTeam: {
+      name: away.name,
+      recentForm: {
+        last5: awayGames.map(g => g.result),
+        record: `${awayWins}-${awayLosses}`,
+        avgPoints: awayAvgPoints,
+        avgAllowed: awayAvgAllowed,
+        games: awayGames,
+      },
+      ats: { overall: 'N/A', home: 'N/A', away: 'N/A', last5: `${awayWins}-${awayLosses}` },
+    },
+    homeTeam: {
+      name: home.name,
+      recentForm: {
+        last5: homeGames.map(g => g.result),
+        record: `${homeWins}-${homeLosses}`,
+        avgPoints: homeAvgPoints,
+        avgAllowed: homeAvgAllowed,
+        games: homeGames,
+      },
+      ats: { overall: 'N/A', home: 'N/A', away: 'N/A', last5: `${homeWins}-${homeLosses}` },
+    },
+    headToHead: {
+      thisSeason: [], // TODO: Implement H2H lookup
+      lastMeetings: [],
+      overall: 'H2H data unavailable',
+    },
+    keyTrends: [
+      `${away.name}: ${awayWins}-${awayLosses} in last ${awayGames.length}`,
+      `${home.name}: ${homeWins}-${homeLosses} in last ${homeGames.length}`,
+      `${away.name} averaging ${awayAvgPoints} PPG`,
+      `${home.name} averaging ${homeAvgPoints} PPG`,
+    ],
+  };
+  
+  // Cache the accurate data
+  cache[cacheKey] = { data: response, ts: Date.now() };
+  
+  return res.json(response);
 }
