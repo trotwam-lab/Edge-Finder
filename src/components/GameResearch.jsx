@@ -625,7 +625,8 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
   if (error) return <ErrorState error={error} onRetry={fetchResearch} />;
 
   const hasValidData = data?.accurate;
-  const trendCount = data?.meta?.trendCount || 0;
+  const trends = data?.trends || [];
+  const trendCount = trends.length;
   const highConfidenceCount = data?.meta?.highConfidenceTrends || 0;
 
   return (
@@ -708,10 +709,10 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
         borderBottom: '1px solid rgba(71, 85, 105, 0.2)',
       }}>
         {[
-          { key: 'form', label: 'Team Form', icon: Activity, count: data?.meta?.homeGamesFound || data?.meta?.awayGamesFound },
-          { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length },
-          { key: 'trends', label: 'Trends', icon: TrendingUp, count: trends.length },
-          { key: 'props', label: 'Props', icon: Users, count: data?.hasPlayerProps ? data.playerProps.length : null },
+          { key: 'form', label: 'Team Form', icon: Activity, count: (data?.meta?.homeGamesFound || 0) + (data?.meta?.awayGamesFound || 0) },
+          { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length || 0 },
+          { key: 'trends', label: 'Trends', icon: TrendingUp, count: trendCount },
+          { key: 'props', label: 'Props', icon: Users, count: data?.hasPlayerProps ? data.playerProps.length : 0 },
         ].filter(tab => tab.count > 0 || tab.key === 'form' || tab.key === 'props').map((tab) => (
           <button
             key={tab.key}
