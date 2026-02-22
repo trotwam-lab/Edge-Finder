@@ -14,9 +14,8 @@ export default function ProBanner({ compact = false }) {
   // Called when user clicks "Upgrade to Pro"
   // Using Stripe Payment Link (simpler, no API key needed on frontend)
   const handleUpgrade = () => {
-    // Replace this with your actual Stripe Payment Link
-    // Get it from: https://dashboard.stripe.com/payment-links
-    const paymentLink = 'https://buy.stripe.com/your-payment-link-here';
+    // Stripe Payment Link for Pro subscription
+    const paymentLink = 'https://buy.stripe.com/dRmdR2aYjdXkaH6blf3F603';
     window.location.href = paymentLink;
   };
 
