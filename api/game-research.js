@@ -360,9 +360,9 @@ export default async function handler(req, res) {
       fetchPlayerProps(gameId, sport, apiKey),
     ]);
     
-    // Use ESPN as primary (more historical data), Odds API as supplement
-    const homeGames = espnHome.count > 0 ? espnHome.games : oddsHome.games;
-    const awayGames = espnAway.count > 0 ? espnAway.games : oddsAway.games;
+    // Use Odds API as primary (recent, accurate data), ESPN as fallback
+    const homeGames = oddsHome.count > 0 ? oddsHome.games : espnHome.games;
+    const awayGames = oddsAway.count > 0 ? oddsAway.games : espnAway.games;
     
     // Calculate stats
     const homeStats = calculateStats(homeGames);
@@ -375,8 +375,8 @@ export default async function handler(req, res) {
       homeTeam,
       awayTeam,
       accurate: homeGames.length > 0 || awayGames.length > 0,
-      dataSource: espnHome.count > 0 ? 'ESPN + Odds API' : 'Odds API',
-      dataWindow: 'Last 30 days',
+      dataSource: oddsHome.count > 0 ? 'Odds API' : 'ESPN (fallback)',
+      dataWindow: oddsHome.count > 0 ? 'Last 3 days (most accurate)' : 'Last 30 days (limited recent data)',
       timestamp: new Date().toISOString(),
       teams: {
         home: homeStats,
