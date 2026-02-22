@@ -36,11 +36,15 @@ async function fetchFromESPN(teamName, teamId) {
     const data = await res.json();
     const events = data.events || [];
     
-    // Get completed games with scores
+    // Get completed games with scores (last 30 days only)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
     const completedGames = events
       .filter(e => {
         const status = e.competitions?.[0]?.status;
-        return status?.type?.completed === true;
+        const gameDate = new Date(e.date);
+        return status?.type?.completed === true && gameDate >= thirtyDaysAgo;
       })
       .slice(0, 10)
       .map(e => {
@@ -372,7 +376,7 @@ export default async function handler(req, res) {
       awayTeam,
       accurate: homeGames.length > 0 || awayGames.length > 0,
       dataSource: espnHome.count > 0 ? 'ESPN + Odds API' : 'Odds API',
-      dataWindow: espnHome.count > 0 ? `Last ${espnHome.count} games` : 'Last 3 days',
+      dataWindow: 'Last 30 days',
       timestamp: new Date().toISOString(),
       teams: {
         home: homeStats,
