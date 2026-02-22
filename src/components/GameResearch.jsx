@@ -224,12 +224,16 @@ function H2H({ games, homeTeam, awayTeam }) {
     );
   }
 
+  // Safely get team name parts
+  const homeTeamPart = homeTeam?.split(' ')?.pop() || '';
+  const awayTeamPart = awayTeam?.split(' ')?.pop() || '';
+
   // Calculate series lead
   let homeWins = 0, awayWins = 0;
   games.forEach(g => {
     const homeScore = parseInt(g.homeScore) || 0;
     const awayScore = parseInt(g.awayScore) || 0;
-    const isHomeTeam = g.homeTeam.includes(homeTeam?.split(' ').pop());
+    const isHomeTeam = homeTeamPart && g.homeTeam?.includes(homeTeamPart);
     if (homeScore > awayScore) {
       isHomeTeam ? homeWins++ : awayWins++;
     } else {
@@ -268,7 +272,7 @@ function H2H({ games, homeTeam, awayTeam }) {
           const homeScore = parseInt(game.homeScore) || 0;
           const awayScore = parseInt(game.awayScore) || 0;
           const homeWon = homeScore > awayScore;
-          const isHomeTeam = game.homeTeam.includes(homeTeam?.split(' ').pop());
+          const isHomeTeam = homeTeamPart && game.homeTeam?.includes(homeTeamPart);
           
           return (
             <div
@@ -301,7 +305,7 @@ function H2H({ games, homeTeam, awayTeam }) {
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-                  {game.awayTeam?.split(' ').pop()}
+                  {game.awayTeam?.split(' ')?.pop() || '???'}
                 </span>
                 <span style={{ 
                   fontFamily: 'monospace', 
@@ -314,7 +318,7 @@ function H2H({ games, homeTeam, awayTeam }) {
                   {awayScore} - {homeScore}
                 </span>
                 <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-                  {game.homeTeam?.split(' ').pop()}
+                  {game.homeTeam?.split(' ')?.pop() || '???'}
                 </span>
               </div>
             </div>
@@ -619,7 +623,7 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
     if (gameId && homeTeam && awayTeam) {
       fetchResearch();
     }
-  }, [gameId]);
+  }, [gameId, homeTeam, awayTeam, sport]);
 
   if (loading) return <LoadingState />;
   if (error) return <ErrorState error={error} onRetry={fetchResearch} />;
