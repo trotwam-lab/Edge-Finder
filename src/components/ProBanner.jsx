@@ -3,45 +3,21 @@
 // When they click "Upgrade", we call our API to create a Stripe checkout session,
 // then redirect them to Stripe's payment page
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Lock, Zap, Check } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import { PRO_FEATURES } from '../constants.js';
 
 export default function ProBanner({ compact = false }) {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
 
   // Called when user clicks "Upgrade to Pro"
-  const handleUpgrade = async () => {
-    if (!user) return;
-    setLoading(true);
-
-    try {
-      // Call our serverless function to create a Stripe Checkout session
-      const res = await fetch('/api/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,    // Firebase user ID
-          email: user.email,   // User's email for Stripe
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.url) {
-        // Redirect to Stripe's hosted payment page
-        window.location.href = data.url;
-      } else {
-        alert('Error creating checkout session. Please try again.');
-      }
-    } catch (err) {
-      console.error('Checkout error:', err);
-      alert('Error connecting to payment. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  // Using Stripe Payment Link (simpler, no API key needed on frontend)
+  const handleUpgrade = () => {
+    // Replace this with your actual Stripe Payment Link
+    // Get it from: https://dashboard.stripe.com/payment-links
+    const paymentLink = 'https://buy.stripe.com/your-payment-link-here';
+    window.location.href = paymentLink;
   };
 
   // Compact version â small inline banner for locked features
@@ -58,16 +34,15 @@ export default function ProBanner({ compact = false }) {
         <span style={{ fontSize: '12px', color: '#c4b5fd', flex: 1 }}>
           Pro feature â unlock all sportsbooks & tools
         </span>
-        <button onClick={handleUpgrade} disabled={loading} style={{
+        <button onClick={handleUpgrade} style={{
           padding: '6px 14px',
           background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
           border: 'none', borderRadius: '6px',
           color: '#fff', fontSize: '11px', fontWeight: 700,
-          cursor: loading ? 'not-allowed' : 'pointer',
-          opacity: loading ? 0.7 : 1,
+          cursor: 'pointer',
           fontFamily: "'JetBrains Mono', monospace",
         }}>
-          {loading ? '...' : 'Upgrade'}
+          Upgrade
         </button>
       </div>
     );
@@ -124,18 +99,17 @@ export default function ProBanner({ compact = false }) {
       </div>
 
       {/* CTA Button */}
-      <button onClick={handleUpgrade} disabled={loading} style={{
+      <button onClick={handleUpgrade} style={{
         width: '100%', padding: '14px',
         background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
         border: 'none', borderRadius: '10px',
         color: '#fff', fontSize: '14px', fontWeight: 700,
-        cursor: loading ? 'not-allowed' : 'pointer',
-        opacity: loading ? 0.7 : 1,
+        cursor: 'pointer',
         fontFamily: "'JetBrains Mono', monospace",
         position: 'relative',
         transition: 'transform 0.15s',
       }}>
-        {loading ? 'Creating checkout...' : `Upgrade to Pro â ${PRO_FEATURES.price}`}
+        Upgrade to Pro — {PRO_FEATURES.price}
       </button>
 
       <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: '#64748b' }}>
