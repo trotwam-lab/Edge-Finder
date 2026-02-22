@@ -581,13 +581,55 @@ function ErrorState({ error, onRetry }) {
   );
 }
 
+// Error Boundary Component
+class GameResearchErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  
+  componentDidCatch(error, errorInfo) {
+    console.error('GameResearch error:', error, errorInfo);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', textAlign: 'center', color: '#ef4444' }}>
+          <AlertCircle size={24} style={{ marginBottom: '8px' }} />
+          <div style={{ fontSize: '13px' }}>Something went wrong</div>
+          <button 
+            onClick={() => this.setState({ hasError: false })}
+            style={{
+              marginTop: '12px',
+              padding: '8px 16px',
+              background: 'rgba(99, 102, 241, 0.2)',
+              border: '1px solid rgba(99, 102, 241, 0.5)',
+              borderRadius: '6px',
+              color: '#818cf8',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Main Component
-export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commenceTime }) {
+function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('form');
-  const [renderError, setRenderError] = useState(null);
 
   const fetchResearch = async () => {
     setLoading(true);
@@ -833,4 +875,13 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
       </div>
     );
   }
+}
+
+// Export with error boundary wrapper
+export default function GameResearch(props) {
+  return (
+    <GameResearchErrorBoundary>
+      <GameResearchContent {...props} />
+    </GameResearchErrorBoundary>
+  );
 }
