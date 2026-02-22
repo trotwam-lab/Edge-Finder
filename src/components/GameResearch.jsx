@@ -587,10 +587,12 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('form');
+  const [renderError, setRenderError] = useState(null);
 
   const fetchResearch = async () => {
     setLoading(true);
     setError(null);
+    setRenderError(null);
     
     try {
       const timestamp = Date.now();
@@ -625,13 +627,16 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
     }
   }, [gameId, homeTeam, awayTeam, sport]);
 
-  if (loading) return <LoadingState />;
-  if (error) return <ErrorState error={error} onRetry={fetchResearch} />;
+  // Catch any render errors
+  try {
+    if (loading) return <LoadingState />;
+    if (error) return <ErrorState error={error} onRetry={fetchResearch} />;
+    if (!data) return <ErrorState error="No data received" onRetry={fetchResearch} />;
 
-  const hasValidData = data?.accurate;
-  const trends = data?.trends || [];
-  const trendCount = trends.length;
-  const highConfidenceCount = data?.meta?.highConfidenceTrends || 0;
+    const hasValidData = data?.accurate;
+    const trends = data?.trends || [];
+    const trendCount = trends.length;
+    const highConfidenceCount = data?.meta?.highConfidenceTrends || 0;
 
   return (
     <div style={{
@@ -819,4 +824,13 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
       </div>
     </div>
   );
+  } catch (e) {
+    console.error("GameResearch render error:", e);
+    return (
+      <div style={{ padding: "20px", textAlign: "center", color: "#ef4444" }}>
+        <div style={{ fontSize: "13px" }}>Error displaying game research</div>
+        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>{e.message}</div>
+      </div>
+    );
+  }
 }
