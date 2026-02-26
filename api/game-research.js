@@ -38,6 +38,12 @@ const ESPN_LOGO_PATHS = {
 
 // Dynamic ESPN team ID lookup — searches ESPN's teams API by name
 // Caches results so we only search once per team per server lifecycle
+//
+// Matching priority (highest to lowest):
+//   1. Exact displayName / name / shortDisplayName / abbreviation match
+//   2. Case-insensitive full-name containment (e.g. "LA Clippers" matches "Los Angeles Clippers")
+//   3. Multi-word city+mascot overlap (prevents "Eagles" from matching wrong team)
+//   4. Last-word mascot match ONLY if there's exactly one match in the league
 async function lookupESPNTeamId(teamName, sportPath) {
   const cacheKey = `${sportPath}:${teamName}`;
   if (teamIdCache[cacheKey] !== undefined) {
@@ -76,24 +82,93 @@ async function lookupESPNTeamId(teamName, sportPath) {
       }
     });
 
-    // Now check if our team is cached
+    // Priority 1: exact match (already cached above)
     if (teamIdCache[cacheKey]) {
       return teamIdCache[cacheKey];
     }
 
-    // Fuzzy match: try matching the last word of the team name (e.g. "Lakers" from "Los Angeles Lakers")
-    const lastWord = teamName.split(' ').pop()?.toLowerCase();
-    if (lastWord) {
+    const inputLower = teamName.toLowerCase();
+    const inputWords = inputLower.split(/\s+/);
+
+    // Priority 2: case-insensitive containment
+    // Handles "LA Clippers" matching "Los Angeles Clippers"
+    for (const entry of teams) {
+      const team = entry.team;
+      if (!team) continue;
+      const espnNames = [team.displayName, team.name, team.shortDisplayName].filter(Boolean);
+      for (const espnName of espnNames) {
+        const espnLower = espnName.toLowerCase();
+        // Check if either name contains the other
+        if (espnLower.includes(inputLower) || inputLower.includes(espnLower)) {
+          teamIdCache[cacheKey] = team.id;
+          return team.id;
+        }
+      }
+    }
+
+    // Priority 3: multi-word overlap scoring
+    // Count how many words from the input match words in the ESPN name
+    // "Boston College Eagles" vs input "Boston Eagles" → 2 word matches
+    // "Eastern Michigan Eagles" vs input "Boston Eagles" → 1 word match
+    // Pick the team with the most overlapping words
+    let bestMatch = null;
+    let bestScore = 0;
+    for (const entry of teams) {
+      const team = entry.team;
+      if (!team) continue;
+      const espnWords = (team.displayName || '').toLowerCase().split(/\s+/);
+      let score = 0;
+      for (const word of inputWords) {
+        if (word.length >= 3 && espnWords.includes(word)) {
+          score++;
+        }
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = team;
+      } else if (score === bestScore && score > 0 && bestMatch) {
+        // Tie-break: prefer the team whose name is closer in length to the input
+        const currentDiff = Math.abs((team.displayName || '').length - teamName.length);
+        const bestDiff = Math.abs((bestMatch.displayName || '').length - teamName.length);
+        if (currentDiff < bestDiff) {
+          bestMatch = team;
+        }
+      }
+    }
+    // Require at least 2 matching words (city + mascot) to prevent
+    // "Eagles" alone from grabbing the first Eagles team it finds
+    if (bestMatch && bestScore >= 2) {
+      teamIdCache[cacheKey] = bestMatch.id;
+      return bestMatch.id;
+    }
+
+    // Priority 4: mascot-only match, but ONLY if exactly one team in
+    // the league has that mascot (safe for NFL "Eagles" since there's
+    // only one, risky for NCAAB where there are many)
+    const lastWord = inputWords[inputWords.length - 1];
+    if (lastWord && lastWord.length >= 3) {
+      const mascotMatches = [];
       for (const entry of teams) {
         const team = entry.team;
         if (!team) continue;
-        const matchNames = [team.displayName, team.name, team.shortDisplayName].filter(Boolean);
-        for (const name of matchNames) {
-          if (name.toLowerCase().includes(lastWord)) {
-            teamIdCache[cacheKey] = team.id;
-            return team.id;
+        const names = [team.displayName, team.name, team.shortDisplayName].filter(Boolean);
+        for (const name of names) {
+          if (name.toLowerCase().split(/\s+/).includes(lastWord)) {
+            mascotMatches.push(team);
+            break; // Don't double-count the same team
           }
         }
+      }
+      // Only use mascot match if it's unambiguous (exactly 1 team)
+      if (mascotMatches.length === 1) {
+        teamIdCache[cacheKey] = mascotMatches[0].id;
+        return mascotMatches[0].id;
+      }
+      // If multiple mascot matches but we have at least 1 word match from
+      // priority 3, use that best match as a tiebreaker
+      if (mascotMatches.length > 1 && bestMatch && bestScore >= 1) {
+        teamIdCache[cacheKey] = bestMatch.id;
+        return bestMatch.id;
       }
     }
 
