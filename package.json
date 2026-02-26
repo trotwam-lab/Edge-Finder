@@ -9,8 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "firebase-admin": "^11.11.0",
+    "@rollup/rollup-linux-x64-gnu": "^4.59.0",
     "firebase": "^12.9.0",
+    "firebase-admin": "^11.11.0",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
