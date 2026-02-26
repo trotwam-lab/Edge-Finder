@@ -1,20 +1,10 @@
 // api/game-research.js — Hybrid: ESPN (historical) + Odds API (props/live odds)
 // Now includes ATS (Against The Spread) and SU (Straight Up) trend calculations
+// Supports ALL sports via dynamic ESPN team lookup
 
 const cache = {};
+const teamIdCache = {}; // Persistent cache for ESPN team ID lookups
 const TTL = 60 * 1000;
-
-// ESPN team abbreviations — NBA
-const ESPN_TEAMS = {
-  'Atlanta Hawks': 1, 'Boston Celtics': 2, 'Brooklyn Nets': 17, 'Charlotte Hornets': 30,
-  'Chicago Bulls': 4, 'Cleveland Cavaliers': 5, 'Dallas Mavericks': 6, 'Denver Nuggets': 7,
-  'Detroit Pistons': 8, 'Golden State Warriors': 9, 'Houston Rockets': 10, 'Indiana Pacers': 11,
-  'LA Clippers': 12, 'Los Angeles Clippers': 12, 'Los Angeles Lakers': 13, 'Memphis Grizzlies': 29,
-  'Miami Heat': 14, 'Milwaukee Bucks': 15, 'Minnesota Timberwolves': 16, 'New Orleans Pelicans': 3,
-  'New York Knicks': 18, 'Oklahoma City Thunder': 25, 'Orlando Magic': 19, 'Philadelphia 76ers': 20,
-  'Phoenix Suns': 21, 'Portland Trail Blazers': 22, 'Sacramento Kings': 23, 'San Antonio Spurs': 24,
-  'Toronto Raptors': 28, 'Utah Jazz': 26, 'Washington Wizards': 27,
-};
 
 // ESPN sport paths for multi-sport support
 const ESPN_SPORT_PATHS = {
@@ -24,20 +14,114 @@ const ESPN_SPORT_PATHS = {
   'baseball_mlb': 'baseball/mlb',
   'basketball_ncaab': 'basketball/mens-college-basketball',
   'americanfootball_ncaaf': 'football/college-football',
+  'basketball_wncaab': 'basketball/womens-college-basketball',
+  'soccer_epl': 'soccer/eng.1',
+  'soccer_spain_la_liga': 'soccer/esp.1',
+  'soccer_italy_serie_a': 'soccer/ita.1',
+  'soccer_germany_bundesliga': 'soccer/ger.1',
+  'soccer_france_ligue_one': 'soccer/fra.1',
+  'soccer_uefa_champs_league': 'soccer/uefa.champions',
+  'soccer_usa_mls': 'soccer/usa.1',
+  'soccer_mexico_ligamx': 'soccer/mex.1',
 };
 
-function getESPNId(teamName) {
-  return ESPN_TEAMS[teamName] || null;
+// ESPN logo base paths per sport type
+const ESPN_LOGO_PATHS = {
+  'basketball/nba': 'nba',
+  'football/nfl': 'nfl',
+  'hockey/nhl': 'nhl',
+  'baseball/mlb': 'mlb',
+  'basketball/mens-college-basketball': 'ncaa',
+  'football/college-football': 'ncaa',
+  'basketball/womens-college-basketball': 'ncaa',
+};
+
+// Dynamic ESPN team ID lookup — searches ESPN's teams API by name
+// Caches results so we only search once per team per server lifecycle
+async function lookupESPNTeamId(teamName, sportPath) {
+  const cacheKey = `${sportPath}:${teamName}`;
+  if (teamIdCache[cacheKey] !== undefined) {
+    return teamIdCache[cacheKey]; // May be null (team not found)
+  }
+
+  try {
+    // ESPN teams endpoint returns all teams for a sport/league
+    const res = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/teams?limit=200`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+
+    if (!res.ok) {
+      teamIdCache[cacheKey] = null;
+      return null;
+    }
+
+    const data = await res.json();
+    const teams = data.sports?.[0]?.leagues?.[0]?.teams || [];
+
+    // Cache ALL teams from this sport so future lookups are instant
+    teams.forEach(entry => {
+      const team = entry.team;
+      if (team) {
+        // Cache by displayName, name, shortDisplayName, and abbreviation
+        const names = [
+          team.displayName,
+          team.name,
+          team.shortDisplayName,
+          team.abbreviation,
+        ].filter(Boolean);
+        names.forEach(name => {
+          teamIdCache[`${sportPath}:${name}`] = team.id;
+        });
+      }
+    });
+
+    // Now check if our team is cached
+    if (teamIdCache[cacheKey]) {
+      return teamIdCache[cacheKey];
+    }
+
+    // Fuzzy match: try matching the last word of the team name (e.g. "Lakers" from "Los Angeles Lakers")
+    const lastWord = teamName.split(' ').pop()?.toLowerCase();
+    if (lastWord) {
+      for (const entry of teams) {
+        const team = entry.team;
+        if (!team) continue;
+        const matchNames = [team.displayName, team.name, team.shortDisplayName].filter(Boolean);
+        for (const name of matchNames) {
+          if (name.toLowerCase().includes(lastWord)) {
+            teamIdCache[cacheKey] = team.id;
+            return team.id;
+          }
+        }
+      }
+    }
+
+    // Not found
+    teamIdCache[cacheKey] = null;
+    return null;
+  } catch (e) {
+    console.warn('ESPN team lookup failed:', e.message);
+    teamIdCache[cacheKey] = null;
+    return null;
+  }
 }
 
 // Source 1: ESPN API (historical data — last 10 games with ATS data)
 async function fetchFromESPN(teamName, teamId, sport = 'basketball_nba') {
   try {
-    if (!teamId) {
-      return { games: [], source: 'ESPN', count: 0, error: 'Team not found' };
+    const sportPath = ESPN_SPORT_PATHS[sport];
+    if (!sportPath) {
+      return { games: [], source: 'ESPN', count: 0, error: 'Sport not supported for ESPN research' };
     }
 
-    const sportPath = ESPN_SPORT_PATHS[sport] || 'basketball/nba';
+    // If no team ID was provided, try dynamic lookup
+    if (!teamId) {
+      teamId = await lookupESPNTeamId(teamName, sportPath);
+    }
+    if (!teamId) {
+      return { games: [], source: 'ESPN', count: 0, error: 'Team not found in ESPN' };
+    }
 
     // Fetch both the team schedule AND the recent scoreboard for maximum freshness
     // ESPN's schedule endpoint can lag behind by hours — scoreboard is always current
@@ -758,9 +842,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get ESPN team IDs
-    const homeESPNId = getESPNId(homeTeam);
-    const awayESPNId = getESPNId(awayTeam);
+    const sportPath = ESPN_SPORT_PATHS[sport] || null;
+
+    // Dynamically resolve ESPN team IDs for ANY sport (not just NBA)
+    // lookupESPNTeamId caches results so subsequent calls are instant
+    let homeESPNId = null;
+    let awayESPNId = null;
+    if (sportPath) {
+      [homeESPNId, awayESPNId] = await Promise.all([
+        lookupESPNTeamId(homeTeam, sportPath),
+        lookupESPNTeamId(awayTeam, sportPath),
+      ]);
+    }
 
     // Fetch from all sources in parallel
     const [espnHome, espnAway, oddsHome, oddsAway, h2hGames, playerProps] = await Promise.all([
@@ -817,6 +910,13 @@ export default async function handler(req, res) {
       ? new Date(Math.max(latestHomeGame, latestAwayGame))
       : latestHomeGame || latestAwayGame;
 
+    // Determine correct ESPN logo path for this sport
+    const logoSport = sportPath ? (ESPN_LOGO_PATHS[sportPath] || null) : null;
+    const buildLogoUrl = (teamId) => {
+      if (!teamId || !logoSport) return null;
+      return `https://a.espncdn.com/i/teamlogos/${logoSport}/500/${teamId}.png`;
+    };
+
     const result = {
       gameId: gameId || null,
       sport,
@@ -832,14 +932,14 @@ export default async function handler(req, res) {
         home: homeStats ? {
           ...homeStats,
           team: homeTeam,
-          logo: homeESPNId ? `https://a.espncdn.com/i/teamlogos/nba/500/${homeESPNId}.png` : null,
+          logo: buildLogoUrl(homeESPNId),
           record: homeStats ? `${homeStats.wins}-${homeStats.losses}` : 'N/A',
           restDays: null,
         } : null,
         away: awayStats ? {
           ...awayStats,
           team: awayTeam,
-          logo: awayESPNId ? `https://a.espncdn.com/i/teamlogos/nba/500/${awayESPNId}.png` : null,
+          logo: buildLogoUrl(awayESPNId),
           record: awayStats ? `${awayStats.wins}-${awayStats.losses}` : 'N/A',
           restDays: null,
         } : null,
