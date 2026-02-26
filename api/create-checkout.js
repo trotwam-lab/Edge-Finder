@@ -30,6 +30,9 @@ export default async function handler(req, res) {
     }
 
     // Create a Stripe Checkout Session
+    // IMPORTANT: Pass firebaseUID + email in both metadata AND subscription_data.metadata
+    // so webhooks can identify the user on checkout.session.completed AND on
+    // subscription.updated / subscription.deleted events
     const session = await stripe.checkout.sessions.create({
       line_items: [{ price: 'price_1T1qX14BRKqfJjuBAkGUEmmv', quantity: 1 }],
       mode: 'subscription',
@@ -37,6 +40,16 @@ export default async function handler(req, res) {
       cancel_url: 'https://www.edgefinderdaily.com/?checkout=cancel',
       client_reference_id: userId,
       customer_email: email,
+      metadata: {
+        firebaseUID: userId,
+        email: email,
+      },
+      subscription_data: {
+        metadata: {
+          firebaseUID: userId,
+          email: email,
+        },
+      },
     });
 
     return res.status(200).json({ url: session.url });

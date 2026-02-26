@@ -41,3 +41,20 @@ export async function getUserTier(email) {
     return 'free'; // Default to free if anything goes wrong
   }
 }
+
+// Helper: check tier with retries — used after Stripe checkout redirect
+// Stripe can take a few seconds to finalize the subscription, so if the first
+// check returns 'free', we retry up to 3 times with increasing delays.
+export async function getUserTierWithRetry(email, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const tier = await getUserTier(email);
+    if (tier === 'pro') return 'pro';
+
+    // If not pro yet and we have retries left, wait and try again
+    if (attempt < maxRetries) {
+      const delay = (attempt + 1) * 2000; // 2s, 4s, 6s
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  return 'free';
+}

@@ -5,7 +5,7 @@ import {
   createUserWithEmailAndPassword,
   signOut
 } from 'firebase/auth';
-import { auth, getUserTier } from './firebase';
+import { auth, getUserTier, getUserTierWithRetry } from './firebase';
 
 // --- Auth Context ---
 // This context provides { user, tier, loading, logout } to the whole app
@@ -24,10 +24,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // refreshTier — re-fetches the user's tier from the API
-  // Call this after a successful Stripe checkout to update the UI
+  // Uses retry logic because Stripe can take a few seconds to finalize
+  // the subscription after checkout completes
   const refreshTier = async () => {
     if (user?.email) {
-      const userTier = await getUserTier(user.email);
+      const userTier = await getUserTierWithRetry(user.email, 3);
       setTier(userTier);
     }
   };
