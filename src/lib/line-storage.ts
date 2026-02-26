@@ -6,9 +6,13 @@ import path from "path";
 // Persistent Line Movement Storage
 // Stores line snapshots to disk so history is NOT limited to
 // the user's session - data accumulates over time.
+// On Vercel (read-only filesystem), uses /tmp for ephemeral
+// storage and keeps the in-memory index as primary source.
 // ============================================================
 
-const STORAGE_DIR = process.env.LINE_STORAGE_PATH || "./data/line-history";
+const IS_VERCEL = !!process.env.VERCEL;
+const STORAGE_DIR = process.env.LINE_STORAGE_PATH
+  || (IS_VERCEL ? "/tmp/line-history" : "./data/line-history");
 
 // In-memory index for fast lookups (loaded from disk on startup)
 let memoryIndex: Map<string, LineMovement> = new Map();
