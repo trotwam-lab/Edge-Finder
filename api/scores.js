@@ -1,5 +1,5 @@
 const cache = {};
-const TTL = 2 * 60 * 1000; // 2 minutes — balances freshness and API usage
+const TTL = 30 * 1000; // 30 seconds — near real-time scores
 
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', daysFrom = '1' } = req.query;

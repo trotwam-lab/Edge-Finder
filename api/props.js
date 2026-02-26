@@ -3,7 +3,7 @@
 // Caches results to save API credits
 
 const cache = {};
-const TTL = 3 * 60 * 1000; // 3 minute cache — props don't change as fast as odds
+const TTL = 60 * 1000; // 1 minute — fresh props for live games
 
 export default async function handler(req, res) {
   const { sport = 'basketball_nba' } = req.query;
@@ -42,10 +42,10 @@ export default async function handler(req, res) {
       'player_threes', 'player_steals', 'player_blocks', 'player_turnovers'
     ];
 
-    // Fetch odds for each event (up to 5 events to conserve API credits)
+    // Fetch odds for each event (up to 8 events for broad coverage)
     const allProps = [];
 
-    for (const event of events.slice(0, 5)) {
+    for (const event of events.slice(0, 8)) {
       try {
         const oddsUrl = `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=us&markets=${markets.join(',')}&oddsFormat=american`;
 
