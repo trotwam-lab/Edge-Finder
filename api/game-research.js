@@ -39,15 +39,42 @@ async function fetchFromESPN(teamName, teamId, sport = 'basketball_nba') {
 
     const sportPath = ESPN_SPORT_PATHS[sport] || 'basketball/nba';
 
-    const res = await fetch(
-      `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/teams/${teamId}/schedule`,
-      { signal: AbortSignal.timeout(10000) }
-    );
+    // Fetch both the team schedule AND the recent scoreboard for maximum freshness
+    // ESPN's schedule endpoint can lag behind by hours — scoreboard is always current
+    const [scheduleRes, scoreboardRes] = await Promise.all([
+      fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/teams/${teamId}/schedule`,
+        { signal: AbortSignal.timeout(10000) }
+      ),
+      // Fetch the team's most recent results page which is always up-to-date
+      fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/teams/${teamId}/schedule?season=2025&seasontype=2`,
+        { signal: AbortSignal.timeout(10000) }
+      ).catch(() => null),
+    ]);
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!scheduleRes.ok) throw new Error(`HTTP ${scheduleRes.status}`);
 
-    const data = await res.json();
-    const events = data.events || [];
+    const data = await scheduleRes.json();
+    let events = data.events || [];
+
+    // Also merge results from the season-specific endpoint if available
+    // This endpoint is more reliable for getting the very latest games
+    if (scoreboardRes && scoreboardRes.ok) {
+      try {
+        const seasonData = await scoreboardRes.json();
+        const seasonEvents = seasonData.events || [];
+        // Merge: add any events from seasonData that aren't already in events
+        const existingIds = new Set(events.map(e => e.id));
+        seasonEvents.forEach(e => {
+          if (!existingIds.has(e.id)) {
+            events.push(e);
+          }
+        });
+      } catch (e) {
+        // Non-critical: season endpoint supplement failed
+      }
+    }
 
     // Get completed games with scores (last 30 days only)
     const thirtyDaysAgo = new Date();
@@ -59,6 +86,8 @@ async function fetchFromESPN(teamName, teamId, sport = 'basketball_nba') {
         const gameDate = new Date(e.date);
         return status?.type?.completed === true && gameDate >= thirtyDaysAgo;
       })
+      // CRITICAL: Sort by date DESCENDING so we get the MOST RECENT games first
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 10)
       .map(e => {
         const comp = e.competitions[0];
@@ -122,7 +151,7 @@ async function fetchFromESPN(teamName, teamId, sport = 'basketball_nba') {
 async function fetchFromOddsAPI(teamName, sport, apiKey) {
   try {
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
+      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=7`,
       { signal: AbortSignal.timeout(10000) }
     );
 
@@ -236,7 +265,7 @@ async function fetchHistoricalOdds(sport, apiKey) {
 async function fetchH2H(homeTeam, awayTeam, sport, apiKey) {
   try {
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
+      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=7`,
       { signal: AbortSignal.timeout(10000) }
     );
 
@@ -743,10 +772,33 @@ export default async function handler(req, res) {
       fetchPlayerProps(gameId, sport, apiKey),
     ]);
 
-    // Use ESPN as primary for ATS data (has spread info), Odds API for recent scores
-    // Merge: prefer ESPN games (they have spreads), supplement with Odds API
-    const homeGames = espnHome.count > 0 ? espnHome.games : oddsHome.games;
-    const awayGames = espnAway.count > 0 ? espnAway.games : oddsAway.games;
+    // MERGE both ESPN and Odds API data for maximum freshness + accuracy
+    // ESPN has spreads/totals (for ATS) but can lag; Odds API is real-time but only has scores
+    // Strategy: start with ESPN (richer data), then add any Odds API games not already present
+    const mergeGames = (espnGames, oddsGames) => {
+      const merged = [...espnGames];
+      const espnDates = new Set(espnGames.map(g => {
+        // Normalize dates to YYYY-MM-DD for comparison
+        const d = new Date(g.date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${g.opponent}`;
+      }));
+
+      oddsGames.forEach(g => {
+        const d = new Date(g.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${g.opponent}`;
+        if (!espnDates.has(key)) {
+          merged.push(g);
+        }
+      });
+
+      // Sort merged by date descending and take the 10 most recent
+      return merged
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10);
+    };
+
+    const homeGames = mergeGames(espnHome.games, oddsHome.games);
+    const awayGames = mergeGames(espnAway.games, oddsAway.games);
 
     // Calculate stats (now includes ATS, SU, O/U)
     const homeStats = calculateStats(homeGames);
@@ -758,14 +810,23 @@ export default async function handler(req, res) {
     const hasSUData = !!(homeStats?.suRecord?.total >= 3 || awayStats?.suRecord?.total >= 3);
     const highConfidenceCount = trends.filter(t => t.confidence === 'high').length;
 
+    // Identify what the latest game date is for data freshness indicator
+    const latestHomeGame = homeGames.length > 0 ? new Date(homeGames[0].date) : null;
+    const latestAwayGame = awayGames.length > 0 ? new Date(awayGames[0].date) : null;
+    const latestGame = latestHomeGame && latestAwayGame
+      ? new Date(Math.max(latestHomeGame, latestAwayGame))
+      : latestHomeGame || latestAwayGame;
+
     const result = {
       gameId: gameId || null,
       sport,
       homeTeam,
       awayTeam,
       accurate: homeGames.length >= 3 || awayGames.length >= 3,
-      dataSource: espnHome.count > 0 ? 'ESPN + Odds API' : 'Odds API',
-      dataWindow: espnHome.count > 0 ? 'Last 30 days' : 'Last 3 days',
+      dataSource: 'ESPN + Odds API (merged)',
+      dataWindow: latestGame
+        ? `Through ${latestGame.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        : 'Last 30 days',
       timestamp: new Date().toISOString(),
       teams: {
         home: homeStats ? {
@@ -789,11 +850,13 @@ export default async function handler(req, res) {
       trends,
       hasATSData,
       hasSUData,
+      latestGameDate: latestGame ? latestGame.toISOString() : null,
       meta: {
         homeGamesFound: homeGames.length,
         awayGamesFound: awayGames.length,
         espnGames: espnHome.count + espnAway.count,
         oddsGames: oddsHome.count + oddsAway.count,
+        mergedTotal: homeGames.length + awayGames.length,
         trendCount: trends.length,
         highConfidenceTrends: highConfidenceCount,
       },

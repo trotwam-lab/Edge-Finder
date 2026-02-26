@@ -947,7 +947,15 @@ function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }
         }}>
           <span>Source: {data?.dataSource || 'Unknown'}</span>
           <span>•</span>
-          <span>{data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'N/A'}</span>
+          <span>Data {data?.dataWindow || 'N/A'}</span>
+          {data?.latestGameDate && (
+            <>
+              <span>•</span>
+              <span style={{ color: '#06b6d4' }}>
+                Latest: {new Date(data.latestGameDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            </>
+          )}
           {data?.meta?.highConfidenceTrends > 0 && (
             <>
               <span>•</span>
