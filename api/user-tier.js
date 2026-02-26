@@ -21,6 +21,11 @@ const FRIEND_EMAILS = [
   'wb_sportstalk@yahoo.com',
   'darryljrice@gmail.com',
   'rcabang@gmail.com',
+  'charlespenn1988@yahoo.com',
+  'bobano350@gmail.com',
+  'chrisbecappinn@gmail.com',
+  'razorsharppicksllc@yahoo.com',
+  'btrainbrizbane@gmail.com',
 ];
 
 export default async function handler(req, res) {
