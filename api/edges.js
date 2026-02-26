@@ -3,7 +3,7 @@
 // Caches results for 15 minutes to save API credits
 
 const cache = { data: null, ts: 0 };
-const TTL = 60 * 1000; // 1 minute - fresher edges for live betting
+const TTL = 5 * 60 * 1000; // 5 minutes — conserves API credits while staying fresh
 
 const TRACKED_SPORTS = [
   'basketball_nba',
@@ -165,6 +165,11 @@ export default async function handler(req, res) {
     res.setHeader('X-Cache', 'MISS');
     return res.status(200).json(allEdges);
   } catch (e) {
+    // Serve stale cache if available rather than erroring out
+    if (cache.data) {
+      res.setHeader('X-Cache', 'STALE');
+      return res.status(200).json(cache.data);
+    }
     return res.status(500).json({ error: e.message });
   }
 }
