@@ -2,50 +2,110 @@
 
 ## Project Overview
 
-**Edge-Finder** is a new project. This repository is currently in its initial setup phase with no source code, build system, or dependencies configured yet.
+**Edge-Finder** is an industry-leading sports arbitrage and edge-detection platform. It analyzes real-time odds from multiple sportsbooks, tracks line movement persistently, monitors injuries, and surfaces profitable edges for every game.
 
 - **Repository**: trotwam-lab/Edge-Finder
-- **Status**: Initial setup — no source code or configuration files exist yet
+- **Status**: Active development — core platform built
 
 ## Repository Structure
 
 ```
 Edge-Finder/
-├── CLAUDE.md          # This file — AI assistant guide
-└── .git/              # Git metadata
+├── CLAUDE.md
+├── package.json
+├── tsconfig.json
+├── next.config.js
+├── tailwind.config.js
+├── postcss.config.js
+├── .env.example
+├── .gitignore
+├── public/
+└── src/
+    ├── app/
+    │   ├── layout.tsx              # Root layout with ThemeProvider
+    │   ├── page.tsx                # Dashboard (main page)
+    │   ├── globals.css             # Tailwind + custom styles
+    │   ├── edge-finder/page.tsx    # Edge detection + arb calculator
+    │   ├── line-movement/page.tsx  # Persistent line tracking
+    │   ├── injuries/page.tsx       # Real-time injury tracker
+    │   ├── games/page.tsx          # All games browser
+    │   ├── games/[id]/page.tsx     # Individual game details
+    │   ├── settings/page.tsx       # Theme + subscription settings
+    │   └── api/
+    │       ├── odds/route.ts           # Odds API integration
+    │       ├── edges/route.ts          # Edge detection engine
+    │       ├── line-movement/route.ts  # Line movement recording
+    │       ├── injuries/route.ts       # Injury data aggregation
+    │       └── webhooks/stripe/route.ts # Stripe webhook handler
+    ├── components/
+    │   ├── layout/     # Header, ThemeToggle
+    │   ├── ui/         # Card, Badge, Spinner (shared)
+    │   ├── dashboard/  # StatsOverview, GameCard
+    │   ├── edges/      # EdgeCard, EdgeFinder, ArbitrageCalculator
+    │   ├── line-movement/ # LineMovementTracker, LineChart
+    │   ├── injuries/   # InjuryTracker
+    │   └── games/      # GameDetails, PropsView
+    ├── hooks/          # useOdds, useEdges, useLineMovement, useInjuries
+    ├── lib/
+    │   ├── odds-api.ts        # The Odds API client with caching
+    │   ├── edge-calculator.ts # Arbitrage, +EV, steam, RLM detection
+    │   ├── line-storage.ts    # Persistent line movement storage
+    │   ├── injuries.ts        # ESPN injury aggregation
+    │   ├── stripe.ts          # Payment plans & webhook helpers
+    │   ├── sports-config.ts   # Sport definitions
+    │   └── format.ts          # Display formatting utilities
+    ├── types/index.ts         # All TypeScript interfaces
+    └── context/ThemeContext.tsx # Dark/light/system theme
 ```
-
-As the project grows, update this section to reflect the actual directory layout.
 
 ## Development Setup
 
-No setup steps are required yet. When dependencies and tooling are added, document them here:
-
-- **Language(s)**: TBD
-- **Package manager**: TBD
-- **Runtime requirements**: TBD
+- **Language**: TypeScript
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: Tailwind CSS with dark mode (`class` strategy)
+- **Package manager**: npm
+- **Runtime**: Node.js 18+
 
 ## Common Commands
 
-<!-- Update these as the project evolves -->
-
-| Task         | Command |
-|--------------|---------|
-| Install deps | TBD     |
-| Build        | TBD     |
-| Run tests    | TBD     |
-| Lint         | TBD     |
-| Format       | TBD     |
-| Start        | TBD     |
+| Task         | Command           |
+|--------------|-------------------|
+| Install deps | `npm install`     |
+| Build        | `npm run build`   |
+| Dev server   | `npm run dev`     |
+| Lint         | `npm run lint`    |
+| Type check   | `npm run type-check` |
+| Start prod   | `npm start`       |
 
 ## Architecture
 
-No architecture has been established yet. When it is, document:
+### Entry Points
+- `src/app/layout.tsx` — Root layout, theme provider, header
+- `src/app/page.tsx` — Dashboard landing page
 
-- Entry points
-- Key modules and their responsibilities
-- Data flow patterns
-- External service dependencies
+### Key Modules
+- **Edge Calculator** (`lib/edge-calculator.ts`): Detects arbitrage, +EV, steam moves, reverse line movement, and injury edges
+- **Odds API Client** (`lib/odds-api.ts`): Wraps The Odds API with caching and retry logic
+- **Line Storage** (`lib/line-storage.ts`): Persists line movement to disk (not session-limited)
+- **Injury Aggregator** (`lib/injuries.ts`): Fetches from ESPN with impact rating calculation
+- **Stripe Integration** (`lib/stripe.ts` + `api/webhooks/stripe`): Subscription management with signature verification
+
+### Data Flow
+1. Odds API → cached in memory (1 min TTL) → served via `/api/odds`
+2. Line snapshots recorded on each fetch → persisted to `./data/line-history/`
+3. Edge calculator runs across all games, combining odds + line movement + injuries
+4. Injury data fetched from ESPN with 5-min cache, rated by position impact
+
+### External Services
+- **The Odds API** — odds and scores data
+- **ESPN API** — injury reports
+- **Stripe** — payment processing
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in:
+- `ODDS_API_KEY` — from https://the-odds-api.com
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 
 ## Conventions for AI Assistants
 
