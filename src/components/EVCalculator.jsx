@@ -6,7 +6,7 @@ import { calculateEV, kellyBet, americanToDecimal, americanToImplied, formatOdds
 // EV Calculator â Pro-only tool that helps you figure out if a bet is worth making.
 // It uses Expected Value (EV) and Kelly Criterion to give you a mathematical edge.
 
-export default function EVCalculator() {
+export default function EVCalculator({ defaultBankroll = '' }) {
   const { tier } = useAuth();
 
   // --- State for user inputs ---
@@ -14,8 +14,8 @@ export default function EVCalculator() {
   const [odds, setOdds] = useState('-110');
   // The user's estimated true probability of winning (1-99%)
   const [prob, setProb] = useState(55);
-  // Optional bankroll for Kelly bet sizing
-  const [bankroll, setBankroll] = useState('');
+  // Optional bankroll for Kelly bet sizing — pre-fill from Settings if set
+  const [bankroll, setBankroll] = useState(defaultBankroll || '');
 
   // If user is free tier, show the upgrade banner instead
   if (tier !== 'pro') {

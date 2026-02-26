@@ -48,18 +48,20 @@ export const AFFILIATE_LINKS = {
 // Pro users see ALL books (FanDuel, DraftKings, BetMGM, Caesars, BetOnline, Bovada, BetRivers)
 export const FREE_BOOKS = ['fanduel', 'draftkings', 'betmgm'];
 
-// PRO_FEATURES ★ What you get with Edge Finder Pro ($12.99/mo)
+// PRO_FEATURES — What you get with Edge Finder Pro ($12.99/mo)
 export const PRO_FEATURES = {
   price: '$12.99/mo',
   features: [
     { icon: '🏆', text: 'All 7 sportsbooks (not just 3)' },
-    { icon: '🏆', text: 'Unlimited player props' },
+    { icon: '🏆', text: 'Unlimited player props across all markets' },
     { icon: '🏆', text: 'EV indicators on every line' },
-    { icon: '🏆¯', text: 'Implied probability overlays' },
+    { icon: '🏆', text: 'Implied probability overlays' },
     { icon: '⚡', text: 'Real-time edge alerts across all books' },
-    { icon: '🏆¯', text: 'Pick tracker with W/L, ROI & streaks' },
-    { icon: '🏆', text: 'Line movement alerts (coming soon)' },
-    { icon: '🏆°', text: 'Kelly Criterion bet sizing (coming soon)' },
+    { icon: '🏆', text: 'Pick tracker with W/L, ROI & streaks' },
+    { icon: '🏆', text: 'Live line movement tracking & alerts' },
+    { icon: '🏆', text: 'Kelly Criterion bet sizing calculator' },
+    { icon: '🏆', text: 'Customizable refresh intervals & display' },
+    { icon: '🏆', text: 'Consensus median lines for accuracy' },
   ],
 };
 

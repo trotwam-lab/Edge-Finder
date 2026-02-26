@@ -11,6 +11,10 @@ const TRACKED_SPORTS = [
   'icehockey_nhl',
   'baseball_mlb',
   'mma_mixed_martial_arts',
+  'basketball_ncaab',
+  'americanfootball_ncaaf',
+  'soccer_epl',
+  'soccer_usa_mls',
 ];
 
 const SPORT_LABELS = {
@@ -19,6 +23,10 @@ const SPORT_LABELS = {
   icehockey_nhl: 'NHL',
   baseball_mlb: 'MLB',
   mma_mixed_martial_arts: 'UFC',
+  basketball_ncaab: 'NCAAB',
+  americanfootball_ncaaf: 'NCAAF',
+  soccer_epl: 'EPL',
+  soccer_usa_mls: 'MLS',
 };
 
 const SPORT_EMOJI = {
@@ -27,6 +35,10 @@ const SPORT_EMOJI = {
   NHL: '🏒',
   MLB: '⚾',
   UFC: '🥊',
+  NCAAB: '🏀',
+  NCAAF: '🏈',
+  EPL: '⚽',
+  MLS: '⚽',
 };
 
 const MIN_EV_THRESHOLD = 3.0;

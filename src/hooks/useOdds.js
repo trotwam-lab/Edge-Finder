@@ -16,7 +16,7 @@ function usePersistentState(key, defaultValue) {
 
 export { usePersistentState };
 
-export function useOdds({ filter, enabledSports = null, refreshInterval: defaultInterval = 120 }) {
+export function useOdds({ filter, enabledSports = null, refreshInterval: userInterval = 120 }) {
   const [games, setGames] = useState([]);
   const [playerProps, setPlayerProps] = useState([]);
   const [injuries, setInjuries] = useState({});
@@ -25,15 +25,22 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isConnected, setIsConnected] = useState(true);
-  const [countdown, setCountdown] = useState(defaultInterval);
   const [sportLastUpdated, setSportLastUpdated] = useState({});
   const [propHistory, setPropHistory] = usePersistentState('edgefinder_prop_history', {});
   const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
   const rotationIndexRef = useRef(0);
 
-  // Determine refresh interval: 60s if any game is live, 120s otherwise
+  // Determine refresh interval: if any game is live and user hasn't set something faster, use 60s
   const hasLiveGame = games.some(g => new Date(g.commence_time) < new Date() && !g.completed);
-  const refreshInterval = hasLiveGame ? 60 : defaultInterval;
+  const liveInterval = hasLiveGame ? Math.min(60, userInterval) : userInterval;
+  const refreshInterval = liveInterval;
+
+  const [countdown, setCountdown] = useState(refreshInterval);
+
+  // Keep countdown in sync when refreshInterval changes
+  useEffect(() => {
+    setCountdown(prev => Math.min(prev, refreshInterval));
+  }, [refreshInterval]);
 
   // Fetch odds via serverless function
   const fetchOdds = useCallback(async (sport) => {
@@ -79,7 +86,6 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   }, []);
 
   // Fetch player props via dedicated props endpoint
-  // Returns ALL props from ALL books (no grouping — PropsView handles display)
   const fetchPlayerProps = useCallback(async (sport) => {
     try {
       const res = await fetch(`/api/props?sport=${sport}`);
@@ -92,9 +98,9 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   // Smart refresh: determine which sports to fetch
   const getSportsToFetch = useCallback(() => {
     const allSports = Object.entries(SPORTS).filter(([name]) => !enabledSports || enabledSports.includes(name));
-    
+
     if (filter && filter !== 'ALL') {
-      // Single sport selected ★ only fetch that one
+      // Single sport selected — only fetch that one
       const sportKey = SPORTS[filter];
       if (sportKey) return [[filter, sportKey]];
       // Try to match by sport_key
@@ -103,7 +109,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
       return allSports.slice(0, 3);
     }
 
-    // ALL selected ★ rotate through 3-4 sports per cycle
+    // ALL selected — rotate through 3-4 sports per cycle
     const batchSize = 4;
     const start = rotationIndexRef.current % allSports.length;
     const batch = [];
@@ -112,7 +118,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     }
     rotationIndexRef.current += batchSize;
     return batch;
-  }, [filter]);
+  }, [filter, enabledSports]);
 
   // Load data
   const loadData = useCallback(async (isInitial = false) => {
@@ -158,7 +164,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
       const propsSports = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
       const fetchedSportKeys = sportsToFetch.map(([, key]) => key);
       const propsToFetch = propsSports.filter(s => fetchedSportKeys.includes(s));
-      
+
       if (propsToFetch.length > 0) {
         const allProps = [];
         for (const sportKey of propsToFetch) {
@@ -178,20 +184,14 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         return Array.from(updated.values());
       });
 
-      // Injuries - scoped by sport to avoid team name collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
+      // Injuries - scoped by sport to avoid team name collisions
       const injuriesByTeam = {};
       allInjuryList.forEach(inj => {
-        // Use full team name with sport prefix to avoid cross-league collisions
-        const sportPrefix = sportKey.split('_')[0]; // 'basketball' or 'americanfootball'
-        const fullKey = `${sportPrefix}:${inj.team}`;
-        const shortKey = `${sportPrefix}:${inj.teamShort}`;
-        
-        [fullKey, fullKey.toLowerCase(), shortKey, shortKey.toLowerCase(), inj.team, inj.team?.toLowerCase()]
-          .filter(Boolean)
-          .forEach(key => {
-            if (!injuriesByTeam[key]) injuriesByTeam[key] = [];
-            injuriesByTeam[key].push(inj);
-          });
+        const keys = [inj.team, inj.team?.toLowerCase(), inj.teamShort, inj.teamShort?.toLowerCase()].filter(Boolean);
+        keys.forEach(key => {
+          if (!injuriesByTeam[key]) injuriesByTeam[key] = [];
+          injuriesByTeam[key].push(inj);
+        });
       });
       setInjuries(prev => isInitial ? injuriesByTeam : { ...prev, ...injuriesByTeam });
 
@@ -215,17 +215,39 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         });
       });
 
-      // Track game line history
+      // Track game line history — use consensus best line across all books for accuracy
       newGames.forEach(game => {
-        const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team)?.point;
-        const total = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0]?.point;
-        if (spread !== undefined || total !== undefined) {
+        // Use consensus across all bookmakers for more accurate line tracking
+        const allSpreads = [];
+        const allTotals = [];
+        game.bookmakers?.forEach(book => {
+          const spreadOutcome = book.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team);
+          if (spreadOutcome) allSpreads.push(spreadOutcome.point);
+          const totalOutcome = book.markets?.find(m => m.key === 'totals')?.outcomes?.[0];
+          if (totalOutcome) allTotals.push(totalOutcome.point);
+        });
+
+        // Use the median line for more accurate tracking (less susceptible to outlier books)
+        const median = (arr) => {
+          if (arr.length === 0) return undefined;
+          const sorted = [...arr].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+
+        const spreadMedian = median(allSpreads);
+        const totalMedian = median(allTotals);
+
+        if (spreadMedian !== undefined || totalMedian !== undefined) {
           setGameLineHistory(prev => {
             const history = prev[game.id] || [];
             const entry = {
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              timestamp: Date.now(), spread, total,
-              book: game.bookmakers?.[0]?.title
+              timestamp: Date.now(),
+              spread: spreadMedian,
+              total: totalMedian,
+              book: 'Consensus',
+              numBooks: game.bookmakers?.length || 0,
             };
             return { ...prev, [game.id]: [...history, entry].slice(-20) };
           });

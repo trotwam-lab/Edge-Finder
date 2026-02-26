@@ -15,10 +15,26 @@ import EdgeAlerts from './components/EdgeAlerts.jsx';
 import LineMovement from './components/LineMovement.jsx';
 import KellyCriterion from './components/KellyCriterion.jsx';
 import MobileNav from './components/MobileNav.jsx';
+import Settings from './components/Settings.jsx';
 
 export default function BettingApp() {
   const { tier, refreshTier } = useAuth();
-  const [activeTab, setActiveTab] = useState('GAMES');
+
+  // ——— User Preferences (persisted in localStorage) ———
+  const [oddsFormat, setOddsFormat] = usePersistentState('edgefinder_odds_format', 'american');
+  const [userRefreshInterval, setUserRefreshInterval] = usePersistentState('edgefinder_refresh_interval', 120);
+  const [defaultTab, setDefaultTab] = usePersistentState('edgefinder_default_tab', 'GAMES');
+  const [displayMode, setDisplayMode] = usePersistentState('edgefinder_display_mode', 'standard');
+  const [defaultBankroll, setDefaultBankroll] = usePersistentState('edgefinder_default_bankroll', '');
+  const [showEdgeScores, setShowEdgeScores] = usePersistentState('edgefinder_show_edge_scores', true);
+  const [showFairOdds, setShowFairOdds] = usePersistentState('edgefinder_show_fair_odds', true);
+  const [showHoldPercentage, setShowHoldPercentage] = usePersistentState('edgefinder_show_hold_pct', true);
+  const [showInjuries, setShowInjuries] = usePersistentState('edgefinder_show_injuries', true);
+  const [confirmBeforeDelete, setConfirmBeforeDelete] = usePersistentState('edgefinder_confirm_delete', true);
+  const [autoExpandGames, setAutoExpandGames] = usePersistentState('edgefinder_auto_expand', false);
+
+  // ——— Active tab — defaults to user preference ———
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [showCheckoutToast, setShowCheckoutToast] = useState(false);
   const [showCancelToast, setShowCancelToast] = useState(false);
 
@@ -62,7 +78,7 @@ export default function BettingApp() {
     loading, error, lastUpdate, isConnected, countdown,
     gameLineHistory, propHistory, sportLastUpdated,
     manualRefresh
-  } = useOdds({ filter, enabledSports });
+  } = useOdds({ filter, enabledSports, refreshInterval: userRefreshInterval });
 
   const toggleWatchlist = (id) => {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -96,10 +112,10 @@ export default function BettingApp() {
           display: 'flex', alignItems: 'center', gap: '10px',
           fontFamily: "'JetBrains Mono', monospace",
         }}>
-          🎯 Welcome to Edge Finder Pro! All features unlocked.
+          Welcome to Edge Finder Pro! All features unlocked.
           <button onClick={() => setShowCheckoutToast(false)} style={{
             background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px',
-          }}>Ã</button>
+          }}>x</button>
         </div>
       )}
 
@@ -115,7 +131,7 @@ export default function BettingApp() {
           Checkout cancelled — no worries, you can upgrade anytime.
           <button onClick={() => setShowCancelToast(false)} style={{
             background: 'none', border: 'none', color: '#e2e8f0', cursor: 'pointer', fontSize: '16px', marginLeft: '10px',
-          }}>Ã</button>
+          }}>x</button>
         </div>
       )}
 
@@ -132,13 +148,43 @@ export default function BettingApp() {
         <div style={{ padding: '20px 24px' }}>
           <SportFilter filter={filter} setFilter={setFilter} searchTerm={searchTerm} setSearchTerm={setSearchTerm} enabledSports={enabledSports} />
 
+          {/* Data freshness indicator */}
+          {lastUpdate && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 14px', marginBottom: '12px',
+              background: 'rgba(15, 23, 42, 0.6)',
+              border: '1px solid rgba(71, 85, 105, 0.15)',
+              borderRadius: '8px',
+              fontSize: '10px', color: '#64748b',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{
+                  width: '6px', height: '6px', borderRadius: '50%',
+                  background: isConnected ? '#10b981' : '#ef4444',
+                  display: 'inline-block',
+                }} />
+                <span>
+                  {filteredGames.length} game{filteredGames.length !== 1 ? 's' : ''} loaded
+                </span>
+                <span style={{ color: '#475569' }}>|</span>
+                <span>
+                  Last updated {lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
+              <div>
+                Refreshing every {userRefreshInterval}s
+              </div>
+            </div>
+          )}
+
           {loading && games.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px' }}>
               <Loader size={36} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
               <p style={{ marginTop: '16px', color: '#94a3b8' }}>Loading games...</p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: displayMode === 'compact' ? '6px' : '12px' }}>
               {filteredGames.map(game => (
                 <div key={game.id}>
                   <GameCard
@@ -150,6 +196,10 @@ export default function BettingApp() {
                     injuries={injuries}
                     gameLineHistory={gameLineHistory}
                     setPendingBet={handleSetPendingBet}
+                    compact={displayMode === 'compact'}
+                    showEdgeScores={showEdgeScores}
+                    showFairOdds={showFairOdds}
+                    showInjuries={showInjuries}
                   />
                   {expandedGame === game.id && (
                     <GameDetails
@@ -188,11 +238,11 @@ export default function BettingApp() {
       )}
 
       {activeTab === 'EV CALC' && (
-        <EVCalculator />
+        <EVCalculator defaultBankroll={defaultBankroll} />
       )}
 
       {activeTab === 'KELLY' && (
-        <KellyCriterion />
+        <KellyCriterion defaultBankroll={defaultBankroll} />
       )}
 
       {activeTab === 'TRACKER' && (
@@ -203,180 +253,24 @@ export default function BettingApp() {
       )}
 
       {activeTab === 'SETTINGS' && (
-        <div style={{ padding: '20px 24px', maxWidth: '600px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>⚙️ Settings</h2>
-
-          {/* Subscription Status */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>🎯 Subscription</div>
-            {tier === 'pro' ? (
-              <div>
-                <div style={{ fontSize: '14px', color: '#c4b5fd', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  ⚡ You're on Edge Finder Pro
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
-                  All features unlocked. Thank you for supporting Edge Finder!
-                </div>
-                <a href="https://billing.stripe.com/p/login/live" target="_blank" rel="noopener" style={{
-                  padding: '8px 16px', background: 'rgba(99, 102, 241, 0.2)',
-                  border: '1px solid rgba(99, 102, 241, 0.4)', borderRadius: '6px',
-                  color: '#818cf8', fontSize: '11px', textDecoration: 'none',
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}>Manage Subscription</a>
-              </div>
-            ) : (
-              <ProBanner />
-            )}
-          </div>
-
-          {/* Sports Selection */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>🎯 Sports</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledSports.length} of {Object.keys(SPORTS).length} active — only enabled sports will load</div>
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => setEnabledSports(Object.keys(SPORTS))} style={{ padding: '4px 10px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer' }}>All On</button>
-                <button onClick={() => setEnabledSports([])} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', color: '#f87171', fontSize: '10px', cursor: 'pointer' }}>All Off</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {Object.keys(SPORTS).map(sport => {
-                const on = enabledSports.includes(sport);
-                return (
-                  <button key={sport} onClick={() => setEnabledSports(prev => on ? prev.filter(s => s !== sport) : [...prev, sport])}
-                    style={{
-                      padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-                      background: on ? 'rgba(99,102,241,0.3)' : 'rgba(30,41,59,0.4)',
-                      border: on ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(71,85,105,0.3)',
-                      color: on ? '#f8fafc' : '#475569',
-                    }}
-                  >{sport}</button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Sportsbooks Selection */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>🎯 Sportsbooks</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledBooks.length} of {Object.keys(BOOKMAKERS).length} active — only enabled books show in game details</div>
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => setEnabledBooks(Object.keys(BOOKMAKERS))} style={{ padding: '4px 10px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer' }}>All On</button>
-                <button onClick={() => setEnabledBooks([])} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', color: '#f87171', fontSize: '10px', cursor: 'pointer' }}>All Off</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {Object.entries(BOOKMAKERS).map(([key, name]) => {
-                const on = enabledBooks.includes(key);
-                return (
-                  <button key={key} onClick={() => setEnabledBooks(prev => on ? prev.filter(b => b !== key) : [...prev, key])}
-                    style={{
-                      padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                      background: on ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.4)',
-                      border: on ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.3)',
-                      color: on ? '#22c55e' : '#475569',
-                    }}
-                  >{name}</button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Refresh Status */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>Auto-Refresh</div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Live games refresh every 60s. Non-live games refresh every 120s.</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: isConnected ? '#10b981' : '#ef4444' }}>
-                {isConnected ? '— Connected' : '— Disconnected'}
-              </span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                | Next refresh in {countdown}s
-              </span>
-            </div>
-          </div>
-
-          {/* Watchlist */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>—­ Watchlist</div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>
-              {watchlist.length} game{watchlist.length !== 1 ? 's' : ''} saved
-            </div>
-            {watchlist.length > 0 && (
-              <button
-                onClick={() => { if (confirm('Clear entire watchlist?')) setWatchlist([]); }}
-                style={{
-                  padding: '6px 14px', background: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '6px',
-                  color: '#f87171', fontSize: '11px', cursor: 'pointer'
-                }}
-              >
-                Clear Watchlist
-              </button>
-            )}
-          </div>
-
-          {/* Clear Data */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>🎯 Clear Cached Data</div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Reset line history, manual openers, and prop tracking data.</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => { if (confirm('Clear all line history?')) { localStorage.removeItem('edgefinder_game_lines'); location.reload(); } }}
-                style={{
-                  padding: '6px 14px', background: 'rgba(249, 115, 22, 0.2)',
-                  border: '1px solid rgba(249, 115, 22, 0.4)', borderRadius: '6px',
-                  color: '#fb923c', fontSize: '11px', cursor: 'pointer'
-                }}
-              >
-                Clear Line History
-              </button>
-              <button
-                onClick={() => { if (confirm('Clear all manual openers?')) setManualOpeners({}); }}
-                style={{
-                  padding: '6px 14px', background: 'rgba(249, 115, 22, 0.2)',
-                  border: '1px solid rgba(249, 115, 22, 0.4)', borderRadius: '6px',
-                  color: '#fb923c', fontSize: '11px', cursor: 'pointer'
-                }}
-              >
-                Clear Openers
-              </button>
-              <button
-                onClick={() => { if (confirm('Clear ALL local data? This cannot be undone.')) { localStorage.clear(); location.reload(); } }}
-                style={{
-                  padding: '6px 14px', background: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '6px',
-                  color: '#f87171', fontSize: '11px', cursor: 'pointer'
-                }}
-              >
-                Reset Everything
-              </button>
-            </div>
-          </div>
-
-          {/* About */}
-          <div style={{ padding: '16px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>🎯 Edge Finder Live Odds</div>
-            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.6' }}>
-              Real-time odds comparison across 7 sportsbooks and 25+ sports. Track line movement, find value, and sharpen your edge.
-            </div>
-            <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <a href="https://edgefinder.beehiiv.com" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>🎯° Newsletter</a>
-              <a href="https://wamclaw.gumroad.com/l/pro-bettors-dashboard" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>🎯 Pro Dashboard</a>
-              <a href="https://x.com/TROTWAM" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>🎯¦ @TROTWAM</a>
-            </div>
-          </div>
-
-          {/* Version */}
-          <div style={{ textAlign: 'center', padding: '16px', fontSize: '10px', color: '#475569' }}>
-            Edge Finder v2.0 —¢ Built with 🎯¥ by WAM
-          </div>
-        </div>
+        <Settings
+          enabledSports={enabledSports} setEnabledSports={setEnabledSports}
+          enabledBooks={enabledBooks} setEnabledBooks={setEnabledBooks}
+          watchlist={watchlist} setWatchlist={setWatchlist}
+          manualOpeners={manualOpeners} setManualOpeners={setManualOpeners}
+          isConnected={isConnected} countdown={countdown}
+          oddsFormat={oddsFormat} setOddsFormat={setOddsFormat}
+          refreshInterval={userRefreshInterval} setRefreshInterval={setUserRefreshInterval}
+          defaultTab={defaultTab} setDefaultTab={setDefaultTab}
+          displayMode={displayMode} setDisplayMode={setDisplayMode}
+          defaultBankroll={defaultBankroll} setDefaultBankroll={setDefaultBankroll}
+          showEdgeScores={showEdgeScores} setShowEdgeScores={setShowEdgeScores}
+          showFairOdds={showFairOdds} setShowFairOdds={setShowFairOdds}
+          showHoldPercentage={showHoldPercentage} setShowHoldPercentage={setShowHoldPercentage}
+          showInjuries={showInjuries} setShowInjuries={setShowInjuries}
+          confirmBeforeDelete={confirmBeforeDelete} setConfirmBeforeDelete={setConfirmBeforeDelete}
+          autoExpandGames={autoExpandGames} setAutoExpandGames={setAutoExpandGames}
+        />
       )}
 
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -434,6 +328,19 @@ export default function BettingApp() {
           .book-line-row {
             grid-template-columns: 1fr !important;
             gap: 4px !important;
+          }
+        }
+
+        /* Tablet — show scrollable header tabs */
+        @media (min-width: 769px) and (max-width: 1200px) {
+          .header-tabs {
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+          }
+          .header-tabs::-webkit-scrollbar {
+            display: none;
           }
         }
       `}</style>

@@ -4,13 +4,13 @@ import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { kellyBet, americanToDecimal, americanToImplied } from '../utils/odds-math.js';
 
-export default function KellyCriterion() {
+export default function KellyCriterion({ defaultBankroll = '' }) {
   const { tier } = useAuth();
-  
+
   // Input states
   const [odds, setOdds] = useState('-110');
   const [winProbability, setWinProbability] = useState(55);
-  const [bankroll, setBankroll] = useState('1000');
+  const [bankroll, setBankroll] = useState(defaultBankroll || '1000');
   const [showExplainer, setShowExplainer] = useState(false);
 
   // If user is free tier, show the upgrade banner instead

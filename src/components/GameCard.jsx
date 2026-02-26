@@ -30,7 +30,8 @@ function HoldBadge({ hold }) {
 
 export default function GameCard({
   game, expanded, onToggle, watchlist, onToggleWatchlist,
-  injuries, gameLineHistory, setPendingBet
+  injuries, gameLineHistory, setPendingBet,
+  compact = false, showEdgeScores = true, showFairOdds = true, showInjuries = true
 }) {
   const { tier } = useAuth(); // Get tier for EV display
   const [copied, setCopied] = useState(false); // For share button "Copied!" tooltip
@@ -100,12 +101,12 @@ export default function GameCard({
     <div>
       {/* Clickable card header */}
       <div onClick={onToggle} className="game-card-header" style={{
-        padding: '16px 20px',
+        padding: compact ? '10px 16px' : '16px 20px',
         background: expanded ? 'rgba(99, 102, 241, 0.15)' : 'rgba(30, 41, 59, 0.6)',
         border: `1px solid ${expanded ? 'rgba(99, 102, 241, 0.4)' : 'rgba(71, 85, 105, 0.2)'}`,
-        borderRadius: '12px', cursor: 'pointer',
+        borderRadius: compact ? '8px' : '12px', cursor: 'pointer',
         display: 'grid', gridTemplateColumns: '40px 2fr 120px 120px 80px',
-        alignItems: 'center', gap: '16px'
+        alignItems: 'center', gap: compact ? '12px' : '16px'
       }}>
         {/* Watchlist star + Share button side by side */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
@@ -220,8 +221,8 @@ export default function GameCard({
               color: game.scores ? '#ef4444' : getSportColor(sportLabel),
               borderRadius: '4px', fontSize: '9px', fontWeight: 700
             }}>{game.scores ? 'LIVE' : sportLabel}</span>
-            {/* Edge Scoreâ¢ badge â Pro users see score, free users see lock */}
-            {tier === 'pro' ? (
+            {/* Edge Score badge — Pro users see score, free users see lock, respects settings */}
+            {showEdgeScores && (tier === 'pro' ? (
               <span style={{
                 padding: '1px 5px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
                 background: edgeBadge.bg, color: edgeBadge.color
@@ -231,7 +232,7 @@ export default function GameCard({
                 padding: '1px 5px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
                 background: 'rgba(100,116,139,0.2)', color: '#64748b'
               }}><Lock size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> Edge</span>
-            )}
+            ))}
             {/* Trending indicator â FREE for all users, shows when line moved 3+ times */}
             {isTrending && (
               <span style={{
@@ -247,50 +248,52 @@ export default function GameCard({
                 color: move > 0 ? '#f97316' : '#3b82f6', fontWeight: 700
               }}>{move > 0 ? '🔥 STEAM' : '❄️ FADE'}</span>
             )}
-            <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.away_team}</span>
-            {awayInjuries.length > 0 && (
+            <span style={{ fontWeight: 600, fontSize: compact ? '13px' : '14px' }}>{game.away_team}</span>
+            {showInjuries && awayInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
-                🏥 {awayInjuries.length}
+                {awayInjuries.length} INJ
               </span>
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.awayScore}</span>}
             <span style={{ color: '#64748b', fontSize: '12px' }}>@</span>
-            <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.home_team}</span>
-            {homeInjuries.length > 0 && (
+            <span style={{ fontWeight: 600, fontSize: compact ? '13px' : '14px' }}>{game.home_team}</span>
+            {showInjuries && homeInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
-                🏥 {homeInjuries.length}
+                {homeInjuries.length} INJ
               </span>
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.homeScore}</span>}
           </div>
-          {/* Fair odds summary on card */}
-          <div className="game-fair-line" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {spreadFair && <HoldBadge hold={spreadFair.hold} />}
-            {h2hFair && (
-              <span style={{ fontSize: '9px', color: '#94a3b8' }}>
-                Fair ML: {h2hFair.outcomes?.map(o => formatOdds(o.fairPrice)).join(' / ')}
-              </span>
-            )}
-            {/* Pro users see implied probabilities */}
-            {tier === 'pro' && h2hFair && (
-              <span style={{ fontSize: '9px', color: '#a78bfa' }}>
-                Win%: {h2hFair.outcomes?.map(o => `${(o.fairProb * 100).toFixed(0)}%`).join(' / ')}
-              </span>
-            )}
-            {/* Pro users see EV indicator if best odds have +EV */}
-            {tier === 'pro' && bestH2hHome && h2hFair && (() => {
-              const fairHome = h2hFair.outcomes?.find(o => o.name === game.home_team);
-              if (fairHome) {
-                const ev = calculateEV(bestH2hHome.price, fairHome.fairProb);
-                if (ev && ev > 0) return (
-                  <span style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(34,197,94,0.2)', borderRadius: '3px', color: '#22c55e', fontWeight: 700 }}>
-                    +EV {ev.toFixed(1)}%
-                  </span>
-                );
-              }
-              return null;
-            })()}
-          </div>
+          {/* Fair odds summary on card — respects showFairOdds setting */}
+          {showFairOdds && (
+            <div className="game-fair-line" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {spreadFair && <HoldBadge hold={spreadFair.hold} />}
+              {h2hFair && (
+                <span style={{ fontSize: '9px', color: '#94a3b8' }}>
+                  Fair ML: {h2hFair.outcomes?.map(o => formatOdds(o.fairPrice)).join(' / ')}
+                </span>
+              )}
+              {/* Pro users see implied probabilities */}
+              {tier === 'pro' && h2hFair && (
+                <span style={{ fontSize: '9px', color: '#a78bfa' }}>
+                  Win%: {h2hFair.outcomes?.map(o => `${(o.fairProb * 100).toFixed(0)}%`).join(' / ')}
+                </span>
+              )}
+              {/* Pro users see EV indicator if best odds have +EV */}
+              {tier === 'pro' && bestH2hHome && h2hFair && (() => {
+                const fairHome = h2hFair.outcomes?.find(o => o.name === game.home_team);
+                if (fairHome) {
+                  const ev = calculateEV(bestH2hHome.price, fairHome.fairProb);
+                  if (ev && ev > 0) return (
+                    <span style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(34,197,94,0.2)', borderRadius: '3px', color: '#22c55e', fontWeight: 700 }}>
+                      +EV {ev.toFixed(1)}%
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          )}
         </div>
 
         <div className="game-spread">
