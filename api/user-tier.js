@@ -69,17 +69,21 @@ export default async function handler(req, res) {
       return res.status(200).json({ tier: 'free' });
     }
 
-    // Check ALL matching customers for active or trialing subscriptions
+    // Check ALL matching customers for active subscriptions
     // (a user might have multiple Stripe customer records from different checkouts)
     for (const customer of customers.data) {
       const subscriptions = await stripe.subscriptions.list({
         customer: customer.id,
-        limit: 5,
+        limit: 10,
       });
 
-      // Check for any active or trialing subscription
+      // Check for any active, trialing, or past_due subscription
+      // - active: subscription is fully paid and current
+      // - trialing: subscription is in a trial period
+      // - past_due: payment failed but subscription is still technically active
+      //   (user should retain access during grace period)
       const activeSub = subscriptions.data.find(sub =>
-        sub.status === 'active' || sub.status === 'trialing'
+        sub.status === 'active' || sub.status === 'trialing' || sub.status === 'past_due'
       );
 
       if (activeSub) {
@@ -88,6 +92,38 @@ export default async function handler(req, res) {
           subscriptionId: activeSub.id,
           status: activeSub.status,
         });
+      }
+    }
+
+    // Also check for recent checkout sessions completed in the last hour
+    // This handles the race condition where subscription hasn't propagated yet
+    // but the customer has already paid
+    for (const customer of customers.data) {
+      try {
+        const sessions = await stripe.checkout.sessions.list({
+          customer: customer.id,
+          limit: 5,
+        });
+
+        const recentPaid = sessions.data.find(session => {
+          if (session.payment_status !== 'paid') return false;
+          if (session.mode !== 'subscription') return false;
+          // Check if the session was completed in the last hour
+          const createdAt = new Date(session.created * 1000);
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+          return createdAt > oneHourAgo;
+        });
+
+        if (recentPaid) {
+          return res.status(200).json({
+            tier: 'pro',
+            source: 'checkout_session',
+            sessionId: recentPaid.id,
+          });
+        }
+      } catch (e) {
+        // Non-critical: if session check fails, continue with other checks
+        console.warn('Checkout session check failed:', e.message);
       }
     }
 

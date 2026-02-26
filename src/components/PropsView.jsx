@@ -17,7 +17,9 @@ const BOOK_ABBREVIATIONS = {
   'Bet365': 'B365',
   'WynnBET': 'Wynn',
   'Unibet': 'Uni',
-  'Barstool': 'BAR'
+  'Barstool': 'BAR',
+  'BetOnline.ag': 'BOL',
+  'Bovada': 'Bov',
 };
 
 // Map market keys to display names
@@ -45,48 +47,46 @@ function formatOdds(price) {
 
 // Find the best odds from an array of book odds
 function findBestOdds(books) {
+  if (!books || books.length === 0) return null;
   return books.reduce((best, current) => {
-    // For negative odds, the one closest to 0 is best
-    // For positive odds, the highest is best
     if (best.price > 0 && current.price > 0) {
       return current.price > best.price ? current : best;
     }
     if (best.price < 0 && current.price < 0) {
       return current.price > best.price ? current : best;
     }
-    // One positive, one negative - positive is better
     return current.price > 0 ? current : best;
   });
 }
 
 // Calculate average odds
 function calculateAverageOdds(books) {
-  if (books.length === 0) return 0;
+  if (!books || books.length === 0) return 0;
   const sum = books.reduce((acc, b) => acc + b.price, 0);
   return sum / books.length;
 }
 
 // Check if odds represent significant value
 function hasEdge(bestPrice, avgPrice) {
-  // If best price is significantly better than average
-  // -110 or better is good, much better than avg is edge
+  if (!bestPrice) return false;
   if (bestPrice > 0) return bestPrice >= 105;
   return bestPrice >= -105 || (bestPrice > avgPrice + 15);
 }
 
-export default function PropsView({ playerProps, loading, propHistory }) {
+export default function PropsView({ playerProps, loading, propHistory, setPendingBet }) {
   const { tier } = useAuth();
   const [propFilter, setPropFilter] = useState('ALL');
   const [propSearch, setPropSearch] = useState('');
   const [expandedPlayers, setExpandedPlayers] = useState(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [selectedMarket, setSelectedMarket] = useState(null);
+  const [selectedProp, setSelectedProp] = useState(null);
+  const [selectedSide, setSelectedSide] = useState(null);
+  const [selectedBook, setSelectedBook] = useState(null);
 
-  // Group props by player
+  // Group props by player with separate Over/Under tracking
   const players = useMemo(() => {
     const playersMap = {};
-    
+
     playerProps.forEach(prop => {
       if (!playersMap[prop.player]) {
         playersMap[prop.player] = {
@@ -95,22 +95,28 @@ export default function PropsView({ playerProps, loading, propHistory }) {
           markets: {}
         };
       }
-      
+
       const marketKey = prop.market;
       if (!playersMap[prop.player].markets[marketKey]) {
         playersMap[prop.player].markets[marketKey] = {
           line: prop.line,
-          outcome: prop.outcome,
-          books: []
+          overBooks: [],
+          underBooks: [],
         };
       }
-      
-      playersMap[prop.player].markets[marketKey].books.push({
-        book: prop.book,
-        price: prop.price
-      });
+
+      const market = playersMap[prop.player].markets[marketKey];
+      // Update line if available
+      if (prop.line != null) market.line = prop.line;
+
+      // Separate Over and Under odds into distinct arrays
+      if (prop.outcome === 'Over') {
+        market.overBooks.push({ book: prop.book, price: prop.price });
+      } else if (prop.outcome === 'Under') {
+        market.underBooks.push({ book: prop.book, price: prop.price });
+      }
     });
-    
+
     // Convert to array and sort by number of markets (most props first)
     return Object.values(playersMap).sort((a, b) => {
       const aMarkets = Object.keys(a.markets).length;
@@ -122,22 +128,20 @@ export default function PropsView({ playerProps, loading, propHistory }) {
   // Filter players based on search and market filter
   const filteredPlayers = useMemo(() => {
     let filtered = players;
-    
-    // Search filter
+
     if (propSearch) {
       const s = propSearch.toLowerCase();
-      filtered = filtered.filter(p => 
-        p.name?.toLowerCase().includes(s) || 
+      filtered = filtered.filter(p =>
+        p.name?.toLowerCase().includes(s) ||
         p.game?.toLowerCase().includes(s)
       );
     }
-    
-    // Market filter - only show players with the selected market
+
     if (propFilter !== 'ALL') {
       const marketKey = `player_${propFilter.toLowerCase()}`;
       filtered = filtered.filter(p => p.markets[marketKey]);
     }
-    
+
     return filtered;
   }, [players, propSearch, propFilter]);
 
@@ -153,25 +157,37 @@ export default function PropsView({ playerProps, loading, propHistory }) {
     });
   };
 
-  const handleAddToTracker = (player, marketKey) => {
-    setSelectedPlayer(player);
-    setSelectedMarket(marketKey);
+  // Push prop bet to tracker
+  const handlePushToTracker = (player, marketKey, side, bookData) => {
+    if (setPendingBet) {
+      const market = player.markets[marketKey];
+      setPendingBet({
+        game: player.game || '',
+        type: 'Prop',
+        pick: `${player.name} ${getMarketDisplayName(marketKey)} ${side} ${market.line}`,
+        odds: bookData.price,
+      });
+    }
+  };
+
+  // Open modal for selecting which book/side to push
+  const openPushModal = (player, marketKey) => {
+    setSelectedProp({ player, marketKey });
+    setSelectedSide(null);
+    setSelectedBook(null);
     setShowAddModal(true);
   };
 
   const closeModal = () => {
     setShowAddModal(false);
-    setSelectedPlayer(null);
-    setSelectedMarket(null);
+    setSelectedProp(null);
+    setSelectedSide(null);
+    setSelectedBook(null);
   };
 
   const confirmAddToTracker = () => {
-    // TODO: Integrate with bet tracker
-    console.log('Adding to tracker:', {
-      player: selectedPlayer?.name,
-      market: selectedMarket,
-      ...selectedPlayer?.markets[selectedMarket]
-    });
+    if (!selectedProp || !selectedSide || !selectedBook) return;
+    handlePushToTracker(selectedProp.player, selectedProp.marketKey, selectedSide, selectedBook);
     closeModal();
   };
 
@@ -220,35 +236,35 @@ export default function PropsView({ playerProps, loading, propHistory }) {
           borderRadius: '8px', flex: '1', minWidth: '200px'
         }}>
           <Search size={14} color="#64748b" />
-          <input 
-            type="text" 
-            placeholder="Search players or teams..." 
+          <input
+            type="text"
+            placeholder="Search players or teams..."
             value={propSearch}
             onChange={e => setPropSearch(e.target.value)}
-            style={{ 
-              background: 'transparent', 
-              border: 'none', 
-              outline: 'none', 
-              color: '#e2e8f0', 
-              fontSize: '13px', 
+            style={{
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: '#e2e8f0',
+              fontSize: '13px',
               width: '100%',
               fontFamily: 'JetBrains Mono, monospace'
-            }} 
+            }}
           />
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
           {['ALL', 'POINTS', 'REBOUNDS', 'ASSISTS'].map(type => (
-            <button 
-              key={type} 
-              onClick={() => setPropFilter(type)} 
+            <button
+              key={type}
+              onClick={() => setPropFilter(type)}
               style={{
                 padding: '8px 14px',
                 background: propFilter === type ? 'rgba(99,102,241,0.3)' : 'rgba(30,41,59,0.4)',
                 border: propFilter === type ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(71,85,105,0.3)',
-                borderRadius: '6px', 
+                borderRadius: '6px',
                 color: propFilter === type ? '#f8fafc' : '#94a3b8',
-                fontSize: '11px', 
-                fontWeight: 600, 
+                fontSize: '11px',
+                fontWeight: 600,
                 cursor: 'pointer',
                 fontFamily: 'JetBrains Mono, monospace'
               }}
@@ -268,11 +284,11 @@ export default function PropsView({ playerProps, loading, propHistory }) {
           { label: 'Rebounds', value: stats.reboundsProps, color: '#22c55e' },
           { label: 'Assists', value: stats.assistsProps, color: '#3b82f6' },
         ].map((stat, i) => (
-          <div key={i} style={{ 
-            padding: '16px', 
-            background: 'rgba(30,41,59,0.5)', 
-            border: '1px solid rgba(71,85,105,0.2)', 
-            borderRadius: '10px' 
+          <div key={i} style={{
+            padding: '16px',
+            background: 'rgba(30,41,59,0.5)',
+            border: '1px solid rgba(71,85,105,0.2)',
+            borderRadius: '10px'
           }}>
             <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', fontFamily: 'JetBrains Mono, monospace' }}>
               {stat.label}
@@ -285,10 +301,10 @@ export default function PropsView({ playerProps, loading, propHistory }) {
       {/* Trending Props */}
       {trendingProps.length > 0 && (
         <div style={{ marginBottom: '20px' }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px', 
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
             marginBottom: '12px',
             fontSize: '12px',
             fontWeight: 600,
@@ -297,21 +313,21 @@ export default function PropsView({ playerProps, loading, propHistory }) {
             <Flame size={14} />
             TRENDING — Line Movement
           </div>
-          <div style={{ 
-            display: 'flex', 
-            gap: '8px', 
+          <div style={{
+            display: 'flex',
+            gap: '8px',
             overflowX: 'auto',
             paddingBottom: '8px'
           }}>
             {trendingProps.map((prop, idx) => (
-              <div 
+              <div
                 key={idx}
                 style={{
                   flexShrink: 0,
                   padding: '12px 16px',
                   background: 'rgba(30,41,59,0.6)',
-                  border: prop.movement.direction === 'up' 
-                    ? '1px solid rgba(34,197,94,0.5)' 
+                  border: prop.movement.direction === 'up'
+                    ? '1px solid rgba(34,197,94,0.5)'
                     : '1px solid rgba(239,68,68,0.5)',
                   borderRadius: '10px',
                   minWidth: '200px',
@@ -321,17 +337,17 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                   setPropSearch(prop.player);
                 }}
               >
-                <div style={{ 
-                  fontSize: '11px', 
-                  color: '#64748b', 
+                <div style={{
+                  fontSize: '11px',
+                  color: '#64748b',
                   marginBottom: '4px',
                   fontFamily: 'JetBrains Mono, monospace'
                 }}>
                   {prop.player}
                 </div>
-                <div style={{ 
-                  fontSize: '13px', 
-                  fontWeight: 600, 
+                <div style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
                   color: '#e2e8f0',
                   marginBottom: '4px'
                 }}>
@@ -367,12 +383,12 @@ export default function PropsView({ playerProps, loading, propHistory }) {
           {(tier === 'pro' ? filteredPlayers : filteredPlayers.slice(0, FREE_PLAYERS_LIMIT)).map(player => {
             const isExpanded = expandedPlayers.has(player.name);
             const marketKeys = Object.keys(player.markets);
-            const visibleMarkets = propFilter === 'ALL' 
-              ? marketKeys 
+            const visibleMarkets = propFilter === 'ALL'
+              ? marketKeys
               : marketKeys.filter(k => k.includes(propFilter.toLowerCase()));
 
             return (
-              <div 
+              <div
                 key={player.name}
                 style={{
                   background: 'rgba(30,41,59,0.6)',
@@ -382,7 +398,7 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                 }}
               >
                 {/* Player Header - Always Visible */}
-                <div 
+                <div
                   onClick={() => togglePlayerExpand(player.name)}
                   style={{
                     padding: '16px',
@@ -396,9 +412,9 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <span style={{ fontSize: '16px' }}>🏀</span>
                     <div>
-                      <div style={{ 
-                        fontWeight: 600, 
-                        fontSize: '15px', 
+                      <div style={{
+                        fontWeight: 600,
+                        fontSize: '15px',
                         color: '#e2e8f0',
                         fontFamily: 'JetBrains Mono, monospace'
                       }}>
@@ -410,8 +426,8 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ 
-                      fontSize: '11px', 
+                    <span style={{
+                      fontSize: '11px',
                       color: '#94a3b8',
                       background: 'rgba(71,85,105,0.3)',
                       padding: '4px 8px',
@@ -432,12 +448,15 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                   <div style={{ padding: '0 16px 16px' }}>
                     {visibleMarkets.map(marketKey => {
                       const market = player.markets[marketKey];
-                      const bestOdds = findBestOdds(market.books);
-                      const avgOdds = calculateAverageOdds(market.books);
-                      const isEdge = hasEdge(bestOdds.price, avgOdds);
+                      const bestOver = findBestOdds(market.overBooks);
+                      const bestUnder = findBestOdds(market.underBooks);
+                      const avgOver = calculateAverageOdds(market.overBooks);
+                      const avgUnder = calculateAverageOdds(market.underBooks);
+                      const overEdge = bestOver ? hasEdge(bestOver.price, avgOver) : false;
+                      const underEdge = bestUnder ? hasEdge(bestUnder.price, avgUnder) : false;
 
                       return (
-                        <div 
+                        <div
                           key={marketKey}
                           style={{
                             marginTop: '12px',
@@ -447,25 +466,32 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                           }}
                         >
                           {/* Market Header */}
-                          <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
                             alignItems: 'center',
-                            marginBottom: '10px'
+                            marginBottom: '12px'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ 
-                                fontSize: '12px', 
-                                fontWeight: 600, 
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: 600,
                                 color: '#e2e8f0',
                                 fontFamily: 'JetBrains Mono, monospace'
                               }}>
                                 {getMarketDisplayName(marketKey)}
                               </span>
-                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                O/U {market.line}
+                              <span style={{
+                                fontSize: '13px',
+                                fontWeight: 700,
+                                color: '#06b6d4',
+                                background: 'rgba(6,182,212,0.15)',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                              }}>
+                                {market.line}
                               </span>
-                              {isEdge && (
+                              {(overEdge || underEdge) && (
                                 <span style={{
                                   fontSize: '9px',
                                   padding: '2px 6px',
@@ -478,56 +504,144 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                                 </span>
                               )}
                             </div>
+                            {/* Quick push to tracker */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openPushModal(player, marketKey); }}
+                              style={{
+                                padding: '4px 10px',
+                                background: 'rgba(99,102,241,0.2)',
+                                border: '1px solid rgba(99,102,241,0.4)',
+                                borderRadius: '6px',
+                                color: '#818cf8',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontFamily: 'JetBrains Mono, monospace'
+                              }}
+                            >
+                              <Plus size={10} />
+                              Track
+                            </button>
                           </div>
 
-                          {/* Book Comparison Table */}
-                          <div style={{ 
-                            overflowX: 'auto',
-                            marginBottom: '8px'
-                          }}>
-                            <div style={{ 
-                              display: 'flex', 
-                              gap: '6px',
+                          {/* OVER row */}
+                          <div style={{ marginBottom: '6px' }}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              marginBottom: '6px',
+                            }}>
+                              <span style={{
+                                fontSize: '10px', fontWeight: 700, color: '#22c55e',
+                                background: 'rgba(34,197,94,0.15)',
+                                padding: '2px 8px', borderRadius: '4px',
+                                minWidth: '42px', textAlign: 'center',
+                              }}>OVER</span>
+                              {bestOver && (
+                                <span style={{ fontSize: '10px', color: '#64748b' }}>
+                                  Best: <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatOdds(bestOver.price)}</span> ({getBookAbbreviation(bestOver.book)})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{
+                              display: 'flex', gap: '6px', overflowX: 'auto',
                               minWidth: 'max-content'
                             }}>
                               {allBooks.map(book => {
-                                const bookData = market.books.find(b => b.book === book);
-                                const isBest = bookData && bookData.price === bestOdds.price;
-
+                                const bookData = market.overBooks.find(b => b.book === book);
+                                const isBest = bookData && bestOver && bookData.price === bestOver.price;
                                 return (
-                                  <div 
+                                  <div
                                     key={book}
+                                    onClick={() => bookData && handlePushToTracker(player, marketKey, 'Over', bookData)}
                                     style={{
-                                      padding: '8px 10px',
+                                      padding: '6px 8px',
                                       background: isBest ? 'rgba(34,197,94,0.15)' : 'rgba(30,41,59,0.6)',
                                       border: isBest ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(71,85,105,0.3)',
                                       borderRadius: '6px',
                                       textAlign: 'center',
-                                      minWidth: '50px'
+                                      minWidth: '48px',
+                                      cursor: bookData ? 'pointer' : 'default',
+                                      transition: 'all 0.15s',
                                     }}
+                                    title={bookData ? `Tap to track: ${player.name} ${getMarketDisplayName(marketKey)} Over ${market.line} @ ${formatOdds(bookData.price)}` : ''}
                                   >
-                                    <div style={{ 
-                                      fontSize: '9px', 
-                                      color: '#64748b',
-                                      marginBottom: '2px',
+                                    <div style={{
+                                      fontSize: '8px', color: '#64748b', marginBottom: '2px',
                                       fontFamily: 'JetBrains Mono, monospace'
                                     }}>
                                       {getBookAbbreviation(book)}
                                     </div>
-                                    <div style={{ 
-                                      fontSize: '12px', 
+                                    <div style={{
+                                      fontSize: '11px',
                                       fontWeight: isBest ? 700 : 500,
-                                      color: isBest ? '#22c55e' : '#e2e8f0',
+                                      color: bookData ? (isBest ? '#22c55e' : '#e2e8f0') : '#475569',
                                       fontFamily: 'JetBrains Mono, monospace'
                                     }}>
-                                      {bookData ? (
-                                        <>
-                                          {formatOdds(bookData.price)}
-                                          {isBest && <span style={{ marginLeft: '2px' }}>✓</span>}
-                                        </>
-                                      ) : (
-                                        <span style={{ color: '#475569' }}>—</span>
-                                      )}
+                                      {bookData ? formatOdds(bookData.price) : '—'}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* UNDER row */}
+                          <div>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              marginBottom: '6px',
+                            }}>
+                              <span style={{
+                                fontSize: '10px', fontWeight: 700, color: '#ef4444',
+                                background: 'rgba(239,68,68,0.15)',
+                                padding: '2px 8px', borderRadius: '4px',
+                                minWidth: '42px', textAlign: 'center',
+                              }}>UNDER</span>
+                              {bestUnder && (
+                                <span style={{ fontSize: '10px', color: '#64748b' }}>
+                                  Best: <span style={{ color: '#ef4444', fontWeight: 600 }}>{formatOdds(bestUnder.price)}</span> ({getBookAbbreviation(bestUnder.book)})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{
+                              display: 'flex', gap: '6px', overflowX: 'auto',
+                              minWidth: 'max-content'
+                            }}>
+                              {allBooks.map(book => {
+                                const bookData = market.underBooks.find(b => b.book === book);
+                                const isBest = bookData && bestUnder && bookData.price === bestUnder.price;
+                                return (
+                                  <div
+                                    key={book}
+                                    onClick={() => bookData && handlePushToTracker(player, marketKey, 'Under', bookData)}
+                                    style={{
+                                      padding: '6px 8px',
+                                      background: isBest ? 'rgba(239,68,68,0.12)' : 'rgba(30,41,59,0.6)',
+                                      border: isBest ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(71,85,105,0.3)',
+                                      borderRadius: '6px',
+                                      textAlign: 'center',
+                                      minWidth: '48px',
+                                      cursor: bookData ? 'pointer' : 'default',
+                                      transition: 'all 0.15s',
+                                    }}
+                                    title={bookData ? `Tap to track: ${player.name} ${getMarketDisplayName(marketKey)} Under ${market.line} @ ${formatOdds(bookData.price)}` : ''}
+                                  >
+                                    <div style={{
+                                      fontSize: '8px', color: '#64748b', marginBottom: '2px',
+                                      fontFamily: 'JetBrains Mono, monospace'
+                                    }}>
+                                      {getBookAbbreviation(book)}
+                                    </div>
+                                    <div style={{
+                                      fontSize: '11px',
+                                      fontWeight: isBest ? 700 : 500,
+                                      color: bookData ? (isBest ? '#ef4444' : '#e2e8f0') : '#475569',
+                                      fontFamily: 'JetBrains Mono, monospace'
+                                    }}>
+                                      {bookData ? formatOdds(bookData.price) : '—'}
                                     </div>
                                   </div>
                                 );
@@ -537,31 +651,6 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                         </div>
                       );
                     })}
-
-                    {/* Add to Bet Tracker Button */}
-                    <button
-                      onClick={() => handleAddToTracker(player, visibleMarkets[0])}
-                      style={{
-                        marginTop: '16px',
-                        width: '100%',
-                        padding: '10px 16px',
-                        background: 'rgba(99,102,241,0.2)',
-                        border: '1px solid rgba(99,102,241,0.4)',
-                        borderRadius: '8px',
-                        color: '#818cf8',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        fontFamily: 'JetBrains Mono, monospace'
-                      }}
-                    >
-                      <Plus size={14} />
-                      Add to Bet Tracker
-                    </button>
                   </div>
                 )}
               </div>
@@ -580,15 +669,15 @@ export default function PropsView({ playerProps, loading, propHistory }) {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '12px',
-                  filter: 'blur(6px)', 
-                  opacity: 0.4, 
+                  filter: 'blur(6px)',
+                  opacity: 0.4,
                   pointerEvents: 'none',
                 }}>
                   {filteredPlayers.slice(FREE_PLAYERS_LIMIT, FREE_PLAYERS_LIMIT + 2).map(player => (
                     <div key={player.name} style={{
-                      padding: '16px', 
+                      padding: '16px',
                       background: 'rgba(30,41,59,0.6)',
-                      border: '1px solid rgba(71,85,105,0.3)', 
+                      border: '1px solid rgba(71,85,105,0.3)',
                       borderRadius: '12px',
                     }}>
                       <div style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0' }}>{player.name}</div>
@@ -599,14 +688,14 @@ export default function PropsView({ playerProps, loading, propHistory }) {
 
                 {/* Lock overlay */}
                 <div style={{
-                  position: 'absolute', 
-                  top: 0, 
-                  left: 0, 
-                  right: 0, 
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
                   bottom: 0,
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  alignItems: 'center', 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
                   justifyContent: 'center',
                   background: 'rgba(15, 23, 42, 0.6)',
                   borderRadius: '12px',
@@ -630,115 +719,155 @@ export default function PropsView({ playerProps, loading, propHistory }) {
         </div>
       )}
 
-      {/* Add to Bet Tracker Modal */}
-      {showAddModal && selectedPlayer && selectedMarket && (
+      {/* Push to Bet Tracker Modal */}
+      {showAddModal && selectedProp && (
         <div style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '20px'
-        }}>
-          <div style={{
-            background: 'rgba(30,41,59,0.95)',
-            border: '1px solid rgba(71,85,105,0.4)',
-            borderRadius: '12px',
-            padding: '24px',
-            maxWidth: '400px',
-            width: '100%'
-          }}>
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: '20px'
+        }}
+        onClick={closeModal}
+        >
+          <div
+            style={{
+              background: 'rgba(30,41,59,0.95)',
+              border: '1px solid rgba(71,85,105,0.4)',
+              borderRadius: '12px', padding: '24px',
+              maxWidth: '420px', width: '100%',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, color: '#e2e8f0', fontSize: '16px', fontFamily: 'JetBrains Mono, monospace' }}>
-                Add to Bet Tracker
+                Push to Bet Tracker
               </h3>
-              <button 
-                onClick={closeModal}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px'
-                }}
-              >
+              <button onClick={closeModal} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px' }}>
                 <X size={18} color="#94a3b8" />
               </button>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '14px', color: '#e2e8f0', marginBottom: '4px', fontWeight: 600 }}>
-                {selectedPlayer.name}
+                {selectedProp.player.name}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {getMarketDisplayName(selectedMarket)} O/U {selectedPlayer.markets[selectedMarket]?.line}
+                {getMarketDisplayName(selectedProp.marketKey)} — Line: {selectedProp.player.markets[selectedProp.marketKey]?.line}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                {selectedProp.player.game}
               </div>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>
-                Select Sportsbook
+            {/* Side Selection */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '11px', color: '#64748b', marginBottom: '8px', fontWeight: 600 }}>
+                Select Side
               </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {selectedPlayer.markets[selectedMarket]?.books.map(bookData => (
-                  <button
-                    key={bookData.book}
-                    style={{
-                      padding: '8px 12px',
-                      background: 'rgba(99,102,241,0.2)',
-                      border: '1px solid rgba(99,102,241,0.4)',
-                      borderRadius: '6px',
-                      color: '#818cf8',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontFamily: 'JetBrains Mono, monospace'
-                    }}
-                  >
-                    {getBookAbbreviation(bookData.book)} {formatOdds(bookData.price)}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => { setSelectedSide('Over'); setSelectedBook(null); }}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: selectedSide === 'Over' ? 'rgba(34,197,94,0.2)' : 'rgba(30,41,59,0.6)',
+                    border: selectedSide === 'Over' ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.3)',
+                    borderRadius: '8px',
+                    color: selectedSide === 'Over' ? '#22c55e' : '#94a3b8',
+                    fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                >
+                  OVER {selectedProp.player.markets[selectedProp.marketKey]?.line}
+                </button>
+                <button
+                  onClick={() => { setSelectedSide('Under'); setSelectedBook(null); }}
+                  style={{
+                    flex: 1, padding: '10px',
+                    background: selectedSide === 'Under' ? 'rgba(239,68,68,0.2)' : 'rgba(30,41,59,0.6)',
+                    border: selectedSide === 'Under' ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(71,85,105,0.3)',
+                    borderRadius: '8px',
+                    color: selectedSide === 'Under' ? '#ef4444' : '#94a3b8',
+                    fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                    fontFamily: 'JetBrains Mono, monospace',
+                  }}
+                >
+                  UNDER {selectedProp.player.markets[selectedProp.marketKey]?.line}
+                </button>
               </div>
             </div>
+
+            {/* Book Selection (shown after side is picked) */}
+            {selectedSide && (
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#64748b', marginBottom: '8px', fontWeight: 600 }}>
+                  Select Sportsbook & Odds
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {(selectedSide === 'Over'
+                    ? selectedProp.player.markets[selectedProp.marketKey]?.overBooks
+                    : selectedProp.player.markets[selectedProp.marketKey]?.underBooks
+                  )?.map(bookData => (
+                    <button
+                      key={bookData.book}
+                      onClick={() => setSelectedBook(bookData)}
+                      style={{
+                        padding: '8px 12px',
+                        background: selectedBook?.book === bookData.book ? 'rgba(99,102,241,0.3)' : 'rgba(30,41,59,0.6)',
+                        border: selectedBook?.book === bookData.book ? '1px solid rgba(99,102,241,0.6)' : '1px solid rgba(71,85,105,0.3)',
+                        borderRadius: '6px',
+                        color: selectedBook?.book === bookData.book ? '#818cf8' : '#e2e8f0',
+                        fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                        fontFamily: 'JetBrains Mono, monospace',
+                      }}
+                    >
+                      {getBookAbbreviation(bookData.book)} {formatOdds(bookData.price)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Summary */}
+            {selectedSide && selectedBook && (
+              <div style={{
+                padding: '12px', background: 'rgba(99,102,241,0.1)',
+                border: '1px solid rgba(99,102,241,0.3)',
+                borderRadius: '8px', marginBottom: '16px',
+                fontSize: '12px', color: '#e2e8f0',
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+                  {selectedProp.player.name} — {getMarketDisplayName(selectedProp.marketKey)} {selectedSide} {selectedProp.player.markets[selectedProp.marketKey]?.line}
+                </div>
+                <div style={{ color: '#94a3b8' }}>
+                  @ {formatOdds(selectedBook.price)} via {selectedBook.book}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={closeModal}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  background: 'rgba(71,85,105,0.3)',
-                  border: '1px solid rgba(71,85,105,0.5)',
-                  borderRadius: '8px',
-                  color: '#94a3b8',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'JetBrains Mono, monospace'
-                }}
-              >
+              <button onClick={closeModal} style={{
+                flex: 1, padding: '10px 16px',
+                background: 'rgba(71,85,105,0.3)', border: '1px solid rgba(71,85,105,0.5)',
+                borderRadius: '8px', color: '#94a3b8', fontSize: '12px', fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace',
+              }}>
                 Cancel
               </button>
               <button
                 onClick={confirmAddToTracker}
+                disabled={!selectedSide || !selectedBook}
                 style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  background: 'rgba(99,102,241,0.3)',
-                  border: '1px solid rgba(99,102,241,0.5)',
-                  borderRadius: '8px',
-                  color: '#818cf8',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'JetBrains Mono, monospace'
+                  flex: 1, padding: '10px 16px',
+                  background: (selectedSide && selectedBook) ? 'rgba(99,102,241,0.3)' : 'rgba(71,85,105,0.2)',
+                  border: '1px solid rgba(99,102,241,0.5)', borderRadius: '8px',
+                  color: (selectedSide && selectedBook) ? '#818cf8' : '#475569',
+                  fontSize: '12px', fontWeight: 600,
+                  cursor: (selectedSide && selectedBook) ? 'pointer' : 'not-allowed',
+                  fontFamily: 'JetBrains Mono, monospace',
                 }}
               >
-                Add Bet
+                Push to Tracker
               </button>
             </div>
           </div>

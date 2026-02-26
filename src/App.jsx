@@ -44,10 +44,15 @@ export default function BettingApp() {
     if (params.get('checkout') === 'success') {
       setShowCheckoutToast(true);
       // Re-fetch the user's tier now that they've paid
+      // refreshTier uses retry logic (5 attempts with exponential backoff)
+      // to account for Stripe subscription propagation delay
       refreshTier();
       // Clean up the URL so the toast doesn't show again on refresh
       window.history.replaceState({}, '', window.location.pathname);
       setTimeout(() => setShowCheckoutToast(false), 5000);
+      // Safety net: re-check tier again after 15 seconds in case the
+      // initial retry cycle completed before Stripe finalized
+      setTimeout(() => refreshTier(), 15000);
     } else if (params.get('checkout') === 'cancel') {
       setShowCancelToast(true);
       window.history.replaceState({}, '', window.location.pathname);
@@ -234,7 +239,7 @@ export default function BettingApp() {
       )}
 
       {activeTab === 'PROPS' && (
-        <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} />
+        <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} />
       )}
 
       {activeTab === 'EV CALC' && (

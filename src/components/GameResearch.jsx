@@ -130,40 +130,136 @@ function TeamStatsCard({ teamData, isHome }) {
         </div>
       </div>
 
-      {/* Stats Grid - HIDDEN: Data fetching still works but display removed until stats are accurate */}
-      {/* {stats && (stats.ppg || stats.papg) && (
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr', 
+      {/* SU & ATS Records */}
+      {teamData.suRecord && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: teamData.atsRecord ? '1fr 1fr' : '1fr',
           gap: '8px',
           marginBottom: '16px'
         }}>
-          {stats.ppg && (
-            <div style={{ padding: '8px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>PPG</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#22c55e' }}>{stats.ppg}</div>
+          {/* SU Record */}
+          <div style={{
+            padding: '10px',
+            background: 'rgba(99, 102, 241, 0.1)',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '10px', color: '#818cf8', fontWeight: 700, marginBottom: '4px', letterSpacing: '0.5px' }}>
+              SU RECORD
             </div>
-          )}
-          {stats.papg && (
-            <div style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>PAPG</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#ef4444' }}>{stats.papg}</div>
+            <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>
+              {teamData.suRecord.wins}-{teamData.suRecord.losses}
             </div>
-          )}
-          {stats.fgPct && (
-            <div style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>FG%</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#818cf8' }}>{stats.fgPct}</div>
+            {teamData.suRecord.winPct && (
+              <div style={{
+                fontSize: '11px',
+                color: parseFloat(teamData.suRecord.winPct) >= 55 ? '#22c55e' : parseFloat(teamData.suRecord.winPct) <= 40 ? '#ef4444' : '#eab308',
+                fontWeight: 600,
+                marginTop: '2px',
+              }}>
+                {teamData.suRecord.winPct}%
+              </div>
+            )}
+          </div>
+
+          {/* ATS Record */}
+          {teamData.atsRecord ? (
+            <div style={{
+              padding: '10px',
+              background: 'rgba(34, 197, 94, 0.08)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '10px', color: '#22c55e', fontWeight: 700, marginBottom: '4px', letterSpacing: '0.5px' }}>
+                ATS RECORD
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>
+                {teamData.atsRecord.covers}-{teamData.atsRecord.losses}{teamData.atsRecord.pushes > 0 ? `-${teamData.atsRecord.pushes}` : ''}
+              </div>
+              {teamData.atsRecord.coverPct && (
+                <div style={{
+                  fontSize: '11px',
+                  color: parseFloat(teamData.atsRecord.coverPct) >= 55 ? '#22c55e' : parseFloat(teamData.atsRecord.coverPct) <= 40 ? '#ef4444' : '#eab308',
+                  fontWeight: 600,
+                  marginTop: '2px',
+                }}>
+                  {teamData.atsRecord.coverPct}% cover
+                </div>
+              )}
             </div>
-          )}
-          {stats.threePtPct && (
-            <div style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>3P%</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#818cf8' }}>{stats.threePtPct}</div>
+          ) : (
+            <div style={{
+              padding: '10px',
+              background: 'rgba(100, 116, 139, 0.08)',
+              border: '1px solid rgba(100, 116, 139, 0.15)',
+              borderRadius: '8px',
+              textAlign: 'center',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
+                Not enough to edge about
+              </div>
             </div>
           )}
         </div>
-      )} */}
+      )}
+
+      {/* O/U Record */}
+      {teamData.ouRecord && (
+        <div style={{
+          padding: '8px 12px',
+          background: 'rgba(30, 41, 59, 0.5)',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+        }}>
+          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>O/U:</span>
+          <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 600 }}>
+            {teamData.ouRecord.overs}O
+          </span>
+          <span style={{ fontSize: '10px', color: '#475569' }}>-</span>
+          <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600 }}>
+            {teamData.ouRecord.unders}U
+          </span>
+          {teamData.ouRecord.pushes > 0 && (
+            <>
+              <span style={{ fontSize: '10px', color: '#475569' }}>-</span>
+              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                {teamData.ouRecord.pushes}P
+              </span>
+            </>
+          )}
+          <span style={{ fontSize: '10px', color: '#475569' }}>
+            (last {teamData.ouRecord.total})
+          </span>
+        </div>
+      )}
+
+      {/* Average Margin */}
+      {teamData.avgMargin && (
+        <div style={{
+          padding: '6px 12px',
+          background: 'rgba(30, 41, 59, 0.3)',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          textAlign: 'center',
+          fontSize: '11px',
+          color: '#94a3b8',
+        }}>
+          Avg margin: <span style={{
+            fontWeight: 700,
+            color: parseFloat(teamData.avgMargin) >= 0 ? '#22c55e' : '#ef4444',
+          }}>{parseFloat(teamData.avgMargin) >= 0 ? '+' : ''}{teamData.avgMargin}</span> pts
+        </div>
+      )}
 
       {/* Recent Games */}
       <div style={{ marginTop: '12px' }}>
@@ -330,13 +426,25 @@ function H2H({ games, homeTeam, awayTeam }) {
 }
 
 // Trends Component
-function Trends({ trends }) {
+function Trends({ trends, hasATSData, hasSUData }) {
   if (!trends || trends.length === 0) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-        <TrendingUp size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
-        <div style={{ fontSize: '13px', marginBottom: '4px' }}>No significant trends</div>
-        <div style={{ fontSize: '11px', opacity: 0.7 }}>Check back closer to game time</div>
+      <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+        <TrendingUp size={32} style={{ marginBottom: '12px', opacity: 0.4, color: '#64748b' }} />
+        <div style={{
+          fontSize: '15px',
+          fontWeight: 700,
+          color: '#94a3b8',
+          marginBottom: '8px',
+          fontStyle: 'italic',
+        }}>
+          Not enough to edge about
+        </div>
+        <div style={{ fontSize: '11px', color: '#64748b', maxWidth: '260px', margin: '0 auto' }}>
+          {!hasSUData && !hasATSData
+            ? 'Insufficient data for accurate ATS and SU trends. Check back when more games are available.'
+            : 'No actionable trends detected for this matchup yet.'}
+        </div>
       </div>
     );
   }
@@ -634,7 +742,6 @@ function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }
   const fetchResearch = async () => {
     setLoading(true);
     setError(null);
-    setRenderError(null);
     
     try {
       const timestamp = Date.now();
@@ -762,8 +869,8 @@ function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }
         {[
           { key: 'form', label: 'Team Form', icon: Activity, count: (data?.meta?.homeGamesFound || 0) + (data?.meta?.awayGamesFound || 0) },
           { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length || 0 },
-          { key: 'trends', label: 'Trends', icon: TrendingUp, count: trendCount },
-        ].filter(tab => tab.count > 0 || tab.key === 'form').map((tab) => (
+          { key: 'trends', label: 'ATS/SU', icon: TrendingUp, count: trendCount },
+        ].filter(tab => tab.count > 0 || tab.key === 'form' || tab.key === 'trends').map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -819,7 +926,7 @@ function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }
         )}
         
         {activeTab === 'trends' && (
-          <Trends trends={data?.trends} />
+          <Trends trends={data?.trends} hasATSData={data?.hasATSData} hasSUData={data?.hasSUData} />
         )}
       </div>
 

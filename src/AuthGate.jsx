@@ -24,11 +24,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // refreshTier — re-fetches the user's tier from the API
-  // Uses retry logic because Stripe can take a few seconds to finalize
-  // the subscription after checkout completes
+  // Uses retry logic because Stripe can take several seconds to finalize
+  // the subscription after checkout completes. 5 retries with 2s exponential backoff.
   const refreshTier = async () => {
     if (user?.email) {
-      const userTier = await getUserTierWithRetry(user.email, 3);
+      const userTier = await getUserTierWithRetry(user.email, 5);
       setTier(userTier);
     }
   };
