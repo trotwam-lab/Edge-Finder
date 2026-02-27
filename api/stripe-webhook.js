@@ -15,14 +15,12 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// Initialize Firebase Admin (only once — getApps() prevents double-init)
-if (getApps().length === 0) {
-  initializeApp({
-    projectId: 'edgefinder-9d42e',
-    // In production, use a service account key. For now, using project ID only
-    // works if Firestore rules allow or if running with proper credentials
-  });
+if (getApps().length === 0) {                                                                                                                                              
+     const serviceAccount = JSON.parse(process.env.FIREBASE_ SERVICE_ACCOUNT);                                                                                                
+     initializeApp({                                                                                                                                                          
+       credential: cert(serviceAccount)                                                                                                                                       
+     });                                                                                                                                                                      
+   }         });
 }
 
 const db = getFirestore();
