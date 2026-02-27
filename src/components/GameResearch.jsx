@@ -131,6 +131,23 @@ function TeamStatsCard({ teamData, isHome }) {
       </div>
 
       {/* SU & ATS Records */}
+      {!teamData.suRecord && !teamData.atsRecord && (
+        <div style={{
+          padding: '14px',
+          background: 'rgba(100, 116, 139, 0.08)',
+          border: '1px solid rgba(100, 116, 139, 0.15)',
+          borderRadius: '8px',
+          textAlign: 'center',
+          marginBottom: '16px',
+        }}>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', fontWeight: 600 }}>
+            Not enough to edge about
+          </div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
+            Insufficient game data for SU/ATS records
+          </div>
+        </div>
+      )}
       {teamData.suRecord && (
         <div style={{
           display: 'grid',

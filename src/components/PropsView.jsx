@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Loader, Lock, ChevronDown, ChevronUp, Plus, X, Flame } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Search, Loader, Lock, ChevronDown, ChevronUp, Plus, X, Flame, Check } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 
@@ -82,6 +82,7 @@ export default function PropsView({ playerProps, loading, propHistory, setPendin
   const [selectedProp, setSelectedProp] = useState(null);
   const [selectedSide, setSelectedSide] = useState(null);
   const [selectedBook, setSelectedBook] = useState(null);
+  const [pushToast, setPushToast] = useState(null);
 
   // Group props by player with separate Over/Under tracking
   const players = useMemo(() => {
@@ -157,18 +158,22 @@ export default function PropsView({ playerProps, loading, propHistory, setPendin
     });
   };
 
-  // Push prop bet to tracker
-  const handlePushToTracker = (player, marketKey, side, bookData) => {
+  // Push prop bet to tracker with visual feedback
+  const handlePushToTracker = useCallback((player, marketKey, side, bookData) => {
     if (setPendingBet) {
       const market = player.markets[marketKey];
+      const pick = `${player.name} ${getMarketDisplayName(marketKey)} ${side} ${market.line}`;
       setPendingBet({
         game: player.game || '',
         type: 'Prop',
-        pick: `${player.name} ${getMarketDisplayName(marketKey)} ${side} ${market.line}`,
+        pick,
         odds: bookData.price,
       });
+      // Show brief toast so user knows it worked
+      setPushToast(`${pick} @ ${formatOdds(bookData.price)} → Tracker`);
+      setTimeout(() => setPushToast(null), 2000);
     }
-  };
+  }, [setPendingBet]);
 
   // Open modal for selecting which book/side to push
   const openPushModal = (player, marketKey) => {
@@ -228,6 +233,22 @@ export default function PropsView({ playerProps, loading, propHistory, setPendin
 
   return (
     <div style={{ padding: '20px 24px' }}>
+      {/* Push-to-tracker toast */}
+      {pushToast && (
+        <div style={{
+          position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+          padding: '10px 18px', background: 'rgba(99, 102, 241, 0.95)',
+          borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: 600,
+          zIndex: 9999, boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          fontFamily: "'JetBrains Mono', monospace",
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <Check size={14} />
+          {pushToast}
+        </div>
+      )}
+
       {/* Search and Filters */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <div style={{

@@ -803,12 +803,90 @@ function calculateTrends(homeStats, awayStats, h2hGames, homeTeam, awayTeam) {
         icon: '📈',
       });
     } else if (ou.unders >= ou.overs + 2) {
+      const underPct = ((ou.unders / (ou.overs + ou.unders)) * 100).toFixed(0);
       trends.push({
         type: 'HOME_OU',
         label: `${homeTeam?.split(' ').pop()} O/U: ${ou.overs}-${ou.unders}`,
-        description: `Games leaning Under in last ${ou.total}`,
+        description: `${underPct}% of games going Under in last ${ou.total}`,
         confidence: 'medium',
         icon: '📉',
+      });
+    }
+  }
+
+  if (awayStats?.ouRecord && awayStats.ouRecord.total >= 3) {
+    const ou = awayStats.ouRecord;
+    const overPct = ((ou.overs / (ou.overs + ou.unders)) * 100).toFixed(0);
+    if (ou.overs >= ou.unders + 2) {
+      trends.push({
+        type: 'AWAY_OU',
+        label: `${awayTeam?.split(' ').pop()} O/U: ${ou.overs}-${ou.unders}`,
+        description: `${overPct}% of games going Over in last ${ou.total}`,
+        confidence: 'medium',
+        icon: '📈',
+      });
+    } else if (ou.unders >= ou.overs + 2) {
+      const underPct = ((ou.unders / (ou.overs + ou.unders)) * 100).toFixed(0);
+      trends.push({
+        type: 'AWAY_OU',
+        label: `${awayTeam?.split(' ').pop()} O/U: ${ou.overs}-${ou.unders}`,
+        description: `${underPct}% of games going Under in last ${ou.total}`,
+        confidence: 'medium',
+        icon: '📉',
+      });
+    }
+  }
+
+  // --- Home/Away ATS Split Trends ---
+  // These show how each team covers specifically at home or on the road
+  if (homeStats?.atsRecord?.home && homeStats.atsRecord.home.total >= 2) {
+    const h = homeStats.atsRecord.home;
+    const pct = (h.total > 0) ? ((h.covers / h.total) * 100).toFixed(0) : 0;
+    if (parseInt(pct) >= 70) {
+      trends.push({
+        type: 'HOME_ATS_HOME',
+        label: `${homeTeam?.split(' ').pop()} ATS at home: ${h.covers}-${h.losses}`,
+        description: `Covering ${pct}% at home — strong home-court ATS edge`,
+        confidence: 'high',
+        icon: '🏠',
+      });
+    }
+  }
+
+  if (awayStats?.atsRecord?.away && awayStats.atsRecord.away.total >= 2) {
+    const a = awayStats.atsRecord.away;
+    const pct = (a.total > 0) ? ((a.covers / a.total) * 100).toFixed(0) : 0;
+    if (parseInt(pct) >= 70) {
+      trends.push({
+        type: 'AWAY_ATS_AWAY',
+        label: `${awayTeam?.split(' ').pop()} ATS on road: ${a.covers}-${a.losses}`,
+        description: `Covering ${pct}% on the road — sharp road ATS value`,
+        confidence: 'high',
+        icon: '✈️',
+      });
+    }
+  }
+
+  // --- Rest Day Advantage ---
+  // Flag significant rest day differences
+  const homeRestDays = homeStats?.recentGames?.[0]
+    ? Math.floor((Date.now() - new Date(homeStats.recentGames[0].date).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const awayRestDays = awayStats?.recentGames?.[0]
+    ? Math.floor((Date.now() - new Date(awayStats.recentGames[0].date).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  if (homeRestDays !== null && awayRestDays !== null) {
+    const diff = Math.abs(homeRestDays - awayRestDays);
+    if (diff >= 2) {
+      const rested = homeRestDays > awayRestDays ? homeTeam : awayTeam;
+      const tired = homeRestDays > awayRestDays ? awayTeam : homeTeam;
+      trends.push({
+        type: 'REST',
+        label: `Rest edge: ${rested?.split(' ').pop()} (${Math.max(homeRestDays, awayRestDays)}d vs ${Math.min(homeRestDays, awayRestDays)}d)`,
+        description: `${rested?.split(' ').pop()} has ${diff} more rest days than ${tired?.split(' ').pop()} — fatigue factor`,
+        confidence: diff >= 3 ? 'high' : 'medium',
+        icon: '😴',
       });
     }
   }
@@ -1009,14 +1087,18 @@ export default async function handler(req, res) {
           team: homeTeam,
           logo: buildLogoUrl(homeESPNId),
           record: homeStats ? `${homeStats.wins}-${homeStats.losses}` : 'N/A',
-          restDays: null,
+          restDays: homeGames.length > 0
+            ? Math.floor((Date.now() - new Date(homeGames[0].date).getTime()) / (1000 * 60 * 60 * 24))
+            : null,
         } : null,
         away: awayStats ? {
           ...awayStats,
           team: awayTeam,
           logo: buildLogoUrl(awayESPNId),
           record: awayStats ? `${awayStats.wins}-${awayStats.losses}` : 'N/A',
-          restDays: null,
+          restDays: awayGames.length > 0
+            ? Math.floor((Date.now() - new Date(awayGames[0].date).getTime()) / (1000 * 60 * 60 * 24))
+            : null,
         } : null,
       },
       h2h: h2hGames,

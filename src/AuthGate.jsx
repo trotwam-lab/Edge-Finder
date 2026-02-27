@@ -36,17 +36,28 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
+    // Detect if user is returning from Stripe checkout — if so, use retry logic
+    // because Stripe can take several seconds to propagate the subscription
+    const isCheckoutReturn = new URLSearchParams(window.location.search).get('checkout') === 'success';
+
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
         console.log('[Firebase] Auth state: signed in —', u.email, '(uid:', u.uid, ')');
-        // User is logged in — check their subscription tier via email
-        const userTier = await getUserTier(u.email);
-        console.log('[Firebase] Tier resolved:', userTier, 'for', u.email);
-        setTier(userTier);
+        if (isCheckoutReturn) {
+          // Checkout return: use retry logic so Stripe has time to propagate
+          console.log('[Firebase] Checkout return detected — using retry logic for tier check');
+          const userTier = await getUserTierWithRetry(u.email, 5);
+          console.log('[Firebase] Tier resolved (with retry):', userTier, 'for', u.email);
+          setTier(userTier);
+        } else {
+          // Normal login — single check is fine
+          const userTier = await getUserTier(u.email);
+          console.log('[Firebase] Tier resolved:', userTier, 'for', u.email);
+          setTier(userTier);
+        }
       } else {
         console.log('[Firebase] Auth state: signed out');
-        // User logged out — reset to free
         setTier('free');
       }
       setLoading(false);
