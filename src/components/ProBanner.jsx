@@ -3,20 +3,47 @@
 // When they click "Upgrade", we call our API to create a Stripe checkout session,
 // then redirect them to Stripe's payment page
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Lock, Zap, Check } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import { PRO_FEATURES } from '../constants.js';
 
 export default function ProBanner({ compact = false }) {
   const { user } = useAuth();
+  const [upgrading, setUpgrading] = useState(false);
 
   // Called when user clicks "Upgrade to Pro"
-  // Using Stripe Payment Link (simpler, no API key needed on frontend)
-  const handleUpgrade = () => {
-    // Stripe Payment Link for Pro subscription
-    const paymentLink = 'https://buy.stripe.com/dRmdR2aYjdXkaH6blf3F603';
-    window.location.href = paymentLink;
+  // Calls our API to create a Stripe Checkout session with the authenticated user's
+  // firebaseUID and email, so webhooks can link the purchase back to their account
+  const handleUpgrade = async () => {
+    if (!user) {
+      console.warn('[Firebase] Checkout blocked — user not authenticated');
+      return;
+    }
+
+    setUpgrading(true);
+    console.log('[Firebase] Creating checkout session for:', user.email, '(uid:', user.uid, ')');
+
+    try {
+      const res = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid, email: user.email }),
+      });
+
+      const data = await res.json();
+
+      if (data.url) {
+        console.log('[Firebase] Redirecting to Stripe checkout');
+        window.location.href = data.url;
+      } else {
+        console.error('[Firebase] Checkout session creation failed:', data.error);
+        setUpgrading(false);
+      }
+    } catch (err) {
+      console.error('[Firebase] Checkout request error:', err);
+      setUpgrading(false);
+    }
   };
 
   // Compact version â small inline banner for locked features
@@ -33,15 +60,16 @@ export default function ProBanner({ compact = false }) {
         <span style={{ fontSize: '12px', color: '#c4b5fd', flex: 1 }}>
           Pro feature â unlock all sportsbooks & tools
         </span>
-        <button onClick={handleUpgrade} style={{
+        <button onClick={handleUpgrade} disabled={upgrading} style={{
           padding: '6px 14px',
           background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
           border: 'none', borderRadius: '6px',
           color: '#fff', fontSize: '11px', fontWeight: 700,
-          cursor: 'pointer',
+          cursor: upgrading ? 'not-allowed' : 'pointer',
+          opacity: upgrading ? 0.7 : 1,
           fontFamily: "'JetBrains Mono', monospace",
         }}>
-          Upgrade
+          {upgrading ? 'Loading...' : 'Upgrade'}
         </button>
       </div>
     );
@@ -98,17 +126,18 @@ export default function ProBanner({ compact = false }) {
       </div>
 
       {/* CTA Button */}
-      <button onClick={handleUpgrade} style={{
+      <button onClick={handleUpgrade} disabled={upgrading} style={{
         width: '100%', padding: '14px',
         background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
         border: 'none', borderRadius: '10px',
         color: '#fff', fontSize: '14px', fontWeight: 700,
-        cursor: 'pointer',
+        cursor: upgrading ? 'not-allowed' : 'pointer',
+        opacity: upgrading ? 0.7 : 1,
         fontFamily: "'JetBrains Mono', monospace",
         position: 'relative',
         transition: 'transform 0.15s',
       }}>
-        Upgrade to Pro — {PRO_FEATURES.price}
+        {upgrading ? 'Setting up checkout...' : `Upgrade to Pro — ${PRO_FEATURES.price}`}
       </button>
 
       <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: '#64748b' }}>

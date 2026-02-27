@@ -33,9 +33,11 @@ export const db = getFirestore(app);
 // This asks Stripe (via our serverless function) if the user is Pro or Free
 export async function getUserTier(email) {
   try {
+    console.log('[Firebase] Checking tier for:', email);
     const response = await fetch(`/api/user-tier?email=${encodeURIComponent(email)}`);
     const data = await response.json();
     const tier = data.tier || 'free';
+    console.log('[Firebase] API returned tier:', tier, data.admin ? '(admin)' : data.complimentary ? '(complimentary)' : '');
 
     // Cache the tier in Firestore so we have a persistent fallback
     // This also helps with the race condition after Stripe checkout
@@ -46,29 +48,33 @@ export async function getUserTier(email) {
           email,
           checkedAt: new Date().toISOString(),
         }, { merge: true });
+        console.log('[Firebase] Cached pro tier in Firestore for uid:', auth.currentUser.uid);
       } catch (e) {
-        // Non-critical: Firestore write failure shouldn't block the tier check
+        console.warn('[Firebase] Firestore cache write failed:', e.message);
       }
     }
 
     return tier;
   } catch (err) {
-    console.error('Error fetching user tier:', err);
+    console.error('[Firebase] Error fetching user tier:', err);
 
     // Fallback: check Firestore cache if API call fails
     if (auth.currentUser) {
       try {
+        console.log('[Firebase] API failed — checking Firestore cache for uid:', auth.currentUser.uid);
         const cached = await getDoc(doc(db, 'users', auth.currentUser.uid, 'data', 'tier'));
         if (cached.exists() && cached.data()?.tier === 'pro') {
           // Verify the cache isn't stale (within last 7 days)
           const checkedAt = new Date(cached.data().checkedAt);
           const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
           if (checkedAt > sevenDaysAgo) {
+            console.log('[Firebase] Using cached pro tier (checked:', cached.data().checkedAt, ')');
             return 'pro';
           }
+          console.warn('[Firebase] Cached tier is stale (older than 7 days)');
         }
       } catch (e) {
-        // Firestore also failed — truly offline
+        console.error('[Firebase] Firestore cache read also failed — offline:', e.message);
       }
     }
 

@@ -28,7 +28,9 @@ export function AuthProvider({ children }) {
   // the subscription after checkout completes. 5 retries with 2s exponential backoff.
   const refreshTier = async () => {
     if (user?.email) {
+      console.log('[Firebase] Refreshing tier for', user.email, '(with retry)');
       const userTier = await getUserTierWithRetry(user.email, 5);
+      console.log('[Firebase] Tier refreshed:', userTier, 'for', user.email);
       setTier(userTier);
     }
   };
@@ -37,10 +39,13 @@ export function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
+        console.log('[Firebase] Auth state: signed in —', u.email, '(uid:', u.uid, ')');
         // User is logged in — check their subscription tier via email
         const userTier = await getUserTier(u.email);
+        console.log('[Firebase] Tier resolved:', userTier, 'for', u.email);
         setTier(userTier);
       } else {
+        console.log('[Firebase] Auth state: signed out');
         // User logged out — reset to free
         setTier('free');
       }
@@ -49,7 +54,10 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  const logout = () => signOut(auth);
+  const logout = () => {
+    console.log('[Firebase] Logging out:', user?.email);
+    return signOut(auth);
+  };
 
   // Provide tier + refreshTier alongside user so any component can check subscription status
   return (
@@ -73,11 +81,16 @@ function LoginPage() {
     setSubmitting(true);
     try {
       if (isSignUp) {
+        console.log('[Firebase] Creating new account for:', email);
         await createUserWithEmailAndPassword(auth, email, password);
+        console.log('[Firebase] Account created successfully for:', email);
       } else {
+        console.log('[Firebase] Signing in:', email);
         await signInWithEmailAndPassword(auth, email, password);
+        console.log('[Firebase] Sign-in successful for:', email);
       }
     } catch (err) {
+      console.error('[Firebase] Auth error:', err.code, err.message);
       setError(err.message.replace('Firebase: ', ''));
     } finally {
       setSubmitting(false);

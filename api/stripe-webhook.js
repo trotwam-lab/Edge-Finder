@@ -108,6 +108,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid webhook payload' });
   }
 
+  console.log(`[Firebase webhook] Received event: ${event.type} (id: ${event.id})`);
+
   try {
     switch (event.type) {
       // User completed checkout — they just paid! Set them to Pro
@@ -115,6 +117,8 @@ export default async function handler(req, res) {
         const session = event.data.object;
         const firebaseUID = session.metadata?.firebaseUID || session.client_reference_id;
         const email = session.metadata?.email || session.customer_email || session.customer_details?.email;
+
+        console.log(`[Firebase webhook] Checkout completed — email: ${email}, uid: ${firebaseUID}, customer: ${session.customer}`);
 
         await writeTier('pro', {
           firebaseUID,
@@ -130,6 +134,8 @@ export default async function handler(req, res) {
         const subscription = event.data.object;
         const firebaseUID = subscription.metadata?.firebaseUID;
         const email = subscription.metadata?.email || await getCustomerEmail(subscription.customer);
+
+        console.log(`[Firebase webhook] Subscription deleted — email: ${email}, uid: ${firebaseUID}, sub: ${subscription.id}`);
 
         await writeTier('free', {
           firebaseUID,
@@ -147,6 +153,8 @@ export default async function handler(req, res) {
         const email = subscription.metadata?.email || await getCustomerEmail(subscription.customer);
         const isActive = ['active', 'trialing'].includes(subscription.status);
 
+        console.log(`[Firebase webhook] Subscription updated — email: ${email}, uid: ${firebaseUID}, status: ${subscription.status}, active: ${isActive}`);
+
         await writeTier(isActive ? 'pro' : 'free', {
           firebaseUID,
           email,
@@ -161,23 +169,27 @@ export default async function handler(req, res) {
         const invoice = event.data.object;
         const email = invoice.customer_email || await getCustomerEmail(invoice.customer);
 
+        console.log(`[Firebase webhook] Invoice payment failed — email: ${email}, customer: ${invoice.customer}`);
+
         if (email) {
           await writeTier('free', {
             email,
             customerId: invoice.customer,
           });
+        } else {
+          console.warn('[Firebase webhook] Payment failed but no email found — cannot update tier');
         }
         break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`[Firebase webhook] Unhandled event type: ${event.type}`);
     }
 
     // Always return 200 to Stripe so it knows we received the event
     return res.status(200).json({ received: true });
   } catch (err) {
-    console.error('Webhook handler error:', err);
+    console.error('[Firebase webhook] Handler error:', err);
     // Still return 200 — we don't want Stripe to keep retrying if Firestore write fails.
     // The user-tier API checks Stripe directly as the primary source of truth anyway.
     return res.status(200).json({ received: true, warning: 'handler_error' });

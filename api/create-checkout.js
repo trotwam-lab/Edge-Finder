@@ -26,8 +26,11 @@ export default async function handler(req, res) {
     const { userId, email } = req.body;
 
     if (!userId || !email) {
+      console.warn('[Firebase checkout] Missing userId or email in request body');
       return res.status(400).json({ error: 'Missing userId or email in request body.' });
     }
+
+    console.log(`[Firebase checkout] Creating session for: ${email} (uid: ${userId})`);
 
     // Create a Stripe Checkout Session
     // IMPORTANT: Pass firebaseUID + email in both metadata AND subscription_data.metadata
@@ -52,9 +55,10 @@ export default async function handler(req, res) {
       },
     });
 
+    console.log(`[Firebase checkout] Session created: ${session.id} — redirecting to Stripe`);
     return res.status(200).json({ url: session.url });
   } catch (error) {
-    console.error('Error creating checkout session:', error);
+    console.error('[Firebase checkout] Error creating checkout session:', error);
     return res.status(500).json({ error: error.message });
   }
 }

@@ -54,14 +54,17 @@ export default async function handler(req, res) {
     }
 
     const emailLower = email.toLowerCase().trim();
+    console.log(`[Firebase tier] Checking tier for: ${emailLower}`);
 
     // Check admin list first — skip Stripe entirely
     if (ADMIN_EMAILS.includes(emailLower)) {
+      console.log(`[Firebase tier] Admin match: ${emailLower}`);
       return res.status(200).json({ tier: 'pro', admin: true });
     }
 
     // Check friends & family list — complimentary Pro access
     if (FRIEND_EMAILS.includes(emailLower)) {
+      console.log(`[Firebase tier] Friends & family match: ${emailLower}`);
       return res.status(200).json({ tier: 'pro', complimentary: true });
     }
 
@@ -73,8 +76,11 @@ export default async function handler(req, res) {
 
     // If no customer found, they've never subscribed = free tier
     if (customers.data.length === 0) {
+      console.log(`[Firebase tier] No Stripe customer found for: ${emailLower} — free`);
       return res.status(200).json({ tier: 'free' });
     }
+
+    console.log(`[Firebase tier] Found ${customers.data.length} Stripe customer(s) for: ${emailLower}`);
 
     // Check ALL matching customers for active subscriptions
     // (a user might have multiple Stripe customer records from different checkouts)
@@ -94,6 +100,7 @@ export default async function handler(req, res) {
       );
 
       if (activeSub) {
+        console.log(`[Firebase tier] Active subscription found: ${activeSub.id} (${activeSub.status}) for: ${emailLower}`);
         return res.status(200).json({
           tier: 'pro',
           subscriptionId: activeSub.id,
@@ -122,6 +129,7 @@ export default async function handler(req, res) {
         });
 
         if (recentPaid) {
+          console.log(`[Firebase tier] Recent checkout session found: ${recentPaid.id} for: ${emailLower}`);
           return res.status(200).json({
             tier: 'pro',
             source: 'checkout_session',
@@ -135,9 +143,10 @@ export default async function handler(req, res) {
     }
 
     // No active subscription found across any customer record = free tier
+    console.log(`[Firebase tier] No active subscription for: ${emailLower} — free`);
     return res.status(200).json({ tier: 'free' });
   } catch (error) {
-    console.error('Error checking user tier:', error);
+    console.error('[Firebase tier] Error checking user tier:', error);
     // On Stripe error, don't lock users out — return free gracefully
     return res.status(200).json({ tier: 'free', error: 'tier_check_failed' });
   }
