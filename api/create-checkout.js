@@ -31,7 +31,7 @@ export default async function handler(req, res) {
 
     // Create a Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
-      line_items: [{ price: 'price_1T1qX14BRKqfJjuBAkGUEmmv', quantity: 1 }],
+            line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
       mode: 'subscription',
       success_url: 'https://www.edgefinderdaily.com/?checkout=success',
       cancel_url: 'https://www.edgefinderdaily.com/?checkout=cancel',
