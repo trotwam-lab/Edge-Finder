@@ -15,7 +15,6 @@ import EdgeAlerts from './components/EdgeAlerts.jsx';
 import LineMovement from './components/LineMovement.jsx';
 import KellyCriterion from './components/KellyCriterion.jsx';
 import MobileNav from './components/MobileNav.jsx';
-import GameResearch from './components/GameResearch.jsx';
 
 export default function BettingApp() {
   const { tier, refreshTier } = useAuth();
@@ -167,18 +166,6 @@ export default function BettingApp() {
       {activeTab === 'EDGES' && <EdgeAlerts />}
       {activeTab === 'LINES' && <LineMovement />}
       {activeTab === 'PROPS' && <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} />}
-      {activeTab === 'RESEARCH' && (
-        tier === 'pro' ? (
-          <GameResearch games={games} injuries={injuries} />
-        ) : (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>Game Research - Pro Feature</div>
-            <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '24px' }}>Deep-dive into team trends, H2H records, and player props for every game.</div>
-            <ProBanner />
-          </div>
-        )
-      )}
       {activeTab === 'EV CALC' && (
         tier === 'pro' ? <EVCalculator /> : (
           <div style={{ padding: '40px 24px', textAlign: 'center' }}>
