@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Users, TrendingUp, Calculator, Settings, Zap, Activity, DollarSign, Search } from 'lucide-react';
+import { Target, Users, TrendingUp, Calculator, Settings, Zap, Activity, DollarSign } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 // All tabs — Pro-only tabs are gated with proOnly: true
@@ -8,7 +8,6 @@ const ALL_TABS = [
   { key: 'EDGES',    label: 'Edges',    icon: Zap,         proOnly: false },
   { key: 'LINES',    label: 'Lines',    icon: Activity,    proOnly: false },
   { key: 'PROPS',    label: 'Props',    icon: Users,       proOnly: false },
-  { key: 'RESEARCH', label: 'Research', icon: Search,      proOnly: true  },
   { key: 'EV CALC',  label: 'EV Calc',  icon: Calculator,  proOnly: true  },
   { key: 'KELLY',    label: 'Kelly',    icon: DollarSign,  proOnly: true  },
   { key: 'TRACKER',  label: 'Tracker',  icon: TrendingUp,  proOnly: false },
