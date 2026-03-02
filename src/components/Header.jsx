@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, Calculator, TrendingUp, Zap, Activity, Search, DollarSign, Settings } from 'lucide-react';
+import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, Calculator, TrendingUp, Zap, Activity, DollarSign, Settings } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 export default function Header({
@@ -21,7 +21,6 @@ export default function Header({
     { key: 'EDGES',   label: 'Edges',                        icon: Zap,         proOnly: false },
     { key: 'LINES',   label: 'Lines',                        icon: Activity,    proOnly: false },
     { key: 'PROPS',   label: `Props (${playerProps.length})`, icon: Users,       proOnly: false },
-    { key: 'RESEARCH',label: 'Research',                     icon: Search,      proOnly: true  },
     { key: 'EV CALC', label: 'EV Calc',                      icon: Calculator,  proOnly: true  },
     { key: 'KELLY',   label: 'Kelly',                        icon: DollarSign,  proOnly: true  },
     { key: 'TRACKER', label: 'Tracker',                      icon: TrendingUp,  proOnly: false },
