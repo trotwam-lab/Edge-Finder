@@ -877,11 +877,104 @@ function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }
   }
 }
 
-// Export with error boundary wrapper
-export default function GameResearch(props) {
+// Export with game-selector + error boundary wrapper
+export default function GameResearch({ games = [], injuries = [] }) {
+  const [selectedGame, setSelectedGame] = React.useState(null);
+
+  // Sort upcoming games first
+  const sortedGames = [...games].sort(
+    (a, b) => new Date(a.commence_time) - new Date(b.commence_time)
+  );
+
+  if (!selectedGame) {
+    return (
+      <div style={{ padding: '20px 24px' }}>
+        <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', marginBottom: '4px' }}>
+          Game Research
+        </div>
+        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
+          Select a game to view trends, H2H records, and player props
+        </div>
+        {sortedGames.length === 0 ? (
+          <div style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>
+            No games available. Check back when games are loaded.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {sortedGames.map(game => {
+              const gameDate = new Date(game.commence_time);
+              const dateStr = gameDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              const timeStr = gameDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+              return (
+                <button
+                  key={game.id}
+                  onClick={() => setSelectedGame(game)}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '14px 18px',
+                    background: 'rgba(30, 41, 59, 0.6)',
+                    border: '1px solid rgba(71, 85, 105, 0.3)',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'border-color 0.15s',
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(71, 85, 105, 0.3)'}
+                >
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', marginBottom: '2px' }}>
+                      {game.away_team} @ {game.home_team}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>
+                      {game.sport_title || game.sport_key}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>
+                    <div>{dateStr}</div>
+                    <div>{timeStr}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <GameResearchErrorBoundary>
-      <GameResearchContent {...props} />
-    </GameResearchErrorBoundary>
+    <div style={{ padding: '20px 24px' }}>
+      <button
+        onClick={() => setSelectedGame(null)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'none',
+          border: 'none',
+          color: '#818cf8',
+          fontSize: '12px',
+          cursor: 'pointer',
+          marginBottom: '16px',
+          fontFamily: "'JetBrains Mono', monospace",
+          padding: '0',
+        }}
+      >
+        ← Back to game list
+      </button>
+      <GameResearchErrorBoundary>
+        <GameResearchContent
+          gameId={selectedGame.id}
+          sport={selectedGame.sport_key}
+          homeTeam={selectedGame.home_team}
+          awayTeam={selectedGame.away_team}
+          commenceTime={selectedGame.commence_time}
+        />
+      </GameResearchErrorBoundary>
+    </div>
   );
 }
