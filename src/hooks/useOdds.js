@@ -68,42 +68,31 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
   // Fetch injuries from our proxy (which normalizes the ESPN response)
   // Returns an array of flat injury objects with { playerName, team, teamShort, position, status, ... }
+  // Fetch injuries via serverless function — raw ESPN pass-through
   const fetchInjuries = useCallback(async (sportKey) => {
-        const espnSport = SPORT_ESPN_MAP[sportKey];
-        if (!espnSport) return [];
-        try {
-                const res = await fetch(`/api/injuries?sport=${espnSport}`);
-                if (!res.ok) return [];
-                const data = await res.json();
-
-          // api/injuries.js now returns { normalized: [...], items: [...] }
-          // Fall back to parsing items directly if normalized is missing (backward compat)
-          if (data.normalized && Array.isArray(data.normalized)) {
-                    return data.normalized;
-          }
-
-          // Legacy fallback: parse items (ESPN team-based format) directly
-          const allInjuries = [];
-                const teams = data.items || data.injuries || [];
-                teams.forEach(team => {
-                          const teamName = team.displayName || team.team?.displayName || 'Unknown';
-                          const teamShort = teamName.split(' ').pop();
-                          const playerList = team.injuries || team.athletes || [];
-                          playerList.forEach(injury => {
-                                      allInjuries.push({
-                                                    id: injury.athlete?.id || `${teamName}-${injury.athlete?.displayName}`.replace(/\s+/g, '-').toLowerCase(),
-                                                    playerName: injury.athlete?.displayName || 'Unknown Player',
-                                                    team: teamName,
-                                                    teamShort,
-                                                    status: injury.status || injury.type?.name || 'Unknown',
-                                                    injury: injury.details?.type || injury.shortComment,
-                                      });
-                          });
-                });
-                return allInjuries;
-        } catch {
-                return [];
-        }
+    const espnSport = SPORT_ESPN_MAP[sportKey];
+    if (!espnSport) return [];
+    try {
+      const res = await fetch(`/api/injuries?sport=${espnSport}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const allInjuries = [];
+      data.injuries?.forEach(team => {
+        const teamName = team.displayName;
+        const teamShort = team.displayName?.split(' ')?.pop();
+        team.injuries?.forEach(injury => {
+          allInjuries.push({
+            id: injury.id,
+            name: injury.athlete?.displayName,
+            team: teamName,
+            teamShort,
+            status: injury.status,
+            injury: injury.details?.type || injury.shortComment,
+          });
+        });
+      });
+      return allInjuries;
+    } catch { return []; }
   }, []);
 
   const fetchPlayerProps = useCallback(async (sport) => {
@@ -181,32 +170,20 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                       });
                                 newGames.push(...gamesWithScores);
 
-                      // Build injury lookup keyed by team name with sport prefix
-                      // Using a prefix prevents "Eagles" (NFL Philadelphia Eagles) from colliding
-                      // with "Eagles" (college team) across different sports
-                      const sportCategory = sportKey.split('_')[0]; // 'basketball', 'americanfootball', etc.
-                      injuryList.forEach(inj => {
-                                    const teamName = inj.team;
-                                    const teamShort = inj.teamShort || teamName?.split(' ')?.pop();
-                                    // Register under multiple key variants for flexible lookup
-                                                     const keys = [
-                                                                     `${sportCategory}:${teamName}`,
-                                                                     `${sportCategory}:${teamName?.toLowerCase()}`,
-                                                                     `${sportCategory}:${teamShort}`,
-                                                                     `${sportCategory}:${teamShort?.toLowerCase()}`,
-                                                                     teamName,
-                                                                     teamName?.toLowerCase(),
-                                                                   ].filter(Boolean);
-
-                                                     keys.forEach(key => {
-                                                                     if (!injuriesByTeam[key]) injuriesByTeam[key] = [];
-                                                                     // Avoid duplicates (multiple key variants point to same player)
-                                                                                if (!injuriesByTeam[key].some(e => e.id === inj.id)) {
-                                                                                                  injuriesByTeam[key].push(inj);
-                                                                                }
-                                                     });
-                      });
-
+          // Build injury lookup — keyed by sport prefix + team name to avoid cross-league collisions
+          const injuriesByTeam = {};
+          injuryList.forEach(inj => {
+            const sportPrefix = sportKey.split('_')[0]; // 'basketball', 'americanfootball', etc.
+            const fullKey = `${sportPrefix}:${inj.team}`;
+            const shortKey = `${sportPrefix}:${inj.teamShort}`;
+            [fullKey, fullKey.toLowerCase(), shortKey, shortKey.toLowerCase(), inj.team, inj.team?.toLowerCase()]
+              .filter(Boolean)
+              .forEach(key => {
+                if (!injuriesByTeam[key]) injuriesByTeam[key] = [];
+                injuriesByTeam[key].push(inj);
+              });
+          });
+          setInjuries(prev => isInitial ? injuriesByTeam : { ...prev, ...injuriesByTeam });
                       setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
                     } catch (e) {
                                 console.warn(`Failed to load ${sportName}:`, e.message);
