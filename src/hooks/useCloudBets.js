@@ -157,7 +157,8 @@ export function useCloudBets(key, defaultValue = []) {
     );
 
     return () => unsubscribe();
-  }, [user, key, defaultValue, mergeBets]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, key, mergeBets]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
 
   // Effect 2: Save to localStorage on every change (fast)
   useEffect(() => {
