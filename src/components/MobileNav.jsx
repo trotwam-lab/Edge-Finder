@@ -8,7 +8,7 @@ const ALL_TABS = [
   { key: 'EDGES',    label: 'Edges',    icon: Zap,         proOnly: false },
   { key: 'LINES',    label: 'Lines',    icon: Activity,    proOnly: false },
   { key: 'PROPS',    label: 'Props',    icon: Users,       proOnly: false },
-  { key: 'EV CALC',  label: 'EV Calc',  icon: Calculator,  proOnly: true  },
+  { key: 'EV_CALC',  label: 'EV Calc',  icon: Calculator,  proOnly: true  },
   { key: 'KELLY',    label: 'Kelly',    icon: DollarSign,  proOnly: true  },
   { key: 'TRACKER',  label: 'Tracker',  icon: TrendingUp,  proOnly: false },
   { key: 'SETTINGS', label: 'Settings', icon: Settings,    proOnly: false },
