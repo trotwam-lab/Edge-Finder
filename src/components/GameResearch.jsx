@@ -1,326 +1,146 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, History, Activity, AlertCircle, CheckCircle, RefreshCw, BarChart3, Home, Plane, Clock, Zap, Users, Trophy } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Activity, History, TrendingUp, AlertCircle, RefreshCw, CheckCircle, BarChart3 } from 'lucide-react';
 
-// Get trend color based on confidence
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 function getTrendColor(confidence) {
-  switch (confidence) {
-    case 'high': return '#22c55e';
-    case 'medium': return '#eab308';
-    default: return '#64748b';
-  }
+  return confidence === 'high' ? '#22c55e' : confidence === 'medium' ? '#eab308' : '#64748b';
 }
-
 function getTrendBg(confidence) {
-  switch (confidence) {
-    case 'high': return 'rgba(34, 197, 94, 0.15)';
-    case 'medium': return 'rgba(234, 179, 8, 0.15)';
-    default: return 'rgba(100, 116, 139, 0.15)';
-  }
+  return confidence === 'high' ? 'rgba(34,197,94,0.12)' : confidence === 'medium' ? 'rgba(234,179,8,0.12)' : 'rgba(100,116,139,0.12)';
 }
 
-// Team Stats Card Component
-function TeamStatsCard({ teamData, isHome }) {
-  // Handle completely missing data
+// ─── Last-10 row ─────────────────────────────────────────────────────────────
+
+function Last10Row({ teamData, label }) {
   if (!teamData) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-        <AlertCircle size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
-        <div style={{ fontSize: '13px', marginBottom: '4px' }}>Team data unavailable</div>
-        <div style={{ fontSize: '11px', opacity: 0.7 }}>ESPN API may be temporarily down</div>
+      <div style={{ padding: '10px 0', color: '#64748b', fontSize: '12px', textAlign: 'center' }}>
+        No data for {label}
       </div>
     );
   }
+  const { wins, losses, streak, homeRecord, awayRecord, recentGames } = teamData;
+  const total = wins + losses;
+  const winPct = total > 0 ? wins / total : 0;
 
-  const { team, record, wins, losses, streak, homeRecord, awayRecord, restDays, stats, logo, recentGames } = teamData;
-  
-  // Check if we have actual game data
-  const hasGameData = recentGames && recentGames.length > 0;
-  const winPct = wins + losses > 0 ? (wins / (wins + losses)) : 0;
-  
+  const wColor = winPct >= 0.6 ? '#22c55e' : winPct < 0.4 ? '#ef4444' : '#eab308';
+  const wBg   = winPct >= 0.6 ? 'rgba(34,197,94,0.15)' : winPct < 0.4 ? 'rgba(239,68,68,0.15)' : 'rgba(234,179,8,0.15)';
+
   return (
-    <div style={{ padding: '16px' }}>
-      {/* Team Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-        {logo && (
-          <img src={logo} alt={team} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
-        )}
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>{team}</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>Season: {record || 'N/A'}</div>
-        </div>
-        <div style={{ 
-          padding: '6px 12px', 
-          borderRadius: '8px', 
-          background: !hasGameData ? 'rgba(100, 116, 139, 0.2)' : winPct > 0.6 ? 'rgba(34, 197, 94, 0.2)' : winPct < 0.4 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '18px', fontWeight: 700, color: !hasGameData ? '#64748b' : winPct > 0.6 ? '#22c55e' : winPct < 0.4 ? '#ef4444' : '#eab308' }}>
-            {!hasGameData ? '—' : `${wins}-${losses}`}
+    <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(71,85,105,0.15)' }}>
+      {/* Team name + record */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: '#e2e8f0' }}>{label}</div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          {/* W-L badge */}
+          <div style={{ padding: '3px 10px', borderRadius: '6px', background: wBg, color: wColor, fontSize: '12px', fontWeight: 700 }}>
+            {wins}-{losses} L{total}
           </div>
-          <div style={{ fontSize: '10px', color: '#64748b' }}>Last 10</div>
+          {/* Streak badge */}
+          {streak && streak !== '-' && (
+            <div style={{
+              padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
+              background: streak.startsWith('W') ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+              color: streak.startsWith('W') ? '#22c55e' : '#ef4444',
+            }}>
+              {streak}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Streak & Rest */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        {streak && streak !== '-' && (
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '6px 12px',
-            borderRadius: '6px',
-            background: streak.startsWith('W') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-            color: streak.startsWith('W') ? '#22c55e' : '#ef4444',
-            fontSize: '12px',
-            fontWeight: 600,
-          }}>
-            <Activity size={14} />
-            {streak} Streak
-          </div>
-        )}
-        {restDays !== null && (
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '6px 12px',
-            borderRadius: '6px',
-            background: 'rgba(99, 102, 241, 0.15)',
-            color: '#818cf8',
-            fontSize: '12px',
-            fontWeight: 600,
-          }}>
-            <Clock size={14} />
-            {restDays}d Rest
-          </div>
-        )}
-      </div>
-
-      {/* Home/Away Splits */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr', 
-        gap: '8px',
-        marginBottom: '16px'
-      }}>
-        <div style={{ 
-          padding: '10px', 
-          background: 'rgba(30, 41, 59, 0.5)', 
-          borderRadius: '6px',
-          textAlign: 'center'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
-            <Home size={12} color="#64748b" />
-            <span style={{ fontSize: '10px', color: '#64748b' }}>Home</span>
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
-            {homeRecord?.wins || 0}-{homeRecord?.losses || 0}
-          </div>
+      {/* Home/Away splits */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+        <div style={{ fontSize: '10px', color: '#64748b', background: 'rgba(30,41,59,0.5)', padding: '4px 10px', borderRadius: '5px' }}>
+          🏠 {homeRecord?.wins ?? 0}-{homeRecord?.losses ?? 0}
         </div>
-        <div style={{ 
-          padding: '10px', 
-          background: 'rgba(30, 41, 59, 0.5)', 
-          borderRadius: '6px',
-          textAlign: 'center'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
-            <Plane size={12} color="#64748b" />
-            <span style={{ fontSize: '10px', color: '#64748b' }}>Away</span>
-          </div>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
-            {awayRecord?.wins || 0}-{awayRecord?.losses || 0}
-          </div>
+        <div style={{ fontSize: '10px', color: '#64748b', background: 'rgba(30,41,59,0.5)', padding: '4px 10px', borderRadius: '5px' }}>
+          ✈️ {awayRecord?.wins ?? 0}-{awayRecord?.losses ?? 0}
         </div>
       </div>
 
-      {/* Stats Grid - HIDDEN: Data fetching still works but display removed until stats are accurate */}
-      {/* {stats && (stats.ppg || stats.papg) && (
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr', 
-          gap: '8px',
-          marginBottom: '16px'
-        }}>
-          {stats.ppg && (
-            <div style={{ padding: '8px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>PPG</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#22c55e' }}>{stats.ppg}</div>
-            </div>
-          )}
-          {stats.papg && (
-            <div style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>PAPG</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#ef4444' }}>{stats.papg}</div>
-            </div>
-          )}
-          {stats.fgPct && (
-            <div style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>FG%</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#818cf8' }}>{stats.fgPct}</div>
-            </div>
-          )}
-          {stats.threePtPct && (
-            <div style={{ padding: '8px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>3P%</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#818cf8' }}>{stats.threePtPct}</div>
-            </div>
-          )}
-        </div>
-      )} */}
-
-      {/* Recent Games */}
-      <div style={{ marginTop: '12px' }}>
-        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Last 5 Games</div>
-        {!hasGameData ? (
-          <div style={{ 
-            padding: '12px', 
-            background: 'rgba(30, 41, 59, 0.5)', 
-            borderRadius: '6px',
-            textAlign: 'center',
-            color: '#64748b',
-            fontSize: '12px'
-          }}>
-            No recent game data available
-          </div>
-        ) : (
-        <div style={{ display: 'flex', gap: '4px' }}>
-          {teamData.recentGames?.slice(0, 5).map((game, idx) => (
+      {/* Last 10 game dots */}
+      {recentGames && recentGames.length > 0 ? (
+        <div style={{ display: 'flex', gap: '3px' }}>
+          {recentGames.slice(0, 10).map((g, idx) => (
             <div
               key={idx}
+              title={`${g.isHome ? 'vs' : '@'} ${g.opponentAbbr}: ${g.teamScore}-${g.opponentScore}`}
               style={{
                 flex: 1,
-                height: '36px',
+                height: '32px',
+                borderRadius: '5px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: '6px',
-                background: game.won ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                color: game.won ? '#22c55e' : '#ef4444',
-                fontSize: '11px',
+                background: g.won ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)',
+                color: g.won ? '#22c55e' : '#ef4444',
+                fontSize: '10px',
                 fontWeight: 700,
+                cursor: 'default',
               }}
-              title={`${game.isHome ? 'vs' : '@'} ${game.opponentAbbr}: ${game.teamScore}-${game.opponentScore}`}
             >
-              {game.won ? 'W' : 'L'}
-              <span style={{ fontSize: '8px', fontWeight: 400, opacity: 0.8 }}>
-                {game.isHome ? 'vs' : '@'}{game.opponentAbbr}
+              {g.won ? 'W' : 'L'}
+              <span style={{ fontSize: '7px', fontWeight: 400, opacity: 0.75, marginTop: '1px' }}>
+                {g.isHome ? 'vs' : '@'}{g.opponentAbbr?.slice(0, 3)}
               </span>
             </div>
           ))}
         </div>
-        )}
-      </div>
+      ) : (
+        <div style={{ fontSize: '11px', color: '#64748b' }}>No recent games found</div>
+      )}
     </div>
   );
 }
 
-// H2H Component
-function H2H({ games, homeTeam, awayTeam }) {
+// ─── H2H mini-table ──────────────────────────────────────────────────────────
+
+function H2HPanel({ games, homeTeam, awayTeam }) {
   if (!games || games.length === 0) {
     return (
-      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-        <History size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
-        <div style={{ fontSize: '13px', marginBottom: '4px' }}>No recent matchups</div>
-        <div style={{ fontSize: '11px', opacity: 0.7 }}>These teams haven't played recently</div>
+      <div style={{ padding: '12px 16px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+        No recent head-to-head matchups found
       </div>
     );
   }
+  const homeLast = homeTeam?.split(' ').pop();
+  const awayLast = awayTeam?.split(' ').pop();
 
-  // Safely get team name parts
-  const homeTeamPart = homeTeam?.split(' ')?.pop() || '';
-  const awayTeamPart = awayTeam?.split(' ')?.pop() || '';
-
-  // Calculate series lead
-  let homeWins = 0, awayWins = 0;
+  let homeW = 0, awayW = 0;
   games.forEach(g => {
-    const homeScore = parseInt(g.homeScore) || 0;
-    const awayScore = parseInt(g.awayScore) || 0;
-    const isHomeTeam = homeTeamPart && g.homeTeam?.includes(homeTeamPart);
-    if (homeScore > awayScore) {
-      isHomeTeam ? homeWins++ : awayWins++;
-    } else {
-      isHomeTeam ? awayWins++ : homeWins++;
-    }
+    const hs = parseInt(g.homeScore) || 0, as_ = parseInt(g.awayScore) || 0;
+    const isHomeTeamHome = g.homeTeam?.includes(homeLast);
+    if (hs > as_) isHomeTeamHome ? homeW++ : awayW++;
+    else isHomeTeamHome ? awayW++ : homeW++;
   });
 
   return (
-    <div style={{ padding: '16px' }}>
-      {/* Series Header */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        gap: '16px',
-        padding: '12px',
-        background: 'rgba(30, 41, 59, 0.5)',
-        borderRadius: '8px',
-        marginBottom: '16px'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#f8fafc' }}>{homeWins}</div>
-          <div style={{ fontSize: '10px', color: '#64748b' }}>{homeTeam?.split(' ').pop()}</div>
-        </div>
-        <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>VS</div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#f8fafc' }}>{awayWins}</div>
-          <div style={{ fontSize: '10px', color: '#64748b' }}>{awayTeam?.split(' ').pop()}</div>
-        </div>
+    <div style={{ padding: '12px 16px' }}>
+      {/* Series line */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginBottom: '10px', fontSize: '13px', fontWeight: 700, color: '#f8fafc' }}>
+        <span>{homeLast} {homeW}</span>
+        <span style={{ color: '#64748b', fontWeight: 400 }}>–</span>
+        <span>{awayW} {awayLast}</span>
       </div>
-
-      {/* Games List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {games.map((game, idx) => {
-          const date = new Date(game.date);
-          const homeScore = parseInt(game.homeScore) || 0;
-          const awayScore = parseInt(game.awayScore) || 0;
-          const homeWon = homeScore > awayScore;
-          const isHomeTeam = homeTeamPart && game.homeTeam?.includes(homeTeamPart);
-          
+      {/* Game list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        {games.map((g, i) => {
+          const hs = parseInt(g.homeScore) || 0, as_ = parseInt(g.awayScore) || 0;
+          const d = new Date(g.date);
           return (
-            <div
-              key={idx}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px',
-                background: 'rgba(30, 41, 59, 0.4)',
-                borderRadius: '8px',
-                fontSize: '12px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ color: '#64748b', fontSize: '11px', minWidth: '60px' }}>
-                  {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </span>
-                <span style={{ 
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  background: isHomeTeam ? (homeWon ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)') : (homeWon ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)'),
-                  color: isHomeTeam ? (homeWon ? '#22c55e' : '#ef4444') : (homeWon ? '#ef4444' : '#22c55e'),
-                }}>
-                  {isHomeTeam ? (homeWon ? 'W' : 'L') : (homeWon ? 'L' : 'W')}
-                </span>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-                  {game.awayTeam?.split(' ')?.pop() || '???'}
-                </span>
-                <span style={{ 
-                  fontFamily: 'monospace', 
-                  fontWeight: 700, 
-                  color: '#f8fafc',
-                  background: 'rgba(15, 23, 42, 0.5)',
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                }}>
-                  {awayScore} - {homeScore}
-                </span>
-                <span style={{ color: '#f8fafc', fontWeight: 500 }}>
-                  {game.homeTeam?.split(' ')?.pop() || '???'}
-                </span>
-              </div>
+            <div key={i} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '7px 10px', background: 'rgba(30,41,59,0.4)', borderRadius: '6px', fontSize: '11px',
+            }}>
+              <span style={{ color: '#64748b', minWidth: '52px' }}>
+                {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+              <span style={{ color: '#f8fafc', fontFamily: 'monospace', fontWeight: 600 }}>
+                {g.awayTeam?.split(' ').pop()} {as_} – {hs} {g.homeTeam?.split(' ').pop()}
+              </span>
             </div>
           );
         })}
@@ -329,652 +149,182 @@ function H2H({ games, homeTeam, awayTeam }) {
   );
 }
 
-// Trends Component
-function Trends({ trends }) {
-  if (!trends || trends.length === 0) {
-    return (
-      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-        <TrendingUp size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
-        <div style={{ fontSize: '13px', marginBottom: '4px' }}>No significant trends</div>
-        <div style={{ fontSize: '11px', opacity: 0.7 }}>Check back closer to game time</div>
-      </div>
-    );
-  }
+// ─── Trends panel ────────────────────────────────────────────────────────────
 
+function TrendsPanel({ trends }) {
+  if (!trends || trends.length === 0) return null;
   return (
-    <div style={{ padding: '16px' }}>
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: '8px',
-        marginBottom: '16px',
-        padding: '10px 14px',
-        background: 'rgba(99, 102, 241, 0.1)',
-        borderRadius: '8px',
-      }}>
-        <Zap size={16} color="#818cf8" />
-        <span style={{ fontSize: '12px', color: '#818cf8', fontWeight: 600 }}>
-          {trends.filter(t => t.confidence === 'high').length} High Confidence Insights
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {trends.map((trend, idx) => (
-          <div
-            key={idx}
-            style={{
-              padding: '14px',
-              borderRadius: '10px',
-              background: getTrendBg(trend.confidence),
-              border: `1px solid ${getTrendColor(trend.confidence)}30`,
-            }}
-          >
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '10px',
-              marginBottom: '6px'
-            }}>
-              <span style={{ fontSize: '16px' }}>{trend.icon}</span>
-              <span style={{ 
-                fontSize: '13px', 
-                fontWeight: 700, 
-                color: getTrendColor(trend.confidence),
-                flex: 1,
-              }}>
-                {trend.label}
-              </span>
-              <span style={{
-                fontSize: '9px',
-                padding: '3px 8px',
-                borderRadius: '4px',
-                background: getTrendColor(trend.confidence) + '25',
-                color: getTrendColor(trend.confidence),
-                textTransform: 'uppercase',
-                fontWeight: 700,
-                letterSpacing: '0.5px',
-              }}>
-                {trend.confidence}
-              </span>
-            </div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', paddingLeft: '26px' }}>
-              {trend.description}
-            </div>
+    <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {trends.map((t, i) => (
+        <div key={i} style={{
+          padding: '9px 12px', borderRadius: '8px',
+          background: getTrendBg(t.confidence),
+          border: `1px solid ${getTrendColor(t.confidence)}28`,
+          display: 'flex', alignItems: 'center', gap: '8px',
+        }}>
+          <span style={{ fontSize: '14px' }}>{t.icon}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: getTrendColor(t.confidence) }}>{t.label}</div>
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>{t.description}</div>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Player Props Component
-function PlayerProps({ props, homeTeam, awayTeam }) {
-  if (!props || props.length === 0) {
-    return (
-      <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-        <Users size={28} style={{ marginBottom: '10px', opacity: 0.5 }} />
-        <div style={{ fontSize: '13px', marginBottom: '4px' }}>No player props available</div>
-        <div style={{ fontSize: '11px', opacity: 0.7 }}>Props may not be released yet for this game</div>
-      </div>
-    );
-  }
-
-  // Group by market type
-  const marketLabels = {
-    'player_points': '🏀 Points',
-    'player_rebounds': '💪 Rebounds', 
-    'player_assists': '🎯 Assists',
-    'player_threes': '👌 3-Pointers',
-    'player_passing_tds': '🏈 Passing TDs',
-    'player_rushing_yards': '🏃 Rushing Yards',
-    'player_receiving_yards': '✋ Receiving Yards',
-  };
-
-  const grouped = props.reduce((acc, prop) => {
-    if (!acc[prop.market]) acc[prop.market] = [];
-    acc[prop.market].push(prop);
-    return acc;
-  }, {});
-
-  return (
-    <div style={{ padding: '16px' }}>
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: '8px',
-        marginBottom: '16px',
-        padding: '10px 14px',
-        background: 'rgba(99, 102, 241, 0.1)',
-        borderRadius: '8px',
-      }}>
-        <Trophy size={16} color="#818cf8" />
-        <span style={{ fontSize: '12px', color: '#818cf8', fontWeight: 600 }}>
-          {props.length} Player Props Available
-        </span>
-      </div>
-
-      {Object.entries(grouped).map(([market, marketProps]) => (
-        <div key={market} style={{ marginBottom: '16px' }}>
-          <div style={{ 
-            fontSize: '12px', 
-            fontWeight: 700, 
-            color: '#f8fafc',
-            marginBottom: '10px',
-            padding: '8px 12px',
-            background: 'rgba(30, 41, 59, 0.5)',
-            borderRadius: '6px',
-          }}>
-            {marketLabels[market] || market.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {marketProps.slice(0, 5).map((prop, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px',
-                  background: 'rgba(30, 41, 59, 0.4)',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontWeight: 600, color: '#f8fafc' }}>{prop.player}</span>
-                  <span style={{ color: '#64748b' }}>@{prop.line}</span>
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {prop.over && (
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: '#22c55e',
-                        fontWeight: 600,
-                        padding: '4px 10px',
-                        background: 'rgba(34, 197, 94, 0.15)',
-                        borderRadius: '4px',
-                      }}>
-                        O {prop.over.price > 0 ? '+' : ''}{prop.over.price}
-                      </div>
-                      <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>{prop.over.book}</div>
-                    </div>
-                  )}
-                  {prop.under && (
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ 
-                        fontSize: '11px', 
-                        color: '#ef4444',
-                        fontWeight: 600,
-                        padding: '4px 10px',
-                        background: 'rgba(239, 68, 68, 0.15)',
-                        borderRadius: '4px',
-                      }}>
-                        U {prop.under.price > 0 ? '+' : ''}{prop.under.price}
-                      </div>
-                      <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>{prop.under.book}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {marketProps.length > 5 && (
-              <div style={{ textAlign: 'center', padding: '8px', color: '#64748b', fontSize: '11px' }}>
-                +{marketProps.length - 5} more {marketLabels[market] || market} props
-              </div>
-            )}
-          </div>
+          <span style={{
+            fontSize: '9px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.4px',
+            background: getTrendColor(t.confidence) + '22',
+            color: getTrendColor(t.confidence),
+          }}>{t.confidence}</span>
         </div>
       ))}
     </div>
   );
 }
 
-// Loading State
-function LoadingState() {
-  return (
-    <div style={{ padding: '32px', textAlign: 'center' }}>
-      <div style={{ 
-        width: '32px', 
-        height: '32px', 
-        border: '3px solid rgba(99, 102, 241, 0.2)',
-        borderTop: '3px solid #6366f1',
-        borderRadius: '50%',
-        animation: 'spin 0.8s linear infinite',
-        margin: '0 auto 16px'
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <div style={{ fontSize: '13px', color: '#64748b' }}>Loading game research...</div>
-    </div>
-  );
-}
+// ─── Main export ─────────────────────────────────────────────────────────────
+// Props: gameId, sport, homeTeam, awayTeam, commenceTime
+// (matches what GameDetails passes)
 
-// Error State
-function ErrorState({ error, onRetry }) {
-  return (
-    <div style={{ padding: '24px', textAlign: 'center' }}>
-      <AlertCircle size={28} color="#ef4444" style={{ marginBottom: '10px' }} />
-      <div style={{ fontSize: '13px', color: '#ef4444', marginBottom: '12px' }}>
-        {error || 'Failed to load data'}
-      </div>
-      <button
-        onClick={onRetry}
-        style={{
-          padding: '8px 16px',
-          background: 'rgba(99, 102, 241, 0.2)',
-          border: '1px solid rgba(99, 102, 241, 0.5)',
-          borderRadius: '6px',
-          color: '#818cf8',
-          fontSize: '12px',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-        }}
-      >
-        <RefreshCw size={14} />
-        Try Again
-      </button>
-    </div>
-  );
-}
-
-// Error Boundary Component
-class GameResearchErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-  
-  componentDidCatch(error, errorInfo) {
-    console.error('GameResearch error:', error, errorInfo);
-  }
-  
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#ef4444' }}>
-          <AlertCircle size={24} style={{ marginBottom: '8px' }} />
-          <div style={{ fontSize: '13px' }}>Something went wrong</div>
-          <button 
-            onClick={() => this.setState({ hasError: false })}
-            style={{
-              marginTop: '12px',
-              padding: '8px 16px',
-              background: 'rgba(99, 102, 241, 0.2)',
-              border: '1px solid rgba(99, 102, 241, 0.5)',
-              borderRadius: '6px',
-              color: '#818cf8',
-              fontSize: '12px',
-              cursor: 'pointer'
-            }}
-          >
-            Try Again
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// Main Component
-function GameResearchContent({ gameId, sport, homeTeam, awayTeam, commenceTime }) {
+export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commenceTime }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('form');
 
-  const fetchResearch = async () => {
+  const fetchData = useCallback(async () => {
+    if (!homeTeam || !awayTeam) return;
     setLoading(true);
     setError(null);
-    setRenderError(null);
-    
     try {
-      const timestamp = Date.now();
-      const params = new URLSearchParams({
-        gameId,
-        sport,
-        homeTeam,
-        awayTeam,
-        _t: timestamp.toString(),
-      });
+      const params = new URLSearchParams({ gameId: gameId || '', sport: sport || 'basketball_nba', homeTeam, awayTeam });
       if (commenceTime) params.append('commenceTime', commenceTime);
-      
-      const response = await fetch(`/api/game-research?${params}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      setData(result);
+      const res = await fetch(`/api/game-research?${params}`);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      setData(await res.json());
     } catch (e) {
-      console.error('Failed to fetch game research:', e);
+      console.error('GameResearch fetch error:', e);
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (gameId && homeTeam && awayTeam) {
-      fetchResearch();
-    }
   }, [gameId, homeTeam, awayTeam, sport]);
 
-  // Catch any render errors
-  try {
-    if (loading) return <LoadingState />;
-    if (error) return <ErrorState error={error} onRetry={fetchResearch} />;
-    if (!data) return <ErrorState error="No data received" onRetry={fetchResearch} />;
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-    const hasValidData = data?.accurate;
-    const trends = data?.trends || [];
-    const trendCount = trends.length;
-    const highConfidenceCount = data?.meta?.highConfidenceTrends || 0;
+  // ─ Tabs config
+  const tabs = [
+    { key: 'form',   label: 'Form',   icon: Activity },
+    { key: 'h2h',    label: 'H2H',    icon: History },
+    { key: 'trends', label: 'Trends', icon: TrendingUp },
+  ];
 
   return (
     <div style={{
-      background: 'rgba(15, 23, 42, 0.6)',
-      borderRadius: '12px',
-      border: '1px solid rgba(71, 85, 105, 0.2)',
+      background: 'rgba(15,23,42,0.55)',
+      borderRadius: '10px',
+      border: '1px solid rgba(71,85,105,0.25)',
       overflow: 'hidden',
+      marginTop: '4px',
     }}>
       {/* Header */}
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '14px 18px',
-        borderBottom: '1px solid rgba(71, 85, 105, 0.2)',
-        background: 'rgba(30, 41, 59, 0.3)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 14px',
+        borderBottom: '1px solid rgba(71,85,105,0.2)',
+        background: 'rgba(30,41,59,0.3)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <BarChart3 size={18} color="#818cf8" />
-          <span style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>
-            Game Research
-          </span>
-          {hasValidData ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BarChart3 size={15} color="#818cf8" />
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>Game Research</span>
+          {!loading && data && (
             <span style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '10px',
-              color: '#22c55e',
-              padding: '3px 10px',
-              background: 'rgba(34, 197, 94, 0.15)',
-              borderRadius: '20px',
-              fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: '3px',
+              fontSize: '9px', padding: '2px 7px', borderRadius: '12px', fontWeight: 600,
+              ...(data.accurate
+                ? { background: 'rgba(34,197,94,0.15)', color: '#22c55e' }
+                : { background: 'rgba(100,116,139,0.15)', color: '#64748b' }),
             }}>
-              <CheckCircle size={10} />
-              Verified
-            </span>
-          ) : (
-            <span style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '10px',
-              color: '#64748b',
-              padding: '3px 10px',
-              background: 'rgba(100, 116, 139, 0.15)',
-              borderRadius: '20px',
-            }}>
-              <AlertCircle size={10} />
-              Limited
+              {data.accurate ? <CheckCircle size={9} /> : <AlertCircle size={9} />}
+              {data.dataSource || (data.accurate ? 'Live' : 'Limited')}
             </span>
           )}
         </div>
-        
         <button
-          onClick={fetchResearch}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '6px',
-            color: '#64748b',
-            display: 'flex',
-            alignItems: 'center',
-            borderRadius: '4px',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = '#818cf8'}
-          onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
-          title="Refresh data"
+          onClick={fetchData}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+          title="Refresh"
         >
-          <RefreshCw size={16} />
+          <RefreshCw size={13} />
         </button>
       </div>
 
-      {/* Tabs */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid rgba(71, 85, 105, 0.2)',
-      }}>
-        {[
-          { key: 'form', label: 'Team Form', icon: Activity, count: (data?.meta?.homeGamesFound || 0) + (data?.meta?.awayGamesFound || 0) },
-          { key: 'h2h', label: 'H2H', icon: History, count: data?.h2h?.length || 0 },
-          { key: 'trends', label: 'Trends', icon: TrendingUp, count: trendCount },
-        ].filter(tab => tab.count > 0 || tab.key === 'form').map((tab) => (
+      {/* Tab strip */}
+      <div style={{ display: 'flex', borderBottom: '1px solid rgba(71,85,105,0.2)' }}>
+        {tabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             style={{
-              flex: 1,
-              padding: '12px 8px',
-              background: activeTab === tab.key ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+              flex: 1, padding: '8px 4px',
+              background: activeTab === tab.key ? 'rgba(99,102,241,0.1)' : 'transparent',
               border: 'none',
               borderBottom: activeTab === tab.key ? '2px solid #6366f1' : '2px solid transparent',
               color: activeTab === tab.key ? '#818cf8' : '#64748b',
-              fontSize: '12px',
-              fontWeight: activeTab === tab.key ? 700 : 500,
+              fontSize: '11px', fontWeight: activeTab === tab.key ? 700 : 500,
               cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
               transition: 'all 0.15s',
             }}
           >
-            <tab.icon size={14} />
+            <tab.icon size={12} />
             {tab.label}
-            {tab.count && (
-              <span style={{
-                padding: '2px 6px',
-                background: activeTab === tab.key ? 'rgba(99, 102, 241, 0.2)' : 'rgba(100, 116, 139, 0.2)',
-                borderRadius: '10px',
-                fontSize: '10px',
-              }}>
-                {tab.count}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
-      {/* Content */}
-      <div>
-        {activeTab === 'form' && (
-          <div>
-            <TeamStatsCard teamData={data?.teams?.home} isHome={true} />
-            <div style={{ height: '1px', background: 'rgba(71, 85, 105, 0.2)' }} />
-            <TeamStatsCard teamData={data?.teams?.away} isHome={false} />
-          </div>
-        )}
-        
-        {activeTab === 'h2h' && (
-          <H2H 
-            games={data?.h2h} 
-            homeTeam={homeTeam} 
-            awayTeam={awayTeam} 
-          />
-        )}
-        
-        {activeTab === 'trends' && (
-          <Trends trends={data?.trends} />
-        )}
-      </div>
+      {/* Body */}
+      {loading ? (
+        <div style={{ padding: '24px', textAlign: 'center' }}>
+          <div style={{
+            width: '22px', height: '22px', margin: '0 auto 10px',
+            border: '2px solid rgba(99,102,241,0.2)', borderTop: '2px solid #6366f1',
+            borderRadius: '50%', animation: 'grSpin 0.8s linear infinite',
+          }} />
+          <style>{'@keyframes grSpin { to { transform: rotate(360deg); } }'}</style>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>Loading research…</div>
+        </div>
+      ) : error ? (
+        <div style={{ padding: '16px', textAlign: 'center' }}>
+          <AlertCircle size={20} color="#ef4444" style={{ marginBottom: '6px' }} />
+          <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>{error}</div>
+          <button onClick={fetchData} style={{
+            padding: '5px 12px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.4)',
+            borderRadius: '5px', color: '#818cf8', fontSize: '11px', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+          }}>
+            <RefreshCw size={11} /> Retry
+          </button>
+        </div>
+      ) : !data ? (
+        <div style={{ padding: '16px', textAlign: 'center', fontSize: '11px', color: '#64748b' }}>No data</div>
+      ) : activeTab === 'form' ? (
+        <div>
+          <Last10Row teamData={data.teams?.home} label={homeTeam} />
+          <Last10Row teamData={data.teams?.away} label={awayTeam} />
+        </div>
+      ) : activeTab === 'h2h' ? (
+        <H2HPanel games={data.h2h} homeTeam={homeTeam} awayTeam={awayTeam} />
+      ) : (
+        <TrendsPanel trends={data.trends} />
+      )}
 
       {/* Footer */}
-      <div style={{
-        padding: '12px 16px',
-        borderTop: '1px solid rgba(71, 85, 105, 0.2)',
-        textAlign: 'center',
-      }}>
+      {!loading && !error && data && (
         <div style={{
-          fontSize: '10px',
-          color: '#64748b',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          marginBottom: '8px',
+          padding: '6px 14px', borderTop: '1px solid rgba(71,85,105,0.15)',
+          fontSize: '9px', color: '#475569', textAlign: 'center',
         }}>
-          <span>Source: {data?.dataSource || 'Unknown'}</span>
-          <span>•</span>
-          <span>{data?.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'N/A'}</span>
-          {data?.meta?.highConfidenceTrends > 0 && (
-            <>
-              <span>•</span>
-              <span style={{ color: '#22c55e' }}>{data.meta.highConfidenceTrends} 🔥 trends</span>
-            </>
-          )}
+          {data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : ''} · {data.dataSource || 'Unknown'}
         </div>
-        
-        {/* Tagline */}
-        <div style={{
-          fontSize: '11px',
-          fontWeight: 700,
-          color: '#818cf8',
-          letterSpacing: '0.5px',
-          textTransform: 'uppercase',
-          padding: '8px 0',
-          borderTop: '1px solid rgba(71, 85, 105, 0.15)',
-        }}>
-          <span style={{ marginRight: '6px' }}>⚡</span>
-          Engineered by Pros for Pros
-          <span style={{ marginLeft: '6px' }}>⚡</span>
-        </div>
-      </div>
-    </div>
-  );
-  } catch (e) {
-    console.error("GameResearch render error:", e);
-    return (
-      <div style={{ padding: "20px", textAlign: "center", color: "#ef4444" }}>
-        <div style={{ fontSize: "13px" }}>Error displaying game research</div>
-        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>{e.message}</div>
-      </div>
-    );
-  }
-}
-
-// Export with game-selector + error boundary wrapper
-export default function GameResearch({ games = [], injuries = [] }) {
-  const [selectedGame, setSelectedGame] = React.useState(null);
-
-  // Sort upcoming games first
-  const sortedGames = [...games].sort(
-    (a, b) => new Date(a.commence_time) - new Date(b.commence_time)
-  );
-
-  if (!selectedGame) {
-    return (
-      <div style={{ padding: '20px 24px' }}>
-        <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', marginBottom: '4px' }}>
-          Game Research
-        </div>
-        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '20px' }}>
-          Select a game to view trends, H2H records, and player props
-        </div>
-        {sortedGames.length === 0 ? (
-          <div style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>
-            No games available. Check back when games are loaded.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {sortedGames.map(game => {
-              const gameDate = new Date(game.commence_time);
-              const dateStr = gameDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-              const timeStr = gameDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-              return (
-                <button
-                  key={game.id}
-                  onClick={() => setSelectedGame(game)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '14px 18px',
-                    background: 'rgba(30, 41, 59, 0.6)',
-                    border: '1px solid rgba(71, 85, 105, 0.3)',
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'border-color 0.15s',
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(71, 85, 105, 0.3)'}
-                >
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', marginBottom: '2px' }}>
-                      {game.away_team} @ {game.home_team}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>
-                      {game.sport_title || game.sport_key}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>
-                    <div>{dateStr}</div>
-                    <div>{timeStr}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: '20px 24px' }}>
-      <button
-        onClick={() => setSelectedGame(null)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          background: 'none',
-          border: 'none',
-          color: '#818cf8',
-          fontSize: '12px',
-          cursor: 'pointer',
-          marginBottom: '16px',
-          fontFamily: "'JetBrains Mono', monospace",
-          padding: '0',
-        }}
-      >
-        ← Back to game list
-      </button>
-      <GameResearchErrorBoundary>
-        <GameResearchContent
-          gameId={selectedGame.id}
-          sport={selectedGame.sport_key}
-          homeTeam={selectedGame.home_team}
-          awayTeam={selectedGame.away_team}
-          commenceTime={selectedGame.commence_time}
-        />
-      </GameResearchErrorBoundary>
+      )}
     </div>
   );
 }
