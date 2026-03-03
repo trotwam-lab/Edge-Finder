@@ -198,15 +198,36 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   // Stats
   const stats = useMemo(() => {
     const settled = filteredBets.filter(b => b.status !== 'pending');
-    const wins = settled.filter(b => b.status === 'won').length;
-    const losses = settled.filter(b => b.status === 'lost').length;
-    const pushes = settled.filter(b => b.status === 'push').length;
-    const total = settled.length;
-    const totalWagered = settled.reduce((sum, b) => sum + Number(b.wager), 0);
-    const netPL = settled.reduce((sum, b) => sum + (b.profit || 0), 0);
-    const winPct = total > 0 ? ((wins / (wins + losses)) * 100) : 0;
-    const roi = totalWagered > 0 ? ((netPL / totalWagered) * 100) : 0;
-    return { wins, losses, pushes, total, totalWagered, netPL, winPct, roi };
+    const wins    = settled.filter(b => b.status === 'won').length;
+    const losses  = settled.filter(b => b.status === 'lost').length;
+    const pushes  = settled.filter(b => b.status === 'push').length;
+    const total   = settled.length;
+
+    const totalWagered = settled.reduce((s, b) => s + (Number(b.wager) || 0), 0);
+    const netPL = settled.reduce((s, b) => s + (Number(b.profit) || 0), 0);
+
+    // Win% excludes pushes from denominator
+    const decidedBets = wins + losses;
+    const winPct = decidedBets > 0 ? (wins / decidedBets) * 100 : 0;
+
+    // ROI = Net Profit ÷ Total Amount Wagered × 100
+    const roi = totalWagered > 0 ? (netPL / totalWagered) * 100 : 0;
+
+    // Units: 1 unit = average wager size across all settled bets
+    const avgWager = total > 0 ? totalWagered / total : 100;
+    const units = avgWager > 0 ? netPL / avgWager : 0;
+
+    // Per-sport breakdown for ROI panel
+    const sportBreakdown = {};
+    settled.forEach(b => {
+      const sport = (b.sport || getSportFromGame(b.game || '')) || 'Other';
+      if (!sportBreakdown[sport]) sportBreakdown[sport] = { wagered: 0, profit: 0, bets: 0 };
+      sportBreakdown[sport].wagered += Number(b.wager) || 0;
+      sportBreakdown[sport].profit  += Number(b.profit) || 0;
+      sportBreakdown[sport].bets    += 1;
+    });
+
+    return { wins, losses, pushes, total, totalWagered, netPL, winPct, roi, units, avgWager, sportBreakdown };
   }, [filteredBets]);
   
   const atLimit = !isPro && bets.length >= FREE_BET_LIMIT;
@@ -271,6 +292,8 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
           { label: 'Total Bets', value: filteredBets.length, icon: <Target size={14} />, color: '#818cf8' },
           { label: 'Record', value: `${stats.wins}-${stats.losses}-${stats.pushes}`, icon: <Trophy size={14} />, color: '#c4b5fd' },
           { label: 'Win %', value: `${stats.winPct.toFixed(1)}%`, icon: <TrendingUp size={14} />, color: stats.winPct >= 50 ? '#22c55e' : '#f87171' },
+          { label: 'ROI', value: `${stats.roi >= 0 ? '+' : ''}${stats.roi.toFixed(1)}%`, icon: <BarChart3 size={14} />, color: stats.roi >= 0 ? '#22c55e' : '#f87171' },
+          { label: 'Units', value: `${stats.units >= 0 ? '+' : ''}${stats.units.toFixed(2)}u`, icon: <DollarSign size={14} />, color: stats.units >= 0 ? '#22c55e' : '#f87171' },
           { label: 'Net P&L', value: formatMoney(stats.netPL), icon: <BarChart3 size={14} />, color: stats.netPL >= 0 ? '#22c55e' : '#f87171' },
         ].map((s, i) => (
           <div key={i} style={{ ...cardStyle, marginBottom: 0, padding: '12px', textAlign: 'center' }}>
@@ -283,6 +306,103 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
         ))}
       </div>
       
+      {/* ROI BREAKDOWN PANEL */}
+      {stats.total > 0 && (
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid rgba(71, 85, 105, 0.2)',
+          borderRadius: '12px',
+          padding: '16px',
+          marginBottom: '12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.5px' }}>
+              ROI &amp; UNITS BREAKDOWN
+            </div>
+            <div style={{ fontSize: '10px', color: '#475569' }}>
+              1u = ${stats.avgWager.toFixed(0)} avg wager
+            </div>
+          </div>
+
+          {/* Summary row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+            {[
+              {
+                label: 'Net P/L',
+                value: `${stats.netPL >= 0 ? '+' : ''}${formatMoney(stats.netPL)}`,
+                sub: `on ${formatMoney(stats.totalWagered)} wagered`,
+                color: stats.netPL >= 0 ? '#22c55e' : '#ef4444',
+              },
+              {
+                label: 'ROI',
+                value: `${stats.roi >= 0 ? '+' : ''}${stats.roi.toFixed(2)}%`,
+                sub: 'Net Profit / Total Wagered',
+                color: stats.roi >= 0 ? '#22c55e' : '#ef4444',
+              },
+              {
+                label: 'Units Won',
+                value: `${stats.units >= 0 ? '+' : ''}${stats.units.toFixed(2)}u`,
+                sub: `${stats.total} settled bets`,
+                color: stats.units >= 0 ? '#22c55e' : '#ef4444',
+              },
+            ].map((item, i) => (
+              <div key={i} style={{
+                background: 'rgba(30, 41, 59, 0.5)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>{item.label}</div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: item.color, fontFamily: "'JetBrains Mono', monospace" }}>{item.value}</div>
+                <div style={{ fontSize: '9px', color: '#475569', marginTop: '2px' }}>{item.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Per-sport breakdown */}
+          {Object.keys(stats.sportBreakdown).length > 0 && (
+            <div>
+              <div style={{ fontSize: '10px', color: '#475569', fontWeight: 600, marginBottom: '8px' }}>BY SPORT</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {Object.entries(stats.sportBreakdown)
+                  .sort((a, b) => b[1].profit - a[1].profit)
+                  .map(([sport, data]) => {
+                    const sportRoi = data.wagered > 0 ? (data.profit / data.wagered) * 100 : 0;
+                    const sportUnits = stats.avgWager > 0 ? data.profit / stats.avgWager : 0;
+                    return (
+                      <div key={sport} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '6px 8px',
+                        background: 'rgba(15, 23, 42, 0.4)',
+                        borderRadius: '6px',
+                      }}>
+                        <div style={{ flex: 1, fontSize: '11px', color: '#e2e8f0', fontWeight: 600 }}>{sport}</div>
+                        <div style={{ fontSize: '10px', color: '#64748b' }}>{data.bets}b</div>
+                        <div style={{
+                          fontSize: '11px', fontWeight: 700,
+                          color: sportRoi >= 0 ? '#22c55e' : '#ef4444',
+                          minWidth: '52px', textAlign: 'right',
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>
+                          {sportRoi >= 0 ? '+' : ''}{sportRoi.toFixed(1)}%
+                        </div>
+                        <div style={{
+                          fontSize: '10px',
+                          color: sportUnits >= 0 ? '#22c55e' : '#ef4444',
+                          minWidth: '44px', textAlign: 'right',
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>
+                          {sportUnits >= 0 ? '+' : ''}{sportUnits.toFixed(2)}u
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SPORT TABS */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', overflowX: 'auto', paddingBottom: '4px' }}>
         {sportsTabs.map(sport => (
@@ -292,7 +412,6 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
             style={{
               padding: '8px 16px',
               borderRadius: '20px',
-              border: 'none',
               background: activeSport === sport ? 'rgba(99, 102, 241, 0.2)' : 'rgba(30, 41, 59, 0.5)',
               color: activeSport === sport ? '#818cf8' : '#64748b',
               fontSize: '13px',
