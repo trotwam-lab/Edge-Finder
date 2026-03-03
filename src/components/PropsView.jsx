@@ -388,6 +388,26 @@ export default function PropsView({ playerProps, loading, propHistory, setPendin
           </div>
         )}
 
+
+        {/* Bovada alternate lines disclaimer */}
+        {filteredPlayers.some(p => Object.values(p.markets).some(m => m.bookList?.includes('Bovada'))) && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: '8px',
+            padding: '9px 14px', marginBottom: '16px',
+            background: 'rgba(234,179,8,0.08)',
+            border: '1px solid rgba(234,179,8,0.25)',
+            borderRadius: '8px',
+            fontSize: '11px', color: '#ca8a04',
+            lineHeight: '1.5',
+          }}>
+            <span style={{ fontSize: '13px', flexShrink: 0, marginTop: '1px' }}>⚠️</span>
+            <span>
+              <strong>Bovada note:</strong> Bovada posts multiple alternate lines for the same prop (e.g. Over 22.5 and Over 21.5).
+              The odds shown may reflect a different line than the header displays. Always verify the exact line on Bovada before placing a bet.
+            </span>
+          </div>
+        )}
+
         {/* Player cards */}
         {filteredPlayers.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
