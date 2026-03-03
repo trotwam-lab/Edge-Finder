@@ -165,7 +165,7 @@ export default function BettingApp() {
       )}
       {activeTab === 'EDGES' && <EdgeAlerts />}
       {activeTab === 'LINES' && <LineMovement />}
-      {activeTab === 'PROPS' && <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} />}
+      {activeTab === 'PROPS' && <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} />}
       {activeTab === 'EV_CALC' && (
         tier === 'pro' ? <EVCalculator /> : (
           <div style={{ padding: '40px 24px', textAlign: 'center' }}>
