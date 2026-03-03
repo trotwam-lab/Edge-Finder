@@ -55,11 +55,11 @@ export const PRO_FEATURES = {
     { icon: '🏆', text: 'All 7 sportsbooks (not just 3)' },
     { icon: '🏆', text: 'Unlimited player props' },
     { icon: '🏆', text: 'EV indicators on every line' },
-    { icon: '🏆¯', text: 'Implied probability overlays' },
+    { icon: '⭐', text: 'Implied probability overlays' },
     { icon: '⚡', text: 'Real-time edge alerts across all books' },
-    { icon: '🏆¯', text: 'Pick tracker with W/L, ROI & streaks' },
+    { icon: '⭐', text: 'Pick tracker with W/L, ROI & streaks' },
     { icon: '🏆', text: 'Line movement alerts (coming soon)' },
-    { icon: '🏆°', text: 'Kelly Criterion bet sizing (coming soon)' },
+    { icon: '💰', text: 'Kelly Criterion bet sizing (coming soon)' },
   ],
 };
 
