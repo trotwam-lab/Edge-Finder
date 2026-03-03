@@ -1,70 +1,109 @@
-// api/game-research.js — Hybrid: ESPN (historical) + Odds API (props/live odds)
+// api/game-research.js — ESPN (Last 10) + Odds API (H2H scores) hybrid
 
 const cache = {};
-const TTL = 60 * 1000;
+const TTL = 5 * 60 * 1000; // 5 min cache
 
-// ESPN team abbreviations
-const ESPN_TEAMS = {
-  'Atlanta Hawks': 1, 'Boston Celtics': 2, 'Brooklyn Nets': 17, 'Charlotte Hornets': 30,
-  'Chicago Bulls': 4, 'Cleveland Cavaliers': 5, 'Dallas Mavericks': 6, 'Denver Nuggets': 7,
-  'Detroit Pistons': 8, 'Golden State Warriors': 9, 'Houston Rockets': 10, 'Indiana Pacers': 11,
-  'LA Clippers': 12, 'Los Angeles Clippers': 12, 'Los Angeles Lakers': 13, 'Memphis Grizzlies': 29,
-  'Miami Heat': 14, 'Milwaukee Bucks': 15, 'Minnesota Timberwolves': 16, 'New Orleans Pelicans': 3,
-  'New York Knicks': 18, 'Oklahoma City Thunder': 25, 'Orlando Magic': 19, 'Philadelphia 76ers': 20,
-  'Phoenix Suns': 21, 'Portland Trail Blazers': 22, 'Sacramento Kings': 23, 'San Antonio Spurs': 24,
-  'Toronto Raptors': 28, 'Utah Jazz': 26, 'Washington Wizards': 27,
+// ─── ESPN sport routing ────────────────────────────────────────────────────
+// Maps Odds API sport_key prefix → ESPN sport path segment
+const ESPN_SPORT_PATH = {
+  basketball: 'basketball/nba',
+  americanfootball: 'football/nfl',
+  baseball: 'baseball/mlb',
+  icehockey: 'hockey/nhl',
+  soccer: 'soccer/usa.1', // MLS fallback
 };
 
-function getESPNId(teamName) {
-  return ESPN_TEAMS[teamName] || null;
+// NBA team name → ESPN team ID
+const NBA_IDS = {
+  'Atlanta Hawks':1,'Boston Celtics':2,'Brooklyn Nets':17,'Charlotte Hornets':30,
+  'Chicago Bulls':4,'Cleveland Cavaliers':5,'Dallas Mavericks':6,'Denver Nuggets':7,
+  'Detroit Pistons':8,'Golden State Warriors':9,'Houston Rockets':10,'Indiana Pacers':11,
+  'LA Clippers':12,'Los Angeles Clippers':12,'Los Angeles Lakers':13,'Memphis Grizzlies':29,
+  'Miami Heat':14,'Milwaukee Bucks':15,'Minnesota Timberwolves':16,'New Orleans Pelicans':3,
+  'New York Knicks':18,'Oklahoma City Thunder':25,'Orlando Magic':19,'Philadelphia 76ers':20,
+  'Phoenix Suns':21,'Portland Trail Blazers':22,'Sacramento Kings':23,'San Antonio Spurs':24,
+  'Toronto Raptors':28,'Utah Jazz':26,'Washington Wizards':27,
+};
+
+// NFL team name → ESPN team ID
+const NFL_IDS = {
+  'Arizona Cardinals':22,'Atlanta Falcons':1,'Baltimore Ravens':33,'Buffalo Bills':2,
+  'Carolina Panthers':29,'Chicago Bears':3,'Cincinnati Bengals':4,'Cleveland Browns':5,
+  'Dallas Cowboys':6,'Denver Broncos':7,'Detroit Lions':8,'Green Bay Packers':9,
+  'Houston Texans':34,'Indianapolis Colts':11,'Jacksonville Jaguars':30,'Kansas City Chiefs':12,
+  'Las Vegas Raiders':13,'Los Angeles Chargers':24,'Los Angeles Rams':14,'Miami Dolphins':15,
+  'Minnesota Vikings':16,'New England Patriots':17,'New Orleans Saints':18,'New York Giants':19,
+  'New York Jets':20,'Philadelphia Eagles':21,'Pittsburgh Steelers':23,'San Francisco 49ers':25,
+  'Seattle Seahawks':26,'Tampa Bay Buccaneers':27,'Tennessee Titans':10,'Washington Commanders':28,
+};
+
+// MLB team name → ESPN team ID
+const MLB_IDS = {
+  'Arizona Diamondbacks':29,'Atlanta Braves':15,'Baltimore Orioles':1,'Boston Red Sox':2,
+  'Chicago Cubs':16,'Chicago White Sox':4,'Cincinnati Reds':17,'Cleveland Guardians':5,
+  'Colorado Rockies':27,'Detroit Tigers':6,'Houston Astros':18,'Kansas City Royals':7,
+  'Los Angeles Angels':3,'Los Angeles Dodgers':19,'Miami Marlins':28,'Milwaukee Brewers':8,
+  'Minnesota Twins':9,'New York Mets':21,'New York Yankees':10,'Oakland Athletics':11,
+  'Philadelphia Phillies':22,'Pittsburgh Pirates':23,'San Diego Padres':25,'San Francisco Giants':26,
+  'Seattle Mariners':12,'St. Louis Cardinals':24,'Tampa Bay Rays':30,'Texas Rangers':13,
+  'Toronto Blue Jays':14,'Washington Nationals':20,
+};
+
+// NHL team name → ESPN team ID
+const NHL_IDS = {
+  'Anaheim Ducks':25,'Arizona Coyotes':53,'Boston Bruins':1,'Buffalo Sabres':2,
+  'Calgary Flames':3,'Carolina Hurricanes':12,'Chicago Blackhawks':4,'Colorado Avalanche':17,
+  'Columbus Blue Jackets':29,'Dallas Stars':9,'Detroit Red Wings':5,'Edmonton Oilers':22,
+  'Florida Panthers':13,'Los Angeles Kings':26,'Minnesota Wild':30,'Montreal Canadiens':8,
+  'Nashville Predators':18,'New Jersey Devils':1,'New York Islanders':19,'New York Rangers':20,
+  'Ottawa Senators':9,'Philadelphia Flyers':21,'Pittsburgh Penguins':23,'San Jose Sharks':28,
+  'Seattle Kraken':55,'St. Louis Blues':24,'Tampa Bay Lightning':14,'Toronto Maple Leafs':10,
+  'Vancouver Canucks':15,'Vegas Golden Knights':54,'Washington Capitals':16,'Winnipeg Jets':52,
+};
+
+function getESPNId(teamName, sportKey) {
+  const prefix = (sportKey || '').split('_')[0];
+  const map = prefix === 'americanfootball' ? NFL_IDS
+    : prefix === 'baseball' ? MLB_IDS
+    : prefix === 'icehockey' ? NHL_IDS
+    : NBA_IDS;
+  return map[teamName] || null;
 }
 
-// Source 1: ESPN API (historical data - last 10 games)
-async function fetchFromESPN(teamName, teamId) {
+function getESPNPath(sportKey) {
+  const prefix = (sportKey || 'basketball_nba').split('_')[0];
+  return ESPN_SPORT_PATH[prefix] || 'basketball/nba';
+}
+
+// ─── ESPN: fetch last 10 completed games ──────────────────────────────────
+async function fetchESPNLast10(teamName, teamId, sportPath) {
+  if (!teamId) return { games: [], error: 'Team not in ESPN map' };
   try {
-    if (!teamId) {
-      return { games: [], source: 'ESPN', count: 0, error: 'Team not found' };
-    }
-    
     const res = await fetch(
-      `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/${teamId}/schedule`,
+      `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/teams/${teamId}/schedule`,
       { signal: AbortSignal.timeout(10000) }
     );
-    
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
+    if (!res.ok) throw new Error(`ESPN HTTP ${res.status}`);
     const data = await res.json();
     const events = data.events || [];
-    
-    // Get completed games with scores (last 30 days only)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const completedGames = events
-      .filter(e => {
-        const status = e.competitions?.[0]?.status;
-        const gameDate = new Date(e.date);
-        return status?.type?.completed === true && gameDate >= thirtyDaysAgo;
-      })
+
+    const completed = events
+      .filter(e => e.competitions?.[0]?.status?.type?.completed === true)
+      .reverse() // most recent first
       .slice(0, 10)
       .map(e => {
         const comp = e.competitions[0];
-        const homeTeam = comp.competitors[0];
-        const awayTeam = comp.competitors[1];
-        
-        // Determine if our team is home or away
-        const isHome = homeTeam.team.displayName === teamName || 
-                      homeTeam.team.name === teamName;
-        const teamComp = isHome ? homeTeam : awayTeam;
-        const oppComp = isHome ? awayTeam : homeTeam;
-        
+        const c0 = comp.competitors[0]; // home
+        const c1 = comp.competitors[1]; // away
+        const isHome = c0.team.displayName === teamName || c0.team.shortDisplayName === teamName || c0.team.name === teamName;
+        const teamComp = isHome ? c0 : c1;
+        const oppComp  = isHome ? c1 : c0;
         const teamScore = parseInt(teamComp.score?.displayValue || teamComp.score?.value || 0);
-        const oppScore = parseInt(oppComp.score?.displayValue || oppComp.score?.value || 0);
-        
+        const oppScore  = parseInt(oppComp.score?.displayValue  || oppComp.score?.value  || 0);
         return {
           date: e.date,
           opponent: oppComp.team.displayName,
-          opponentAbbr: oppComp.team.abbreviation,
+          opponentAbbr: oppComp.team.abbreviation || oppComp.team.displayName?.split(' ').pop(),
           isHome,
           teamScore,
           opponentScore: oppScore,
@@ -72,338 +111,192 @@ async function fetchFromESPN(teamName, teamId) {
           source: 'ESPN',
         };
       })
-      .filter(g => g.teamScore > 0 || g.opponentScore > 0); // Valid games only
-    
-    return {
-      games: completedGames,
-      source: 'ESPN',
-      count: completedGames.length,
-      totalAvailable: events.length,
-    };
-  } catch (error) {
-    console.error('ESPN error:', error.message);
-    return { games: [], source: 'ESPN', count: 0, error: error.message };
-  }
-}
-
-// Source 2: Odds API (recent games within 3 days)
-async function fetchFromOddsAPI(teamName, sport, apiKey) {
-  try {
-    const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-    
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
-    const games = await res.json();
-    
-    const teamGames = games
-      .filter(g => 
-        g.completed === true && 
-        (g.home_team.includes(teamName.split(' ').pop()) || 
-         g.away_team.includes(teamName.split(' ').pop()))
-      )
-      .sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time))
-      .slice(0, 10)
-      .map(g => {
-        const isHome = g.home_team.includes(teamName.split(' ').pop());
-        const teamScore = isHome 
-          ? parseInt(g.scores?.[0]?.score || 0)
-          : parseInt(g.scores?.[1]?.score || 0);
-        const oppScore = isHome
-          ? parseInt(g.scores?.[1]?.score || 0)
-          : parseInt(g.scores?.[0]?.score || 0);
-        
-        return {
-          date: g.commence_time,
-          opponent: isHome ? g.away_team : g.home_team,
-          opponentAbbr: isHome ? g.away_team?.split(' ').pop() : g.home_team?.split(' ').pop(),
-          isHome,
-          teamScore,
-          opponentScore: oppScore,
-          won: teamScore > oppScore,
-          source: 'OddsAPI',
-        };
-      })
       .filter(g => g.teamScore > 0 || g.opponentScore > 0);
-    
-    return { games: teamGames, source: 'OddsAPI', count: teamGames.length };
-  } catch (error) {
-    console.error('Odds API error:', error.message);
-    return { games: [], source: 'OddsAPI', count: 0, error: error.message };
+
+    return { games: completed, count: completed.length };
+  } catch (err) {
+    console.error('ESPN error:', err.message);
+    return { games: [], count: 0, error: err.message };
   }
 }
 
-// Fetch H2H from Odds API
-async function fetchH2H(homeTeam, awayTeam, sport, apiKey) {
+// ─── Odds API: completed scores for last N days ───────────────────────────
+async function fetchOddsScores(sport, apiKey, daysFrom = 10) {
   try {
     const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
+      `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=${daysFrom}`,
       { signal: AbortSignal.timeout(10000) }
     );
-    
-    if (!res.ok) return [];
-    
-    const games = await res.json();
-    
-    return games
-      .filter(g => {
-        if (!g.completed) return false;
-        const homeMatch = g.home_team.includes(homeTeam.split(' ').pop()) || 
-                         g.home_team.includes(awayTeam.split(' ').pop());
-        const awayMatch = g.away_team.includes(homeTeam.split(' ').pop()) || 
-                         g.away_team.includes(awayTeam.split(' ').pop());
-        return homeMatch && awayMatch;
-      })
-      .sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time))
-      .slice(0, 5)
-      .map(g => ({
+    if (!res.ok) throw new Error(`Odds API HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error('Odds scores error:', err.message);
+    return [];
+  }
+}
+
+function filterTeamGames(scores, teamName) {
+  const last = teamName.split(' ').pop();
+  return scores
+    .filter(g => g.completed && (g.home_team.includes(last) || g.away_team.includes(last)))
+    .sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time))
+    .slice(0, 10)
+    .map(g => {
+      const isHome = g.home_team.includes(last);
+      const s0 = parseInt(g.scores?.[0]?.score || 0);
+      const s1 = parseInt(g.scores?.[1]?.score || 0);
+      const teamScore = isHome ? s0 : s1;
+      const oppScore  = isHome ? s1 : s0;
+      return {
         date: g.commence_time,
-        homeTeam: g.home_team,
-        awayTeam: g.away_team,
-        homeScore: g.scores?.[0]?.score,
-        awayScore: g.scores?.[1]?.score,
-      }));
-  } catch (e) {
-    return [];
-  }
+        opponent: isHome ? g.away_team : g.home_team,
+        opponentAbbr: (isHome ? g.away_team : g.home_team).split(' ').pop(),
+        isHome,
+        teamScore,
+        opponentScore: oppScore,
+        won: teamScore > oppScore,
+        source: 'OddsAPI',
+      };
+    })
+    .filter(g => g.teamScore > 0 || g.opponentScore > 0);
 }
 
-// Fetch player props from Odds API
-async function fetchPlayerProps(eventId, sport, apiKey) {
-  if (!eventId) return [];
-  
-  const markets = ['player_points', 'player_rebounds', 'player_assists', 'player_threes'];
-  
-  try {
-    const res = await fetch(
-      `https://api.the-odds-api.com/v4/sports/${sport}/events/${eventId}/odds?apiKey=${apiKey}&regions=us&markets=${markets.join(',')}&oddsFormat=american`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-    
-    if (!res.ok) return [];
-    
-    const data = await res.json();
-    if (!data.bookmakers) return [];
-    
-    const propsMap = new Map();
-    
-    data.bookmakers.forEach(book => {
-      book.markets?.forEach(market => {
-        market.outcomes?.forEach(outcome => {
-          const key = `${outcome.description}-${market.key}-${outcome.name}`;
-          const existing = propsMap.get(key);
-          
-          if (!existing || outcome.price > existing.price) {
-            propsMap.set(key, {
-              player: outcome.description,
-              market: market.key,
-              line: outcome.point,
-              outcome: outcome.name,
-              price: outcome.price,
-              book: book.title,
-            });
-          }
-        });
-      });
-    });
-    
-    const grouped = {};
-    propsMap.forEach(prop => {
-      const key = `${prop.player}-${prop.market}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          player: prop.player,
-          market: prop.market,
-          line: prop.line,
-          over: null,
-          under: null,
-        };
-      }
-      if (prop.outcome === 'Over') {
-        grouped[key].over = { price: prop.price, book: prop.book };
-      } else {
-        grouped[key].under = { price: prop.price, book: prop.book };
-      }
-    });
-    
-    return Object.values(grouped).slice(0, 20);
-  } catch (e) {
-    return [];
-  }
+function filterH2H(scores, homeTeam, awayTeam) {
+  const homeLast = homeTeam.split(' ').pop();
+  const awayLast = awayTeam.split(' ').pop();
+  return scores
+    .filter(g => {
+      if (!g.completed) return false;
+      const h = g.home_team, a = g.away_team;
+      return (h.includes(homeLast) && a.includes(awayLast)) ||
+             (h.includes(awayLast) && a.includes(homeLast));
+    })
+    .sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time))
+    .slice(0, 5)
+    .map(g => ({
+      date: g.commence_time,
+      homeTeam: g.home_team,
+      awayTeam: g.away_team,
+      homeScore: g.scores?.[0]?.score,
+      awayScore: g.scores?.[1]?.score,
+    }));
 }
 
-// Calculate stats
-function calculateStats(games) {
+// ─── Stats + trends ───────────────────────────────────────────────────────
+function buildStats(games) {
   if (!games || games.length === 0) return null;
-  
   const wins = games.filter(g => g.won).length;
-  const losses = games.filter(g => !g.won).length;
-  
+  const losses = games.length - wins;
+
   let streak = 0, streakType = '';
-  for (const game of games) {
-    if (streakType === '') {
-      streakType = game.won ? 'W' : 'L';
-      streak = 1;
-    } else if ((streakType === 'W' && game.won) || (streakType === 'L' && !game.won)) {
-      streak++;
-    } else {
-      break;
-    }
+  for (const g of games) {
+    if (!streakType) { streakType = g.won ? 'W' : 'L'; streak = 1; }
+    else if ((streakType === 'W') === g.won) streak++;
+    else break;
   }
-  
+
   const homeGames = games.filter(g => g.isHome);
   const awayGames = games.filter(g => !g.isHome);
-  
   return {
-    wins,
-    losses,
+    wins, losses,
+    record: `${wins}-${losses}`,
     streak: streak > 0 ? `${streakType}${streak}` : '-',
-    homeRecord: { 
-      wins: homeGames.filter(g => g.won).length, 
-      losses: homeGames.filter(g => !g.won).length 
-    },
-    awayRecord: { 
-      wins: awayGames.filter(g => g.won).length, 
-      losses: awayGames.filter(g => !g.won).length 
-    },
-    recentGames: games.slice(0, 5),
+    homeRecord: { wins: homeGames.filter(g=>g.won).length, losses: homeGames.filter(g=>!g.won).length },
+    awayRecord: { wins: awayGames.filter(g=>g.won).length, losses: awayGames.filter(g=>!g.won).length },
+    recentGames: games.slice(0, 10),
   };
 }
 
-// Calculate trends
-function calculateTrends(homeStats, awayStats, h2hGames) {
+function buildTrends(homeStats, awayStats, h2h) {
   const trends = [];
-  
+  const push = (label, desc, confidence, icon) => trends.push({ label, description: desc, confidence, icon });
+
   if (homeStats) {
-    const winPct = homeStats.wins / (homeStats.wins + homeStats.losses);
-    if (winPct >= 0.6) {
-      trends.push({
-        type: 'HOME_FORM',
-        label: winPct >= 0.7 ? '🔥 Home Team Hot' : 'Home Team Strong',
-        description: `${homeStats.wins}-${homeStats.losses} in last ${homeStats.wins + homeStats.losses}`,
-        confidence: winPct >= 0.7 ? 'high' : 'medium',
-        icon: '🔥',
-      });
-    }
-    if (homeStats.streak.startsWith('W') && parseInt(homeStats.streak.slice(1)) >= 3) {
-      trends.push({
-        type: 'STREAK',
-        label: '📈 Home Streaking',
-        description: `On ${homeStats.streak} win streak`,
-        confidence: 'high',
-        icon: '📈',
-      });
-    }
+    const pct = homeStats.wins / (homeStats.wins + homeStats.losses);
+    if (pct >= 0.7) push('🔥 Home Team Hot', `${homeStats.wins}-${homeStats.losses} last ${homeStats.wins+homeStats.losses}`, 'high', '🔥');
+    else if (pct >= 0.6) push('Home Team Strong', `${homeStats.wins}-${homeStats.losses} last ${homeStats.wins+homeStats.losses}`, 'medium', '📈');
+    const streak = parseInt(homeStats.streak.slice(1));
+    if (homeStats.streak.startsWith('W') && streak >= 3) push('📈 Home Win Streak', `W${streak} streak`, 'high', '📈');
+    if (homeStats.streak.startsWith('L') && streak >= 3) push('📉 Home Losing Streak', `L${streak} streak`, 'high', '📉');
   }
-  
   if (awayStats) {
-    const winPct = awayStats.wins / (awayStats.wins + awayStats.losses);
-    if (winPct >= 0.6) {
-      trends.push({
-        type: 'AWAY_FORM',
-        label: winPct >= 0.7 ? '🔥 Away Team Hot' : 'Away Team Strong',
-        description: `${awayStats.wins}-${awayStats.losses} in last ${awayStats.wins + awayStats.losses}`,
-        confidence: winPct >= 0.7 ? 'high' : 'medium',
-        icon: '🔥',
-      });
-    }
+    const pct = awayStats.wins / (awayStats.wins + awayStats.losses);
+    if (pct >= 0.7) push('🔥 Away Team Hot', `${awayStats.wins}-${awayStats.losses} last ${awayStats.wins+awayStats.losses}`, 'high', '🔥');
+    else if (pct >= 0.6) push('Away Team Strong', `${awayStats.wins}-${awayStats.losses} last ${awayStats.wins+awayStats.losses}`, 'medium', '📈');
+    const streak = parseInt(awayStats.streak.slice(1));
+    if (awayStats.streak.startsWith('W') && streak >= 3) push('📈 Away Win Streak', `W${streak} streak`, 'high', '📈');
   }
-  
-  if (h2hGames && h2hGames.length > 0) {
-    trends.push({
-      type: 'H2H',
-      label: '🎯 Recent Matchup',
-      description: `${h2hGames.length} recent meeting(s)`,
-      confidence: 'medium',
-      icon: '🎯',
-    });
-  }
-  
+  if (h2h?.length >= 2) push('🎯 H2H History', `${h2h.length} recent meetings found`, 'medium', '🎯');
   return trends;
 }
 
+// ─── Handler ──────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  
+
   const { gameId, sport = 'basketball_nba', homeTeam, awayTeam } = req.query;
-  
-  if (!homeTeam || !awayTeam) {
-    return res.status(400).json({ error: 'Missing team names' });
-  }
-  
+  if (!homeTeam || !awayTeam) return res.status(400).json({ error: 'Missing team names' });
+
   const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'API key not configured' });
-  }
-  
-  const cacheKey = `${homeTeam}-${awayTeam}-${Math.floor(Date.now() / 60000)}`;
-  
+  if (!apiKey) return res.status(500).json({ error: 'ODDS_API_KEY not configured' });
+
+  const cacheKey = `${sport}:${homeTeam}:${awayTeam}`;
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
     return res.json(cache[cacheKey].data);
   }
-  
+
   try {
-    // Get ESPN team IDs
-    const homeESPNId = getESPNId(homeTeam);
-    const awayESPNId = getESPNId(awayTeam);
-    
-    // Fetch from both sources in parallel
-    const [espnHome, espnAway, oddsHome, oddsAway, h2hGames, playerProps] = await Promise.all([
-      fetchFromESPN(homeTeam, homeESPNId),
-      fetchFromESPN(awayTeam, awayESPNId),
-      fetchFromOddsAPI(homeTeam, sport, apiKey),
-      fetchFromOddsAPI(awayTeam, sport, apiKey),
-      fetchH2H(homeTeam, awayTeam, sport, apiKey),
-      fetchPlayerProps(gameId, sport, apiKey),
+    const sportPath = getESPNPath(sport);
+    const homeId = getESPNId(homeTeam, sport);
+    const awayId = getESPNId(awayTeam, sport);
+
+    // Fetch ESPN (L10) and Odds API scores (L10 days) in parallel
+    const [espnHome, espnAway, oddsScores] = await Promise.all([
+      fetchESPNLast10(homeTeam, homeId, sportPath),
+      fetchESPNLast10(awayTeam, awayId, sportPath),
+      fetchOddsScores(sport, apiKey, 10),
     ]);
-    
-    // Use Odds API as primary (recent, accurate data), ESPN as fallback
-    const homeGames = oddsHome.count > 0 ? oddsHome.games : espnHome.games;
-    const awayGames = oddsAway.count > 0 ? oddsAway.games : espnAway.games;
-    
-    // Calculate stats
-    const homeStats = calculateStats(homeGames);
-    const awayStats = calculateStats(awayGames);
-    const trends = calculateTrends(homeStats, awayStats, h2hGames);
-    
+
+    // Merge: prefer ESPN (larger window), supplement with Odds API for very recent
+    const oddsHome = filterTeamGames(oddsScores, homeTeam);
+    const oddsAway = filterTeamGames(oddsScores, awayTeam);
+
+    // Use ESPN if it has data, else fall back to Odds API
+    const homeGames = espnHome.count > 0 ? espnHome.games : oddsHome;
+    const awayGames = espnAway.count > 0 ? espnAway.games : oddsAway;
+    const h2h = filterH2H(oddsScores, homeTeam, awayTeam);
+
+    const homeStats = buildStats(homeGames);
+    const awayStats = buildStats(awayGames);
+    const trends = buildTrends(homeStats, awayStats, h2h);
+
     const result = {
-      gameId: gameId || null,
+      gameId,
       sport,
       homeTeam,
       awayTeam,
       accurate: homeGames.length > 0 || awayGames.length > 0,
-      dataSource: oddsHome.count > 0 ? 'Odds API' : 'ESPN (fallback)',
-      dataWindow: oddsHome.count > 0 ? 'Last 3 days (most accurate)' : 'Last 30 days (limited recent data)',
+      dataSource: espnHome.count > 0 ? 'ESPN' : 'Odds API',
       timestamp: new Date().toISOString(),
       teams: {
-        home: homeStats,
-        away: awayStats,
+        home: homeStats ? { ...homeStats, team: homeTeam } : null,
+        away: homeStats ? { ...awayStats, team: awayTeam } : null,
       },
-      h2h: h2hGames,
-      playerProps: playerProps || [],
-      hasPlayerProps: playerProps && playerProps.length > 0,
+      h2h,
       trends,
       meta: {
         homeGamesFound: homeGames.length,
         awayGamesFound: awayGames.length,
-        espnGames: espnHome.count + espnAway.count,
-        oddsGames: oddsHome.count + oddsAway.count,
-        trendCount: trends.length,
+        highConfidenceTrends: trends.filter(t => t.confidence === 'high').length,
       },
     };
-    
+
     cache[cacheKey] = { data: result, ts: Date.now() };
-    
     res.setHeader('X-Cache', 'MISS');
     return res.json(result);
-  } catch (error) {
-    console.error('Game research error:', error);
-    return res.status(500).json({ 
-      error: error.message,
-      accurate: false,
-    });
+  } catch (err) {
+    console.error('game-research error:', err);
+    return res.status(500).json({ error: err.message, accurate: false });
   }
 }
