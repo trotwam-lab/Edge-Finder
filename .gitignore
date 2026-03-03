@@ -2,3 +2,21 @@
 .env*.local
 .env.production
 .env.production
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Backup and temp files
+*.backup
+*.props_backup
+temp.jsx
+test-api.js
+test-local.html
+
+# Extra env files
+.env.check
+.env.temp
+.env.verify
