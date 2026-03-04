@@ -190,24 +190,30 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                     }
           }
 
-          // Fetch player props for major sports
-          const propsSports = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
-                                           const fetchedSportKeys = sportsToFetch.map(([, key]) => key);
-                                           const propsToFetch = propsSports.filter(s => fetchedSportKeys.includes(s));
-
+          // Fetch player props — all major sports every cycle, decoupled from odds rotation
+          const PROPS_SPORTS = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
+          const PROPS_NAME_MAP = { basketball_nba: 'NBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
+          const propsToFetch = PROPS_SPORTS.filter(s =>
+            !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
+          );
           if (propsToFetch.length > 0) {
-                    const allProps = [];
-                    for (const sportKey of propsToFetch) {
-                                const props = await fetchPlayerProps(sportKey);
-                                allProps.push(...props);
-                    }
-                    if (allProps.length > 0 || isInitial) {
-                                setPlayerProps(prev =>
-                                              isInitial
-                                                             ? allProps
-                                                : [...prev.filter(p => !propsToFetch.some(s => p.id?.startsWith(s))), ...allProps]
-                                                         );
-                    }
+            const allProps = [];
+            for (const sportKey of propsToFetch) {
+              try {
+                const props = await fetchPlayerProps(sportKey);
+                allProps.push(...props);
+              } catch (e) {
+                console.warn('Props fetch failed for ' + sportKey + ':', e.message);
+              }
+            }
+            setPlayerProps(prev =>
+              isInitial
+                ? allProps
+                : [
+                    ...prev.filter(p => !propsToFetch.some(s => p.sport === s || p.id?.startsWith(s))),
+                    ...allProps,
+                  ]
+            );
           }
 
           // Merge new games with existing (replace by id, keep others)
