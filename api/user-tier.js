@@ -21,6 +21,11 @@ const FRIEND_EMAILS = [
   'darryljrice@gmail.com', // Temporary - Stripe access down
   'rcabang@gmail.com',
   'jimmythebag@hotmail.com',
+  'jeremyahthompson00@gmail.com',
+  'bobano350@gmail.com',
+  'razorsharppicksllc@yahoo.com',
+  'btrainbrizbane@gmail.com',
+  'sosathelocksmith@gmail.com',
 ];
 
 export default async function handler(req, res) {
