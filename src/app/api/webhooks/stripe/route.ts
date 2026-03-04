@@ -9,6 +9,7 @@ import {
     mapPriceToTier,
 } from "@/lib/stripe";
 import type { StripeWebhookResult } from "@/lib/stripe";
+import { supabaseAdmin } from "@/lib/supabase";
 
 // ============================================================
 // Stripe Webhook Handler
@@ -133,9 +134,40 @@ async function handleCheckoutComplete(
         };
   }
 
-  // TODO: Persist checkout completion to your user database.
-  // Example: await db.users.update({ stripeCustomerId: customerId }, { checkoutCompleted: true });
-  console.log(`Checkout completed for customer: ${customerId}`);
+  const email = session.customer_email || session.customer_details?.email;
+
+  if (email) {
+    // Check if user exists
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .single();
+
+    if (!existingUser) {
+      // Create new user
+      await supabaseAdmin.from("users").insert({
+        id: crypto.randomUUID(),
+        email: email,
+        stripe_customer_id: customerId,
+        subscription_tier: "free",
+        subscription_status: "inactive",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      console.log(`Created new user ${email} with customer ${customerId}`);
+    } else {
+      // Update existing user
+      await supabaseAdmin
+        .from("users")
+        .update({
+          stripe_customer_id: customerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("email", email);
+      console.log(`Updated user ${email} with customer ${customerId}`);
+    }
+  }
 
   return { success: true, action: "checkout_complete", customerId };
 }
@@ -152,8 +184,16 @@ async function handleSubscriptionChange(
     const amount = item?.price?.unit_amount ?? 0;
     const tier = mapPriceToTier(amount);
 
-  // TODO: Update the user's subscription tier in your database.
-  // Example: await db.users.update({ stripeCustomerId: customerId }, { tier, subscriptionStatus: subscription.status });
+  // Update user's subscription tier in database
+  await supabaseAdmin
+    .from("users")
+    .update({
+      subscription_tier: tier,
+      subscription_status: subscription.status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("stripe_customer_id", customerId);
+
   console.log(
         `Subscription ${subscription.status} for ${customerId}: tier=${tier}`
       );
@@ -169,9 +209,17 @@ async function handleSubscriptionCanceled(
         ? subscription.customer
             : subscription.customer.id;
 
-  // TODO: Downgrade the user to the free tier in your database.
-  // Example: await db.users.update({ stripeCustomerId: customerId }, { tier: "free", subscriptionStatus: "canceled" });
-  console.log(`Subscription canceled for ${customerId}, downgrading to free`);
+  // Downgrade user to free tier
+  await supabaseAdmin
+    .from("users")
+    .update({
+      subscription_tier: "free",
+      subscription_status: "canceled",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("stripe_customer_id", customerId);
+
+  console.log(`Subscription canceled for ${customerId}, downgraded to free`);
 
   return {
         success: true,
