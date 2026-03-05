@@ -1,4 +1,4 @@
-// Trigger deploy with Vite framework
+// Deploy to edgefinderdaily.com
 // api/stripe-webhook.js - Supabase only
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
