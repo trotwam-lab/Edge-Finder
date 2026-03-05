@@ -1,45 +1,39 @@
-// api/stripe-webhook.js - Clean working version
+// api/stripe-webhook.js - Supabase only
 import Stripe from 'stripe';
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from '@supabase/supabase-js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Initialize Firebase
-let db = null;
-let firebaseInitialized = false;
+// Initialize Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-try {
-  if (getApps().length === 0 && process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-    // Clean up the JSON
-    const cleaned = raw
-      .replace(/\\n/g, '\n')
-      .replace(/\r/g, '');
-    const serviceAccount = JSON.parse(cleaned);
-    
-    if (serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    }
-    
-    initializeApp({ credential: cert(serviceAccount) });
-    firebaseInitialized = true;
-    db = getFirestore();
-    console.log('Firebase initialized');
+let supabase = null;
+let supabaseReady = false;
+
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+    supabaseReady = true;
+    console.log('✅ Supabase connected');
+  } catch (e) {
+    console.error('❌ Supabase error:', e.message);
   }
-} catch (e) {
-  console.error('Firebase init error:', e.message);
+} else {
+  console.error('❌ Missing Supabase credentials');
 }
 
 export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
+  console.log(`🚀 Webhook: ${req.method} ${new Date().toISOString()}`);
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!firebaseInitialized || !db) {
-    console.error('Firebase not ready');
+  if (!supabaseReady || !supabase) {
+    console.error('❌ Supabase not ready');
     return res.status(500).json({ error: 'Database not ready' });
   }
 
@@ -59,28 +53,52 @@ export default async function handler(req, res) {
     }
 
     const event = stripe.webhooks.constructEvent(rawBody, sig, secret);
-    console.log('Event:', event.type);
+    console.log(`✅ Event: ${event.type}`);
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const uid = session.metadata?.firebaseUID || session.client_reference_id;
       
       if (uid) {
-        await db.collection('users').doc(uid).set({
-          tier: 'pro',
-          stripeCustomerId: session.customer,
-          subscriptionId: session.subscription,
-          email: session.customer_email,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        console.log('User upgraded:', uid);
+        const { error } = await supabase
+          .from('users')
+          .upsert({
+            id: uid,
+            email: session.customer_email,
+            stripe_customer_id: session.customer,
+            subscription_tier: 'pro',
+            subscription_status: 'active',
+            updated_at: new Date().toISOString()
+          });
+        
+        if (error) {
+          console.error('❌ Supabase error:', error);
+          throw error;
+        }
+        console.log(`✅ User ${uid} upgraded to Pro`);
+      }
+    }
+
+    if (event.type === 'customer.subscription.deleted') {
+      const sub = event.data.object;
+      const uid = sub.metadata?.firebaseUID;
+      
+      if (uid) {
+        await supabase
+          .from('users')
+          .update({
+            subscription_tier: 'free',
+            subscription_status: 'canceled',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', uid);
+        console.log(`⬇️ User ${uid} downgraded`);
       }
     }
 
     return res.status(200).json({ received: true });
   } catch (err) {
-    console.error('Error:', err.message);
+    console.error('❌ Error:', err.message);
     return res.status(400).json({ error: err.message });
   }
 }
-// Deployment trigger - $(date)
