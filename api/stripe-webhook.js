@@ -1,4 +1,4 @@
-// Deploy to edgefinderdaily.com
+// Supabase only - v2
 // api/stripe-webhook.js - Supabase only
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
