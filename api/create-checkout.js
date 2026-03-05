@@ -37,6 +37,8 @@ export default async function handler(req, res) {
       cancel_url: 'https://www.edgefinderdaily.com/?checkout=cancel',
       client_reference_id: userId,
       customer_email: email,
+              metadata: { firebaseUID: userId },
+              subscription_data: { metadata: { firebaseUID: userId } },
     });
 
     return res.status(200).json({ url: session.url });
