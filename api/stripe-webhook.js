@@ -256,6 +256,7 @@
 import Stripe from 'stripe';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from '@supabase/supabase-js';
 
 // Check required env vars at startup
 const REQUIRED_ENV_VARS = [
@@ -290,6 +291,24 @@ function parseServiceAccount(raw) {
 
 let db;
 let firebaseInitialized = false;
+
+// Initialize Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let supabase = null;
+let supabaseInitialized = false;
+
+if (supabaseUrl && supabaseServiceKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+    console.log('✅ Supabase client initialized');
+    supabaseInitialized = true;
+  } catch (e) {
+    console.error('❌ Supabase init error:', e.message);
+  }
+} else {
+  console.warn('⚠️ Supabase credentials not configured');
+}
 
 if (getApps().length === 0) {
   try {
@@ -392,18 +411,21 @@ export default async function handler(req, res) {
         const firebaseUID = session.metadata?.firebaseUID || session.client_reference_id;
         
         if (firebaseUID) {
-          try {
-            await db.collection('users').doc(firebaseUID).set({
-              tier: 'pro',
-              stripeCustomerId: session.customer,
-              subscriptionId: session.subscription,
-              email: session.customer_email,
-              updatedAt: new Date().toISOString(),
-            }, { merge: true });
-            console.log(`✅ User ${firebaseUID} upgraded to Pro`);
-          } catch (dbError) {
-            console.error(`❌ Database error for user ${firebaseUID}:`, dbError);
-            throw dbError;
+          const userData = {
+            tier: 'pro',
+            stripeCustomerId: session.customer,
+            subscriptionId: session.subscription,
+            email: session.customer_email,
+            updatedAt: new Date().toISOString(),
+          };
+          
+          const results = await saveToBothDatabases(firebaseUID, userData);
+          
+          if (results.firebase === 'success' || results.supabase === 'success') {
+            console.log(`✅ User ${firebaseUID} upgraded to Pro (Firebase: ${results.firebase}, Supabase: ${results.supabase})`);
+          } else {
+            console.error(`❌ Failed to save user ${firebaseUID} to any database`);
+            throw new Error('Database save failed');
           }
         } else {
           console.warn('⚠️ No firebaseUID in metadata or client_reference_id');
@@ -418,12 +440,14 @@ export default async function handler(req, res) {
         const firebaseUID = subscription.metadata?.firebaseUID;
         
         if (firebaseUID) {
-          await db.collection('users').doc(firebaseUID).set({
+          const userData = {
             tier: 'free',
             subscriptionId: null,
             updatedAt: new Date().toISOString(),
-          }, { merge: true });
-          console.log(`⬇️ User ${firebaseUID} downgraded to free`);
+          };
+          
+          const results = await saveToBothDatabases(firebaseUID, userData);
+          console.log(`⬇️ User ${firebaseUID} downgraded to free (Firebase: ${results.firebase}, Supabase: ${results.supabase})`);
         }
         break;
       }
@@ -434,11 +458,13 @@ export default async function handler(req, res) {
         
         if (firebaseUID) {
           const isActive = ['active', 'trialing'].includes(subscription.status);
-          await db.collection('users').doc(firebaseUID).set({
+          const userData = {
             tier: isActive ? 'pro' : 'free',
             updatedAt: new Date().toISOString(),
-          }, { merge: true });
-          console.log(`🔄 User ${firebaseUID} subscription status: ${subscription.status}`);
+          };
+          
+          const results = await saveToBothDatabases(firebaseUID, userData);
+          console.log(`🔄 User ${firebaseUID} subscription status: ${subscription.status} (Firebase: ${results.firebase}, Supabase: ${results.supabase})`);
         }
         break;
       }
@@ -453,12 +479,15 @@ export default async function handler(req, res) {
             .limit(1).get();
             
           if (!snap.empty) {
-            await snap.docs[0].ref.set({
+            const userId = snap.docs[0].id;
+            const userData = {
               tier: 'pro',
               subscriptionId: invoice.subscription,
               updatedAt: new Date().toISOString(),
-            }, { merge: true });
-            console.log(`✅ Invoice paid - user ${snap.docs[0].id} remains Pro`);
+            };
+            
+            const results = await saveToBothDatabases(userId, userData);
+            console.log(`✅ Invoice paid - user ${userId} remains Pro (Firebase: ${results.firebase}, Supabase: ${results.supabase})`);
           } else {
             console.warn(`⚠️ No user found with stripeCustomerId: ${customerId}`);
           }
@@ -476,11 +505,14 @@ export default async function handler(req, res) {
             .limit(1).get();
             
           if (!snap.empty) {
-            await snap.docs[0].ref.set({
+            const userId = snap.docs[0].id;
+            const userData = {
               paymentFailed: true,
               updatedAt: new Date().toISOString(),
-            }, { merge: true });
-            console.warn(`⚠️ Payment failed for customer ${customerId}`);
+            };
+            
+            const results = await saveToBothDatabases(userId, userData);
+            console.warn(`⚠️ Payment failed for customer ${customerId} (Firebase: ${results.firebase}, Supabase: ${results.supabase})`);
           }
         }
         break;
