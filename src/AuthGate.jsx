@@ -6,6 +6,7 @@ import {
   signOut
 } from 'firebase/auth';
 import { auth, getUserTier } from './firebase';
+import WelcomePage from './components/WelcomePage.jsx';
 
 // --- Auth Context ---
 // This context provides { user, tier, loading, logout } to the whole app
@@ -232,7 +233,7 @@ export default function AuthGate({ children }) {
     );
   }
 
-  if (!user) return <LoginPage />;
+  if (!user) return <WelcomePage />;
 
   return children;
 }
