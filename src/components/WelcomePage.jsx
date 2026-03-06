@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from "react";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
 
 const COLORS = {
   bg: "#0d1117",
@@ -28,8 +30,30 @@ function SignInPopup({ open, onClose }) {
   const [tab, setTab] = useState("signin");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   if (!open) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      if (tab === "signin") {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, pass);
+      }
+      onClose();
+      setEmail("");
+      setPass("");
+    } catch (err) {
+      setError(err.message.replace("Firebase: ", ""));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -81,7 +105,7 @@ function SignInPopup({ open, onClose }) {
             ))}
           </div>
         </div>
-        <div style={{ padding: "24px 28px 28px" }}>
+        <form onSubmit={handleSubmit} style={{ padding: "24px 28px 28px" }}>
           <label style={{
             fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: 1,
             textTransform: "uppercase", color: COLORS.textMuted, display: "block", marginBottom: 8,
@@ -112,14 +136,29 @@ function SignInPopup({ open, onClose }) {
             onFocus={(e) => e.target.style.borderColor = COLORS.accent + "66"}
             onBlur={(e) => e.target.style.borderColor = COLORS.border}
           />
-          <button style={{
+          {error && (
+            <div style={{
+              padding: "10px 12px", borderRadius: 8,
+              border: `1px solid ${COLORS.red}66`, background: COLORS.redDim,
+              color: COLORS.red, fontSize: 12, marginBottom: 16,
+              fontFamily: "'Space Grotesk', sans-serif",
+            }}>
+              {error}
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{
             width: "100%", padding: "12px 0", borderRadius: 10,
             border: "none", background: COLORS.gradient,
             color: "#fff", fontFamily: "'Space Grotesk', sans-serif",
-            fontSize: 14, fontWeight: 600, cursor: "pointer",
+            fontSize: 14, fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer",
+            opacity: submitting ? 0.8 : 1,
             boxShadow: `0 0 24px rgba(0,200,255,0.15)`, letterSpacing: 0.5,
-          }}>
-            {tab === "signin" ? "Sign In" : "Create Free Account"}
+          }}
+          >
+            {submitting ? "Please wait..." : tab === "signin" ? "Sign In" : "Create Free Account"}
           </button>
           {tab === "signin" && (
             <p style={{ textAlign: "center", margin: "16px 0 0", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, color: COLORS.textDim }}>
@@ -131,7 +170,7 @@ function SignInPopup({ open, onClose }) {
               Free plan includes 3 sports, daily alerts, and basic prop screen.
             </p>
           )}
-        </div>
+        </form>
       </div>
     </>
   );
