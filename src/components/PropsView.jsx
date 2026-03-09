@@ -8,7 +8,7 @@ const FREE_PLAYERS_LIMIT = 3;
 const BOOK_ABBREVIATIONS = {
   'FanDuel': 'FD', 'DraftKings': 'DK', 'BetMGM': 'MGM', 'Caesars': 'Csr',
   'BetRivers': 'BR', 'PointsBet': 'PB', 'Bet365': 'B365', 'WynnBET': 'Wynn',
-  'Unibet': 'Uni', 'Barstool': 'BAR', 'ESPN BET': 'ESPN', 'Fanatics': 'Fan',
+  'Unibet': 'Uni', 'Barstool': 'BAR', 'ESPN BET': 'ESPN', 'Fanatics': 'Fan'
 };
 
 const MARKET_DISPLAY_NAMES = {
@@ -238,26 +238,87 @@ export default function PropsView({ playerProps, loading, propHistory, setPendin
   // ── Group props ────────────────────────────────────────────────────────────
   const players = useMemo(() => {
     const map = {};
+    const lineVotes = {}; // track line frequency per player+market for consensus
     playerProps.forEach(prop => {
       const pk = prop.player;
       if (!pk) return;
       if (!map[pk]) map[pk] = { name: prop.player, game: prop.game, markets: {} };
       const mk = prop.market;
-      if (!map[pk].markets[mk]) map[pk].markets[mk] = { line: prop.line, over: {}, under: {}, books: new Set() };
+      if (!map[pk].markets[mk]) map[pk].markets[mk] = { line: null, over: {}, under: {}, books: new Set(), _lineVotes: {} };
       const mkt = map[pk].markets[mk];
       const book = prop.book || prop.bookTitle || prop.bookKey || 'Unknown';
+      const propLine = prop.line;
+
+      // Skip Bovada alternate lines that differ from the book's primary (lowest) line seen
+      // We always keep the entry closest to the consensus, handled below via votes
       mkt.books.add(book);
-      if (prop.outcome === 'Over') {
-        if (mkt.over[book] == null || prop.price > mkt.over[book]) mkt.over[book] = prop.price;
-      } else if (prop.outcome === 'Under') {
-        if (mkt.under[book] == null || prop.price > mkt.under[book]) mkt.under[book] = prop.price;
+
+      // Vote for this line to find consensus
+      if (propLine != null) {
+        const voteKey = `${pk}-${mk}-${propLine}`;
+        lineVotes[voteKey] = (lineVotes[voteKey] || 0) + 1;
+        mkt._lineVotes[propLine] = (mkt._lineVotes[propLine] || 0) + 1;
       }
-      if (prop.line != null) mkt.line = prop.line;
+
+      if (prop.outcome === 'Over') {
+        // For a given book, keep the price for the line closest to consensus
+        // Store per-line so we can pick the right one after voting
+        if (!mkt._overByLine) mkt._overByLine = {};
+        if (!mkt._overByLine[book]) mkt._overByLine[book] = {};
+        if (propLine != null) mkt._overByLine[book][propLine] = prop.price;
+      } else if (prop.outcome === 'Under') {
+        if (!mkt._underByLine) mkt._underByLine = {};
+        if (!mkt._underByLine[book]) mkt._underByLine[book] = {};
+        if (propLine != null) mkt._underByLine[book][propLine] = prop.price;
+      }
     });
     Object.values(map).forEach(p => {
       Object.values(p.markets).forEach(mkt => {
+        // Compute consensus line (the line with the most votes across bookmakers)
+        const votes = mkt._lineVotes || {};
+        let consensusLine = null;
+        let maxVotes = 0;
+        Object.entries(votes).forEach(([line, count]) => {
+          if (count > maxVotes || (count === maxVotes && consensusLine !== null && Number(line) < Number(consensusLine))) {
+            maxVotes = count;
+            consensusLine = Number(line);
+          }
+        });
+        mkt.line = consensusLine;
+
+        // Resolve over/under prices: prefer price at consensus line, fall back to closest line
         mkt.bookList = Array.from(mkt.books).sort();
+        mkt.bookList.forEach(book => {
+          const overByLine = mkt._overByLine?.[book] || {};
+          const underByLine = mkt._underByLine?.[book] || {};
+
+          if (consensusLine != null && overByLine[consensusLine] != null) {
+            mkt.over[book] = overByLine[consensusLine];
+          } else {
+            // Fallback: pick the line closest to consensus
+            const lines = Object.keys(overByLine).map(Number);
+            if (lines.length) {
+              const closest = lines.reduce((a, b) => Math.abs(b - (consensusLine || 0)) < Math.abs(a - (consensusLine || 0)) ? b : a);
+              mkt.over[book] = overByLine[closest];
+            }
+          }
+
+          if (consensusLine != null && underByLine[consensusLine] != null) {
+            mkt.under[book] = underByLine[consensusLine];
+          } else {
+            const lines = Object.keys(underByLine).map(Number);
+            if (lines.length) {
+              const closest = lines.reduce((a, b) => Math.abs(b - (consensusLine || 0)) < Math.abs(a - (consensusLine || 0)) ? b : a);
+              mkt.under[book] = underByLine[closest];
+            }
+          }
+        });
+
+        // Clean up temp data
         delete mkt.books;
+        delete mkt._lineVotes;
+        delete mkt._overByLine;
+        delete mkt._underByLine;
       });
     });
     return Object.values(map).sort((a, b) => Object.keys(b.markets).length - Object.keys(a.markets).length);
