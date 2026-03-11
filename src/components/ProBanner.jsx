@@ -37,7 +37,7 @@ export default function ProBanner({ compact = false }) {
         window.location.href = data.url;
       } else {
         console.error('Checkout error:', data.error);
-        alert('Failed to start checkout. Please try again.');
+        alert('Failed to start checkout: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
       console.error('Checkout error:', error);
