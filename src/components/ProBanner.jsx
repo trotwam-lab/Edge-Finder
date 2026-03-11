@@ -67,7 +67,7 @@ export default function ProBanner({ compact = false }) {
           border: 'none', borderRadius: '6px',
           color: '#fff', fontSize: '11px', fontWeight: 700,
           cursor: isLoading ? 'not-allowed' : 'pointer',
-          fontFamily: "'JetBrains Mono', monospace',
+          fontFamily: '"JetBrains Mono", monospace',
           opacity: isLoading ? 0.7 : 1,
         }}>
           {isLoading ? 'Loading...' : 'Upgrade'}
@@ -133,7 +133,7 @@ export default function ProBanner({ compact = false }) {
         border: 'none', borderRadius: '10px',
         color: '#fff', fontSize: '14px', fontWeight: 700,
         cursor: isLoading ? 'not-allowed' : 'pointer',
-        fontFamily: "'JetBrains Mono', monospace',
+        fontFamily: '"JetBrains Mono", monospace',
         position: 'relative',
         transition: 'transform 0.15s',
         opacity: isLoading ? 0.7 : 1,
