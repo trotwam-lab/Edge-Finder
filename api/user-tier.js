@@ -26,6 +26,11 @@ const FRIEND_EMAILS = [
   'razorsharppicksllc@yahoo.com',
   'btrainbrizbane@gmail.com',
   'sosathelocksmith@gmail.com',
+  'vchterry@gmail.com',
+  'rnegron1105@icloud.com',
+  'merobinson19@gmail.com',
+  'austinstraley@gmail.com',
+  'theinleague317@gmail.com',
 ];
 
 export default async function handler(req, res) {
