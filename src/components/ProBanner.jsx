@@ -10,13 +10,41 @@ import { PRO_FEATURES } from '../constants.js';
 
 export default function ProBanner({ compact = false }) {
   const { user } = useAuth();
+  const [isLoading, setIsLoading] = React.useState(false);
 
   // Called when user clicks "Upgrade to Pro"
-  // Using Stripe Payment Link (simpler, no API key needed on frontend)
-  const handleUpgrade = () => {
-    // Stripe Payment Link for Pro subscription
-    const paymentLink = 'https://buy.stripe.com/dRmdR2aYjdXkaH6blf3F603';
-    window.location.href = paymentLink;
+  // Uses API to create Stripe Checkout session with proper customer tracking
+  const handleUpgrade = async () => {
+    if (!user) {
+      alert('Please log in first to subscribe.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          email: user.email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error('Checkout error:', data.error);
+        alert('Failed to start checkout. Please try again.');
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Compact version â small inline banner for locked features
@@ -33,15 +61,16 @@ export default function ProBanner({ compact = false }) {
         <span style={{ fontSize: '12px', color: '#c4b5fd', flex: 1 }}>
           Pro feature â unlock all sportsbooks & tools
         </span>
-        <button onClick={handleUpgrade} style={{
+        <button onClick={handleUpgrade} disabled={isLoading} style={{
           padding: '6px 14px',
           background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
           border: 'none', borderRadius: '6px',
           color: '#fff', fontSize: '11px', fontWeight: 700,
-          cursor: 'pointer',
-          fontFamily: "'JetBrains Mono', monospace",
+          cursor: isLoading ? 'not-allowed' : 'pointer',
+          fontFamily: "'JetBrains Mono', monospace',
+          opacity: isLoading ? 0.7 : 1,
         }}>
-          Upgrade
+          {isLoading ? 'Loading...' : 'Upgrade'}
         </button>
       </div>
     );
@@ -98,17 +127,18 @@ export default function ProBanner({ compact = false }) {
       </div>
 
       {/* CTA Button */}
-      <button onClick={handleUpgrade} style={{
+      <button onClick={handleUpgrade} disabled={isLoading} style={{
         width: '100%', padding: '14px',
         background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
         border: 'none', borderRadius: '10px',
         color: '#fff', fontSize: '14px', fontWeight: 700,
-        cursor: 'pointer',
-        fontFamily: "'JetBrains Mono', monospace",
+        cursor: isLoading ? 'not-allowed' : 'pointer',
+        fontFamily: "'JetBrains Mono', monospace',
         position: 'relative',
         transition: 'transform 0.15s',
+        opacity: isLoading ? 0.7 : 1,
       }}>
-        Upgrade to Pro — {PRO_FEATURES.price}
+        {isLoading ? 'Loading...' : `Upgrade to Pro — ${PRO_FEATURES.price}`}
       </button>
 
       <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: '#64748b' }}>
