@@ -395,16 +395,24 @@ export default function PropsView({ playerProps, loading, propHistory, setPendin
       <div style={{ padding: '20px 24px' }}>
         {/* Search and Filters */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '8px', flex: '1', minWidth: '200px' }}>
-            <Search size={14} color="#64748b" />
-            <input
-              type="text"
-              placeholder="Search player or team..."
-              value={propSearch}
-              onChange={e => setPropSearch(e.target.value)}
-              style={{ background: 'transparent', border: 'none', outline: 'none', color: '#e2e8f0', fontSize: '13px', width: '100%', fontFamily: 'JetBrains Mono, monospace' }}
-            />
-          </div>
+          {/* Search - Pro only */}
+          {tier === 'pro' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '8px', flex: '1', minWidth: '200px' }}>
+              <Search size={14} color="#64748b" />
+              <input
+                type="text"
+                placeholder="Search player or team..."
+                value={propSearch}
+                onChange={e => setPropSearch(e.target.value)}
+                style={{ background: 'transparent', border: 'none', outline: 'none', color: '#e2e8f0', fontSize: '13px', width: '100%', fontFamily: 'JetBrains Mono, monospace' }}
+              />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(30,41,59,0.3)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: '8px', flex: '1', minWidth: '200px', opacity: 0.6 }}>
+              <Lock size={14} color="#64748b" />
+              <span style={{ color: '#64748b', fontSize: '13px' }}>Search (Pro only)</span>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {MARKET_FILTER_OPTIONS.map(type => (
               <button
