@@ -30,8 +30,15 @@ export default async function handler(req, res) {
     }
 
     // Create a Stripe Checkout Session
+    // Trim the price ID to remove any accidental whitespace/newlines
+    const priceId = process.env.STRIPE_PRICE_ID?.trim();
+    
+    if (!priceId) {
+      return res.status(500).json({ error: 'STRIPE_PRICE_ID not configured' });
+    }
+    
     const session = await stripe.checkout.sessions.create({
-            line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+            line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
       success_url: 'https://www.edgefinderdaily.com/?checkout=success',
       cancel_url: 'https://www.edgefinderdaily.com/?checkout=cancel',
