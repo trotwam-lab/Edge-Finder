@@ -1,28 +1,47 @@
 import React from 'react';
-import { Search } from 'lucide-react';
+import { Search, Lock } from 'lucide-react';
 import { SPORTS } from '../constants.js';
+import { useAuth } from '../AuthGate.jsx';
 
 export default function SportFilter({ filter, setFilter, searchTerm, setSearchTerm, enabledSports }) {
+  const { tier } = useAuth();
+  const isPro = tier === 'pro';
   const sports = ['ALL', ...Object.keys(SPORTS).filter(s => !enabledSports || enabledSports.includes(s))];
+
   return (
     <div className="sport-filter-bar" style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '8px',
-        padding: '8px 14px',
-        background: 'rgba(30, 41, 59, 0.6)',
-        border: '1px solid rgba(56, 189, 248, 0.1)',
-        borderRadius: '8px', flex: '1', minWidth: '200px'
-      }}>
-        <Search size={14} color="#64748b" />
-        <input
-          type="text" placeholder="Search teams..."
-          value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            background: 'transparent', border: 'none', outline: 'none',
-            color: '#e2e8f0', fontSize: '13px', width: '100%'
-          }}
-        />
-      </div>
+      {/* Search bar - Pro only */}
+      {isPro ? (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 14px',
+          background: 'rgba(30, 41, 59, 0.6)',
+          border: '1px solid rgba(56, 189, 248, 0.1)',
+          borderRadius: '8px', flex: '1', minWidth: '200px'
+        }}>
+          <Search size={14} color="#64748b" />
+          <input
+            type="text" placeholder="Search teams..."
+            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              background: 'transparent', border: 'none', outline: 'none',
+              color: '#e2e8f0', fontSize: '13px', width: '100%'
+            }}
+          />
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 14px',
+          background: 'rgba(30, 41, 59, 0.3)',
+          border: '1px solid rgba(71, 85, 105, 0.3)',
+          borderRadius: '8px', flex: '1', minWidth: '200px',
+          opacity: 0.6, cursor: 'not-allowed'
+        }}>
+          <Lock size={14} color="#64748b" />
+          <span style={{ color: '#64748b', fontSize: '13px' }}>Search (Pro only)</span>
+        </div>
+      )}
       <div className="sport-buttons" style={{
         display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px',
         flexWrap: 'nowrap', WebkitOverflowScrolling: 'touch',
