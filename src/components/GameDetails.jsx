@@ -50,9 +50,26 @@ export default function GameDetails({
     });
   });
 
-  const homeSpreadOutcome = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team);
-  const totalOutcome = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0];
-  const homeMoneylineOutcome = game.bookmakers?.[0]?.markets?.find(m => m.key === 'h2h')?.outcomes?.find(o => o.name === game.home_team);
+  const spreadOutcomes = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')?.outcomes || [];
+  const totalOutcomes = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes || [];
+  const moneylineOutcomes = game.bookmakers?.[0]?.markets?.find(m => m.key === 'h2h')?.outcomes || [];
+
+  const spreadCandidates = spreadOutcomes.map(o => {
+    const best = bestOddsMap[`spreads-${o.name}`];
+    return best ? { ...best, market: 'spreads', point: o.point, name: o.name } : null;
+  }).filter(Boolean);
+  const totalCandidates = totalOutcomes.map(o => {
+    const best = bestOddsMap[`totals-${o.name}`];
+    return best ? { ...best, market: 'totals', point: o.point, name: o.name } : null;
+  }).filter(Boolean);
+  const moneylineCandidates = moneylineOutcomes.map(o => {
+    const best = bestOddsMap[`h2h-${o.name}`];
+    return best ? { ...best, market: 'h2h', name: o.name } : null;
+  }).filter(Boolean);
+
+  const bestSpreadCandidate = spreadCandidates.find(c => c.name === game.home_team) || spreadCandidates[0] || null;
+  const bestTotalCandidate = totalCandidates[0] || null;
+  const bestMoneylineCandidate = moneylineCandidates.find(c => c.name === game.home_team) || moneylineCandidates[0] || null;
 
   // Injury data - try new prefixed format first, then fall back to old format
   // This prevents cross-league collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
@@ -77,9 +94,12 @@ export default function GameDetails({
     spreadMove,
     totalMove,
     allInjuries,
-    bestSpread: homeSpreadOutcome ? bestOddsMap[`spreads-${homeSpreadOutcome.name}`] : null,
-    bestTotal: totalOutcome ? bestOddsMap[`totals-${totalOutcome.name}`] : null,
-    bestMoneyline: homeMoneylineOutcome ? bestOddsMap[`h2h-${homeMoneylineOutcome.name}`] : null,
+    bestSpread: bestSpreadCandidate,
+    bestTotal: bestTotalCandidate,
+    bestMoneyline: bestMoneylineCandidate,
+    spreadCandidates,
+    totalCandidates,
+    moneylineCandidates,
   });
 
   // Trend

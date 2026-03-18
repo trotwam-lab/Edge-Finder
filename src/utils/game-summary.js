@@ -16,19 +16,39 @@ function buildSnapshot({ currentSpread, currentTotal, bestSpread, bestTotal, bes
   const parts = [];
   if (currentSpread != null) parts.push(`Spread ${formatSigned(currentSpread)}`);
   if (currentTotal != null) parts.push(`Total ${currentTotal}`);
-  if (bestMoneyline?.price != null) parts.push(`Best ML ${formatSigned(bestMoneyline.price)}`);
+  if (bestMoneyline?.price != null) parts.push(`Best ML ${bestMoneyline.name} ${formatSigned(bestMoneyline.price)}`);
   else if (bestSpread?.price != null) parts.push(`Best spread price ${formatSigned(bestSpread.price)}`);
   else if (bestTotal?.price != null) parts.push(`Best total price ${formatSigned(bestTotal.price)}`);
   return parts.join(' · ');
 }
 
-function inferReadLabel({ spreadMoveAbs, totalMoveAbs, allInjuries, bestSpread, bestTotal, bestMoneyline, disagreementScore }) {
+
+function countImpactInjuries(allInjuries = []) {
+  return allInjuries.filter(inj => {
+    const status = String(inj?.status || '').toLowerCase();
+    return status.includes('out') || status.includes('doubt') || status.includes('question');
+  }).length;
+}
+
+function pickBestCandidate(candidates = []) {
+  const filtered = candidates.filter(Boolean);
+  if (!filtered.length) return null;
+  return filtered.sort((a, b) => {
+    const aScore = (a.isPositiveEV ? 100 : 0) + Math.abs(a.price || 0) / 100;
+    const bScore = (b.isPositiveEV ? 100 : 0) + Math.abs(b.price || 0) / 100;
+    return bScore - aScore;
+  })[0];
+}
+
+function inferReadLabel({ spreadMoveAbs, totalMoveAbs, allInjuries, bestSpread, bestTotal, bestMoneyline, disagreementScore, sportFamily }) {
   const pricingSignal = [bestSpread, bestTotal, bestMoneyline].some(x => x?.isPositiveEV);
   const meaningfulMove = spreadMoveAbs >= 1 || totalMoveAbs >= 1.5;
-  const noisyInjuries = allInjuries.length >= 3;
+  const impactInjuries = countImpactInjuries(allInjuries);
+  const heavyInjuryFog = impactInjuries >= (sportFamily === 'nba' ? 2 : 3);
 
-  if (pricingSignal && meaningfulMove && !noisyInjuries) return 'Playable';
-  if ((pricingSignal && noisyInjuries) || (meaningfulMove && noisyInjuries)) return 'Monitor';
+  if (pricingSignal && meaningfulMove && !heavyInjuryFog) return 'Playable';
+  if ((pricingSignal && heavyInjuryFog) || (meaningfulMove && heavyInjuryFog)) return 'Monitor';
+  if (sportFamily === 'cbb' && pricingSignal && spreadMoveAbs >= 1.5) return 'Monitor';
   if (pricingSignal || disagreementScore >= 2 || spreadMoveAbs >= 0.5 || totalMoveAbs >= 1) return 'Thin Edge';
   return 'Pass';
 }
@@ -47,20 +67,24 @@ function buildUniversalBullets({ opener, currentSpread, openerTotal, currentTota
   if (disagreementScore >= 2) {
     bullets.push('Books are not tightly aligned, so line shopping matters more than usual.');
   }
-  if (allInjuries.length > 0) {
+  const impactInjuries = countImpactInjuries(allInjuries);
+  if (impactInjuries > 0) {
+    bullets.push(`${impactInjuries} higher-impact injury item${impactInjuries === 1 ? '' : 's'} could still move the number.`);
+  } else if (allInjuries.length > 0) {
     bullets.push(`${allInjuries.length} reported injury item${allInjuries.length === 1 ? '' : 's'} could still affect the market.`);
   }
   return bullets.slice(0, 3);
 }
 
-function buildSportNote(sportFamily, { spreadMoveAbs, totalMoveAbs, allInjuries, disagreementScore }) {
+function buildSportNote(sportFamily, { spreadMoveAbs, totalMoveAbs, allInjuries, disagreementScore, bestSpread, bestTotal, bestMoneyline }) {
   switch (sportFamily) {
     case 'nba':
-      if (allInjuries.length > 0) return 'NBA markets can swing hard on late availability, so injury context matters more than the raw move alone.';
-      if (totalMoveAbs >= 2) return 'NBA totals can move quickly when pace and rotation expectations shift.';
+      if (countImpactInjuries(allInjuries) > 0) return 'NBA markets can swing hard on late availability, so injury context matters more than the raw move alone.';
+      if (bestTotal?.isPositiveEV && totalMoveAbs >= 2) return 'NBA totals can move quickly when pace and rotation expectations shift, so totals value matters more here.';
       return 'NBA reads should balance the number, the move, and whether lineup news is actually driving it.';
     case 'cbb':
       if (spreadMoveAbs >= 1.5) return 'College basketball is more volatile game-to-game, so line movement alone should not be treated like certainty.';
+      if (bestSpread?.isPositiveEV || bestMoneyline?.isPositiveEV) return 'CBB edges are often thinner and noisier, so number quality matters more than the team name on the jersey.';
       return 'CBB edges are often thinner and noisier, so matchup style and volatility matter more than brand-name teams.';
     case 'football':
       if (spreadMoveAbs >= 1) return 'Football moves matter more when they push through important numbers, not just because the line changed.';
@@ -73,21 +97,19 @@ function buildSportNote(sportFamily, { spreadMoveAbs, totalMoveAbs, allInjuries,
   }
 }
 
-function inferBestAngle({ game, bestSpread, bestTotal, bestMoneyline, readLabel }) {
+function inferBestAngle({ game, spreadCandidates = [], totalCandidates = [], moneylineCandidates = [], readLabel }) {
   if (readLabel === 'Pass') return 'No bet right now';
-  if (bestSpread?.isPositiveEV) {
-    return `${bestSpread.name} ${formatSigned(bestSpread.point)} at ${bestSpread.bookTitle}`;
-  }
-  if (bestTotal?.isPositiveEV) {
-    return `${bestTotal.name} ${bestTotal.point} at ${bestTotal.bookTitle}`;
-  }
-  if (bestMoneyline?.isPositiveEV) {
-    return `${bestMoneyline.name} moneyline ${formatSigned(bestMoneyline.price)} at ${bestMoneyline.bookTitle}`;
-  }
-  if (bestSpread?.name) {
-    return `${bestSpread.name} ${formatSigned(bestSpread.point)} at ${bestSpread.bookTitle}`;
-  }
-  return `${game.away_team} vs ${game.home_team} — monitor for a better number`;
+
+  const bestSpread = pickBestCandidate(spreadCandidates);
+  const bestTotal = pickBestCandidate(totalCandidates);
+  const bestMoneyline = pickBestCandidate(moneylineCandidates);
+  const candidates = [bestSpread, bestTotal, bestMoneyline].filter(Boolean).sort((a, b) => ((b.isPositiveEV ? 1 : 0) - (a.isPositiveEV ? 1 : 0)));
+  const best = candidates[0];
+
+  if (!best) return `${game.away_team} vs ${game.home_team} — monitor for a better number`;
+  if (best.market === 'totals') return `${best.name} ${best.point} at ${best.bookTitle}`;
+  if (best.market === 'h2h') return `${best.name} moneyline ${formatSigned(best.price)} at ${best.bookTitle}`;
+  return `${best.name} ${formatSigned(best.point)} at ${best.bookTitle}`;
 }
 
 export function buildPremiumGameSummary({
@@ -102,6 +124,9 @@ export function buildPremiumGameSummary({
   bestSpread,
   bestTotal,
   bestMoneyline,
+  spreadCandidates = [],
+  totalCandidates = [],
+  moneylineCandidates = [],
 }) {
   const sportFamily = getSportFamily(game.sport_key);
   const spreadMoveAbs = Math.abs(spreadMove || 0);
@@ -116,6 +141,7 @@ export function buildPremiumGameSummary({
     bestTotal,
     bestMoneyline,
     disagreementScore,
+    sportFamily,
   });
 
   const bullets = buildUniversalBullets({
@@ -137,6 +163,9 @@ export function buildPremiumGameSummary({
     totalMoveAbs,
     allInjuries,
     disagreementScore,
+    bestSpread,
+    bestTotal,
+    bestMoneyline,
   });
 
   const reasonByRead = {
@@ -152,6 +181,6 @@ export function buildPremiumGameSummary({
     readLabel,
     reason: reasonByRead[readLabel],
     sportNote,
-    bestAngle: inferBestAngle({ game, bestSpread, bestTotal, bestMoneyline, readLabel }),
+    bestAngle: inferBestAngle({ game, spreadCandidates, totalCandidates, moneylineCandidates, readLabel }),
   };
 }
