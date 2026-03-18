@@ -4,7 +4,7 @@
 - Auth: Firebase Auth
 - App tier checks: `src/AuthGate.jsx` calls `getUserTier(user.email)`
 - Checkout creation: `api/create-checkout.js` passes Firebase UID in Stripe metadata and client_reference_id
-- Current webhook: `api/stripe-webhook.js` writes to Supabase, not Firebase/Firestore
+- Previous webhook path wrote to Supabase instead of Firebase/Firestore
 - Tier API: `api/user-tier.js` asks Stripe by email and ignores Firebase UID
 
 ## What is safe now
@@ -15,7 +15,7 @@
 ## Real mismatch
 - Checkout identifies users by Firebase UID
 - Tier lookup identifies users by email
-- Webhook persists to Supabase, which the app no longer uses for client data
+- The old webhook path persisted to Supabase, which no longer matches the current Firebase-first direction
 
 ## Recommended target model
 1. Firebase Auth remains the identity layer
@@ -25,8 +25,8 @@
 
 ## Safe next steps
 1. Add a Firestore-backed subscription record model
-2. Replace Supabase webhook writes with Firebase-admin / Firestore writes
-3. Update tier lookup to read Firestore first, Stripe fallback second
+2. Verify Firebase-admin / Firestore webhook writes in preview deploy
+3. Verify tier lookup reads Firestore first, Stripe fallback second
 4. Only then remove Supabase server dependency and package usage
 
 ## Do not do yet

@@ -13,6 +13,7 @@
   - `src/AuthGate.jsx`
 - Cleaned obvious encoding/comment artifacts in UI files
 - Tightened stale/misleading comments in auth and Firestore-sync code
+- Added future deletion notes for post-preview cleanup
 
 ## Not deployed yet
 These changes are still branch-only and should not be deployed until Vercel env vars are verified.
