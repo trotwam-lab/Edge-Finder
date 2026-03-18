@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        // User is logged in — check their subscription tier via email
+        // User is logged in — check their subscription tier using Firebase UID first, then email fallback
         const userTier = await getUserTier({ email: u.email, uid: u.uid });
         setTier(userTier);
       } else {
