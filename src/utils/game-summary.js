@@ -23,11 +23,26 @@ function buildSnapshot({ currentSpread, currentTotal, bestSpread, bestTotal, bes
 }
 
 
+function getInjurySeverity(status = '') {
+  const normalized = String(status).toLowerCase();
+  if (normalized.includes('out')) return 3;
+  if (normalized.includes('doubt')) return 2.5;
+  if (normalized.includes('question')) return 2;
+  if (normalized.includes('probable')) return 1;
+  return normalized ? 0.5 : 0;
+}
+
 function countImpactInjuries(allInjuries = []) {
-  return allInjuries.filter(inj => {
-    const status = String(inj?.status || '').toLowerCase();
-    return status.includes('out') || status.includes('doubt') || status.includes('question');
-  }).length;
+  return allInjuries.filter(inj => getInjurySeverity(inj?.status) >= 2).length;
+}
+
+function getInjurySeverityScore(allInjuries = []) {
+  return allInjuries.reduce((sum, inj) => sum + getInjurySeverity(inj?.status), 0);
+}
+
+function isKeyFootballNumber(value) {
+  if (value == null || Number.isNaN(value)) return false;
+  return [3, 7, 10, 14].includes(Math.abs(value));
 }
 
 function pickBestCandidate(candidates = []) {
@@ -40,14 +55,17 @@ function pickBestCandidate(candidates = []) {
   })[0];
 }
 
-function inferReadLabel({ spreadMoveAbs, totalMoveAbs, allInjuries, bestSpread, bestTotal, bestMoneyline, disagreementScore, sportFamily }) {
+function inferReadLabel({ spreadMoveAbs, totalMoveAbs, allInjuries, bestSpread, bestTotal, bestMoneyline, disagreementScore, sportFamily, currentSpread }) {
   const pricingSignal = [bestSpread, bestTotal, bestMoneyline].some(x => x?.isPositiveEV);
   const meaningfulMove = spreadMoveAbs >= 1 || totalMoveAbs >= 1.5;
   const impactInjuries = countImpactInjuries(allInjuries);
-  const heavyInjuryFog = impactInjuries >= (sportFamily === 'nba' ? 2 : 3);
+  const injurySeverityScore = getInjurySeverityScore(allInjuries);
+  const heavyInjuryFog = injurySeverityScore >= (sportFamily === 'nba' ? 4 : 5);
+  const keyNumberSpot = sportFamily === 'football' && isKeyFootballNumber(currentSpread);
 
-  if (pricingSignal && meaningfulMove && !heavyInjuryFog) return 'Playable';
+  if (pricingSignal && meaningfulMove && !heavyInjuryFog && !keyNumberSpot) return 'Playable';
   if ((pricingSignal && heavyInjuryFog) || (meaningfulMove && heavyInjuryFog)) return 'Monitor';
+  if (sportFamily === 'football' && keyNumberSpot && (pricingSignal || meaningfulMove)) return 'Monitor';
   if (sportFamily === 'cbb' && pricingSignal && spreadMoveAbs >= 1.5) return 'Monitor';
   if (pricingSignal || disagreementScore >= 2 || spreadMoveAbs >= 0.5 || totalMoveAbs >= 1) return 'Thin Edge';
   return 'Pass';
@@ -76,7 +94,7 @@ function buildUniversalBullets({ opener, currentSpread, openerTotal, currentTota
   return bullets.slice(0, 3);
 }
 
-function buildSportNote(sportFamily, { spreadMoveAbs, totalMoveAbs, allInjuries, disagreementScore, bestSpread, bestTotal, bestMoneyline }) {
+function buildSportNote(sportFamily, { spreadMoveAbs, totalMoveAbs, allInjuries, disagreementScore, bestSpread, bestTotal, bestMoneyline, currentSpread }) {
   switch (sportFamily) {
     case 'nba':
       if (countImpactInjuries(allInjuries) > 0) return 'NBA markets can swing hard on late availability, so injury context matters more than the raw move alone.';
@@ -87,9 +105,12 @@ function buildSportNote(sportFamily, { spreadMoveAbs, totalMoveAbs, allInjuries,
       if (bestSpread?.isPositiveEV || bestMoneyline?.isPositiveEV) return 'CBB edges are often thinner and noisier, so number quality matters more than the team name on the jersey.';
       return 'CBB edges are often thinner and noisier, so matchup style and volatility matter more than brand-name teams.';
     case 'football':
+      if (isKeyFootballNumber(currentSpread)) return 'Football numbers become much more sensitive around key spreads like 3 and 7, so timing matters more than a raw edge label.';
       if (spreadMoveAbs >= 1) return 'Football moves matter more when they push through important numbers, not just because the line changed.';
       return 'In football, injuries and market structure often matter more than small cosmetic movement.';
     case 'baseball':
+      if (bestMoneyline?.isPositiveEV) return 'Baseball often plays more like a price market than a side market, so price quality can matter more than team narrative.';
+      if (allInjuries.length > 0) return 'Baseball context should account for lineup availability, but pitcher quality and price usually drive the stronger edge.';
       return 'Baseball pricing is often more sensitive to pitchers and lineup quality than to broad team form alone.';
     default:
       if (disagreementScore >= 2) return 'This looks more like a line-shopping spot than a blind follow-the-market spot.';
@@ -142,6 +163,7 @@ export function buildPremiumGameSummary({
     bestMoneyline,
     disagreementScore,
     sportFamily,
+    currentSpread,
   });
 
   const bullets = buildUniversalBullets({
@@ -166,10 +188,11 @@ export function buildPremiumGameSummary({
     bestSpread,
     bestTotal,
     bestMoneyline,
+    currentSpread,
   });
 
   const reasonByRead = {
-    Playable: 'The current number still looks actionable relative to the market context and available price.',
+    Playable: sportFamily === 'baseball' ? 'The current price still looks actionable relative to the market context and available number.' : 'The current number still looks actionable relative to the market context and available price.',
     Monitor: 'There is something real here, but timing, news, or number quality still matters before jumping in.',
     'Thin Edge': 'There may be a workable angle, but the edge is not strong enough to force action.',
     Pass: 'The market does not separate enough right now to justify forcing a bet.',
