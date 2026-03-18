@@ -3,6 +3,7 @@ import { TrendingUp } from 'lucide-react';
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds } from '../utils/odds-math.js';
+import { buildPremiumGameSummary } from '../utils/game-summary.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import GameResearch from './GameResearch.jsx';
@@ -49,6 +50,10 @@ export default function GameDetails({
     });
   });
 
+  const homeSpreadOutcome = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team);
+  const totalOutcome = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')?.outcomes?.[0];
+  const homeMoneylineOutcome = game.bookmakers?.[0]?.markets?.find(m => m.key === 'h2h')?.outcomes?.find(o => o.name === game.home_team);
+
   // Injury data - try new prefixed format first, then fall back to old format
   // This prevents cross-league collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
   const sportPrefix = game.sport_key?.split('_')[0] || 'basketball'; // basketball, americanfootball, etc.
@@ -62,6 +67,20 @@ export default function GameDetails({
   const awayInjuries = injuries[awayFullKey] || injuries[awayShortKey] || injuries[game.away_team?.toLowerCase()] || injuries[awayKey] || [];
   const homeInjuries = injuries[homeFullKey] || injuries[homeShortKey] || injuries[game.home_team?.toLowerCase()] || injuries[homeKey] || [];
   const allInjuries = [...awayInjuries, ...homeInjuries];
+
+  const premiumSummary = buildPremiumGameSummary({
+    game,
+    opener,
+    currentSpread: current,
+    openerTotal,
+    currentTotal,
+    spreadMove,
+    totalMove,
+    allInjuries,
+    bestSpread: homeSpreadOutcome ? bestOddsMap[`spreads-${homeSpreadOutcome.name}`] : null,
+    bestTotal: totalOutcome ? bestOddsMap[`totals-${totalOutcome.name}`] : null,
+    bestMoneyline: homeMoneylineOutcome ? bestOddsMap[`h2h-${homeMoneylineOutcome.name}`] : null,
+  });
 
   // Trend
   let trendText = '', trendColor = '', trendIcon = '';
@@ -82,6 +101,64 @@ export default function GameDetails({
       background: 'rgba(15, 23, 42, 0.8)',
       border: '1px solid rgba(71, 85, 105, 0.2)', borderRadius: '12px'
     }}>
+      {/* Premium Game Summary */}
+      {tier === 'pro' ? (
+        <div style={{
+          marginBottom: '16px',
+          padding: '16px',
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.14), rgba(59,130,246,0.08))',
+          border: '1px solid rgba(99, 102, 241, 0.28)',
+          borderRadius: '12px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            <h4 style={{ fontSize: '12px', color: '#c4b5fd', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Premium Game Summary</h4>
+            <span style={{
+              fontSize: '10px', fontWeight: 700, padding: '4px 8px', borderRadius: '999px',
+              background: premiumSummary.readLabel === 'Playable' ? 'rgba(34,197,94,0.18)' : premiumSummary.readLabel === 'Monitor' ? 'rgba(234,179,8,0.18)' : premiumSummary.readLabel === 'Thin Edge' ? 'rgba(59,130,246,0.18)' : 'rgba(100,116,139,0.18)',
+              color: premiumSummary.readLabel === 'Playable' ? '#22c55e' : premiumSummary.readLabel === 'Monitor' ? '#eab308' : premiumSummary.readLabel === 'Thin Edge' ? '#38bdf8' : '#94a3b8'
+            }}>{premiumSummary.readLabel}</span>
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '10px' }}>
+            <span style={{ color: '#94a3b8' }}>Market snapshot:</span> {premiumSummary.snapshot || 'Building snapshot...'}
+          </div>
+
+          {premiumSummary.bullets?.length > 0 && (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>What stands out</div>
+              <ul style={{ margin: 0, paddingLeft: '18px', color: '#cbd5e1', fontSize: '12px', lineHeight: 1.5 }}>
+                {premiumSummary.bullets.map((bullet, idx) => (
+                  <li key={idx} style={{ marginBottom: '4px' }}>{bullet}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div style={{ fontSize: '12px', color: '#cbd5e1', marginBottom: '8px' }}>
+            <span style={{ color: '#94a3b8' }}>Why:</span> {premiumSummary.reason}
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#cbd5e1', marginBottom: '8px' }}>
+            <span style={{ color: '#94a3b8' }}>Sport note:</span> {premiumSummary.sportNote}
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600 }}>
+            <span style={{ color: '#94a3b8', fontWeight: 500 }}>Best angle:</span> {premiumSummary.bestAngle}
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          marginBottom: '16px', padding: '16px', background: 'rgba(30, 41, 59, 0.45)', borderRadius: '12px',
+          border: '1px solid rgba(99, 102, 241, 0.18)'
+        }}>
+          <div style={{ fontSize: '12px', color: '#c4b5fd', textTransform: 'uppercase', marginBottom: '8px' }}>Premium Game Summary</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6, marginBottom: '10px' }}>
+            Unlock a sharper game read: market snapshot, what stands out, sport-specific context, and the best current angle.
+          </div>
+          <ProBanner compact />
+        </div>
+      )}
+
       {/* ALL LINES with fair odds, best odds highlighting, hold */}
       <div style={{ marginBottom: '16px' }}>
         <h4 style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', display: 'flex', gap: '12px', alignItems: 'center' }}>
