@@ -20,6 +20,10 @@ Work from: `chore/safe-deep-clean`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PRICE_ID`
 - `STRIPE_WEBHOOK_SECRET`
+Use one of these Firebase Admin setups:
+- `FIREBASE_SERVICE_ACCOUNT` *(full JSON service account)*
+
+OR
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`

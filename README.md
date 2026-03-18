@@ -33,6 +33,12 @@ The exact production values should be managed outside the repo.
 - `STRIPE_WEBHOOK_SECRET`
 
 ### Required for the Firebase-first subscription branch
+Use one of these setups:
+
+#### Preferred (matches current Vercel setup)
+- `FIREBASE_SERVICE_ACCOUNT` *(full JSON service account)*
+
+#### Alternate
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
