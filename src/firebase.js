@@ -31,9 +31,12 @@ export const db = getFirestore(app);
 
 // Helper: check a user's subscription tier by calling our API endpoint
 // This asks Stripe (via our serverless function) if the user is Pro or Free
-export async function getUserTier(email) {
+export async function getUserTier({ email, uid }) {
   try {
-    const response = await fetch(`/api/user-tier?email=${encodeURIComponent(email)}`);
+    const params = new URLSearchParams();
+    if (email) params.set('email', email);
+    if (uid) params.set('uid', uid);
+    const response = await fetch(`/api/user-tier?${params.toString()}`);
     const data = await response.json();
     return data.tier || 'free';
   } catch (err) {

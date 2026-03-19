@@ -37,7 +37,7 @@ export function useCloudBets(key, defaultValue = []) {
   const mergeBets = useCallback((localBets, cloudBets) => {
     const betMap = new Map();
     
-    // Add cloud bets first (they're the "source of truth")
+    // Add cloud bets first (Firestore is the primary synced copy when available)
     cloudBets.forEach(bet => {
       if (bet && bet.id) {
         betMap.set(bet.id, bet);
@@ -52,7 +52,7 @@ export function useCloudBets(key, defaultValue = []) {
           // Local bet not in cloud, add it
           betMap.set(bet.id, bet);
         }
-        // If bet exists in both, keep cloud version (it's the source of truth)
+        // If bet exists in both, keep the cloud version as the primary synced copy
       }
     });
     
