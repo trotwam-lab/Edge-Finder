@@ -125,16 +125,19 @@ function PropCard({ candidate, rank, onQuickAdd }) {
               {r}
             </span>
           ))}
-          {timing?.key === 'live' && (
+          {timing?.key !== 'final' && (
             <span style={{
-              fontSize: '10px', color: '#f43f5e', fontWeight: 700,
-              background: 'rgba(244,63,94,0.12)', padding: '2px 6px', borderRadius: '4px',
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              fontSize: '10px', color: timing.color, fontWeight: 800,
+              background: timing.background, border: `1px solid ${timing.border}`,
+              padding: '2px 7px', borderRadius: '999px', letterSpacing: '0.03em',
             }}>
-              LIVE
+              <span>{timing.label}</span>
+              {timing.shortDetail && <span style={{ color: '#cbd5e1', fontWeight: 600, letterSpacing: 0 }}>{timing.shortDetail}</span>}
             </span>
           )}
-          {timing?.key === 'pregame' && timing?.detail && (
-            <span style={{ fontSize: '10px', color: '#64748b' }}>{timing.detail}</span>
+          {timing?.action && (
+            <span style={{ fontSize: '10px', color: '#64748b' }}>{timing.action}</span>
           )}
         </div>
       </div>
@@ -218,7 +221,7 @@ export default function BestProps({ players, setPendingBet }) {
             {candidates.length} found
           </span>
         </div>
-        <span style={{ fontSize: '10px', color: '#475569' }}>edge · depth · movement · timing</span>
+        <span style={{ fontSize: '10px', color: '#475569' }}>edge · depth · disagreement · movement · timing</span>
       </div>
 
       {/* Ranked cards */}
@@ -259,9 +262,9 @@ export default function BestProps({ players, setPendingBet }) {
         borderRadius: '8px', fontSize: '10px', color: '#475569', lineHeight: '1.7',
       }}>
         <span style={{ color: '#64748b', fontWeight: 600 }}>How ranking works: </span>
-        Price edge vs consensus fair value (up to 40 pts) · Book market depth (up to 20 pts) ·
-        Line disagreement across books (up to 15 pts) · Observed line movement (up to 15 pts) ·
-        Timing relevance — live/pregame (up to 10 pts). Minimum score of 20 to appear.
+        Price edge vs consensus fair value (up to 45 pts) · Book market depth (up to 18 pts) ·
+        Line disagreement across books (up to 12 pts) · Observed movement (up to 10 pts, with thin-market discounts) ·
+        Timing relevance — live/pregame (up to 6 pts). Thin-book and weak-signal props get penalized. Minimum score of 20 to appear.
         Fair value is derived from vig-removal averaging across all available books.
       </div>
     </div>

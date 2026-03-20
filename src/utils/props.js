@@ -114,6 +114,9 @@ export function getPropTimingState({ gameStatus, commenceTime }) {
       key: 'final',
       label: 'FINAL',
       detail: 'Props closed',
+      shortDetail: 'Closed',
+      action: 'No live action',
+      urgency: 'settled',
       color: '#94a3b8',
       background: 'rgba(100,116,139,0.14)',
       border: 'rgba(148,163,184,0.28)',
@@ -124,7 +127,10 @@ export function getPropTimingState({ gameStatus, commenceTime }) {
     return {
       key: 'live',
       label: 'LIVE',
-      detail: 'In progress',
+      detail: 'Lines moving now',
+      shortDetail: 'Act fast',
+      action: 'Market in progress',
+      urgency: 'hot',
       color: '#f43f5e',
       background: 'rgba(244,63,94,0.14)',
       border: 'rgba(244,63,94,0.32)',
@@ -137,31 +143,60 @@ export function getPropTimingState({ gameStatus, commenceTime }) {
     const diffMinutes = Math.round(diffMs / 60000);
     const absMinutes = Math.abs(diffMinutes);
 
+    let label = 'PREGAME';
     let detail = startsAt.toLocaleString([], {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
     });
+    let shortDetail = 'Scheduled';
+    let action = 'Build card carefully';
+    let urgency = 'cool';
+    let color = '#22c55e';
+    let background = 'rgba(34,197,94,0.12)';
+    let border = 'rgba(34,197,94,0.28)';
 
-    if (diffMinutes >= 0 && diffMinutes <= 59) detail = `Starts in ${Math.max(1, diffMinutes)}m`;
-    else if (diffMinutes >= 60 && diffMinutes <= 6 * 60) detail = `Starts in ${Math.round(diffMinutes / 60)}h`;
-    else if (diffMinutes < 0 && absMinutes <= 15) detail = 'Starting now';
+    if (diffMinutes >= 0 && diffMinutes <= 20) {
+      label = 'STARTING SOON';
+      detail = `Starts in ${Math.max(1, diffMinutes)}m`;
+      shortDetail = `${Math.max(1, diffMinutes)}m`;
+      action = 'Last call before lock';
+      urgency = 'warm';
+      color = '#f59e0b';
+      background = 'rgba(245,158,11,0.13)';
+      border = 'rgba(245,158,11,0.32)';
+    } else if (diffMinutes > 20 && diffMinutes <= 90) {
+      label = 'PREGAME';
+      detail = `Starts in ${diffMinutes}m`;
+      shortDetail = `${diffMinutes}m to tip`;
+      action = 'Good window to compare books';
+    } else if (diffMinutes >= 90 && diffMinutes <= 6 * 60) {
+      label = 'PREGAME';
+      detail = `Starts in ${Math.round(diffMinutes / 60)}h`;
+      shortDetail = `${Math.round(diffMinutes / 60)}h out`;
+      action = 'Track movement into open';
+    } else if (diffMinutes < 0 && absMinutes <= 15) {
+      label = 'STARTING SOON';
+      detail = 'Starting now';
+      shortDetail = 'Now';
+      action = 'Books may be pulling props';
+      urgency = 'warm';
+      color = '#f59e0b';
+      background = 'rgba(245,158,11,0.13)';
+      border = 'rgba(245,158,11,0.32)';
+    }
 
-    return {
-      key: 'pregame',
-      label: 'PRE',
-      detail,
-      color: '#22c55e',
-      background: 'rgba(34,197,94,0.12)',
-      border: 'rgba(34,197,94,0.28)',
-    };
+    return { key: 'pregame', label, detail, shortDetail, action, urgency, color, background, border };
   }
 
   return {
     key: 'unknown',
     label: 'SCHEDULED',
     detail: 'Start time pending',
+    shortDetail: 'TBD',
+    action: 'Watch for market open',
+    urgency: 'unknown',
     color: '#94a3b8',
     background: 'rgba(100,116,139,0.14)',
     border: 'rgba(148,163,184,0.28)',
@@ -179,6 +214,42 @@ export function getInitials(name) {
 
 export function getPlayerInitials(name) {
   return String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'PP';
+}
+
+export function normalizePersonName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function getNameTokens(name) {
+  return normalizePersonName(name).split(/\s+/).filter(Boolean);
+}
+
+export function namesLookTrustworthy(leftName, rightName) {
+  const left = getNameTokens(leftName);
+  const right = getNameTokens(rightName);
+  if (!left.length || !right.length) return false;
+
+  const leftJoined = left.join(' ');
+  const rightJoined = right.join(' ');
+  if (leftJoined === rightJoined) return true;
+
+  const leftFirst = left[0];
+  const rightFirst = right[0];
+  const leftLast = left[left.length - 1];
+  const rightLast = right[right.length - 1];
+
+  if (leftLast !== rightLast) return false;
+
+  const firstInitialMatch = leftFirst[0] && rightFirst[0] && leftFirst[0] === rightFirst[0];
+  const firstNameClose = leftFirst === rightFirst || leftFirst.startsWith(rightFirst) || rightFirst.startsWith(leftFirst);
+
+  return firstInitialMatch && firstNameClose;
 }
 
 export function createPropHistoryKey(prop) {
@@ -329,44 +400,82 @@ export function scorePropCandidate({ marketKey, mkt, timing }) {
   let score = 0;
   const reasons = [];
 
-  // 1. Price edge vs fair value — primary signal (0-40 pts, capped)
+  const booksCount = insights.booksCount ?? 0;
+  const lineRange = insights.lineRange;
+  const move = insights.strongestMove;
+  const strongestPriceMove = insights.strongestPriceMove;
+  const absMove = Math.abs(move?.lineChange || 0);
+  const absPriceMove = Math.abs(strongestPriceMove?.priceChange || 0);
+
+  // 1. Price edge vs fair value — still the primary signal (0-45 pts, capped)
   if (edgeValue != null && edgeValue > 0) {
-    const edgePts = Math.min(40, Math.round(edgeValue * 2));
+    const edgePts = Math.min(45, Math.round(edgeValue * 2.25));
     score += edgePts;
     if (edgeValue >= 10) reasons.push(`+${Math.round(edgeValue)} vs fair line`);
-    else if (edgeValue >= 5) reasons.push(`+${Math.round(edgeValue)} above fair`);
+    else if (edgeValue >= 6) reasons.push(`+${Math.round(edgeValue)} above fair`);
   }
 
-  // 2. Book depth — more books = more reliable fair model (0-20 pts)
-  const booksCount = insights.booksCount ?? 0;
-  const depthPts = Math.min(20, Math.round((Math.max(0, booksCount - 1) / 5) * 20));
+  // 2. Book depth — reward well-distributed markets, not just any listing count (0-18 pts)
+  let depthPts = 0;
+  if (booksCount >= 7) depthPts = 18;
+  else if (booksCount === 6) depthPts = 16;
+  else if (booksCount === 5) depthPts = 13;
+  else if (booksCount === 4) depthPts = 9;
+  else if (booksCount === 3) depthPts = 5;
+  else depthPts = 2;
   score += depthPts;
   if (booksCount >= 5) reasons.push(`${booksCount} books pricing market`);
+  else if (booksCount === 3) reasons.push('3-book market');
 
-  // 3. Line disagreement — books diverge on the number (0-15 pts)
-  const lineRange = insights.lineRange;
+  // Thin-book penalty — reduce weak props sneaking up on shallow markets.
+  if (booksCount <= 2) score -= 8;
+  else if (booksCount === 3) score -= 4;
+
+  // 3. Line disagreement — useful, but only if books are actually populated (0-12 pts)
   if (lineRange != null && lineRange > 0) {
-    if (lineRange >= 1) { score += 15; reasons.push(`${lineRange.toFixed(1)}-pt line spread`); }
-    else if (lineRange >= 0.5) { score += 9; reasons.push(`${lineRange.toFixed(1)}-pt disagreement`); }
-    else { score += 4; }
-  }
-
-  // 4. Movement signal — observed line changes (0-15 pts)
-  const move = insights.strongestMove;
-  if (move?.lineChange != null) {
-    const absMove = Math.abs(move.lineChange);
-    if (absMove >= 1) {
-      score += 15;
-      reasons.push(`${move.lineChange > 0 ? '+' : ''}${move.lineChange} move at ${getBookAbbreviation(move.book)}`);
-    } else if (absMove >= 0.5) {
-      score += 8;
-      reasons.push(`${move.lineChange > 0 ? '+' : ''}${move.lineChange} move`);
+    if (lineRange >= 1) {
+      score += booksCount >= 4 ? 12 : 8;
+      reasons.push(`${lineRange.toFixed(1)}-pt line spread`);
+    } else if (lineRange >= 0.5) {
+      score += booksCount >= 4 ? 7 : 4;
+      reasons.push(`${lineRange.toFixed(1)}-pt disagreement`);
+    } else {
+      score += booksCount >= 5 ? 2 : 1;
     }
   }
 
-  // 5. Timing relevance — live & pre-game games are actionable (0-10 pts)
-  if (timing?.key === 'live') score += 10;
-  else if (timing?.key === 'pregame') score += 5;
+  // 4. Movement signal — meaningful, but subordinate to price edge and market depth (0-10 pts)
+  if (move?.lineChange != null) {
+    let movementPts = 0;
+    if (absMove >= 1) movementPts = 10;
+    else if (absMove >= 0.5) movementPts = 6;
+    else if (absMove >= 0.25) movementPts = 3;
+
+    // Shallow or weak-edge moves get discounted so noisy props do not jump the board.
+    if (booksCount <= 3) movementPts = Math.max(0, movementPts - 3);
+    if ((edgeValue ?? 0) < 8) movementPts = Math.max(0, movementPts - 2);
+
+    score += movementPts;
+    if (movementPts >= 6) reasons.push(`${move.lineChange > 0 ? '+' : ''}${move.lineChange} move at ${getBookAbbreviation(move.book)}`);
+    else if (movementPts >= 3) reasons.push(`${move.lineChange > 0 ? '+' : ''}${move.lineChange} move`);
+  }
+
+  // Price movement can matter, but only as a small supporting signal.
+  if (absPriceMove >= 15) score += Math.min(4, Math.round(absPriceMove / 10));
+
+  // Weak overall signal penalty — shallow + small edge + no real movement should fall down the list.
+  if ((edgeValue ?? 0) < 6 && booksCount <= 3 && absMove < 0.5) score -= 6;
+
+  // 5. Timing relevance — sensible boost, not enough to overpower the actual edge (0-6 pts)
+  if (timing?.key === 'live') {
+    score += booksCount >= 4 && (edgeValue ?? 0) >= 8 ? 4 : 2;
+  } else if (timing?.key === 'pregame') {
+    const detail = String(timing?.detail || '').toLowerCase();
+    if (detail.includes('starts in') || detail.includes('starting now')) score += 6;
+    else score += 4;
+  } else if (timing?.key === 'unknown') {
+    score += 1;
+  }
 
   return {
     score: Math.max(0, Math.min(100, Math.round(score))),
