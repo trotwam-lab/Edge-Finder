@@ -12,7 +12,7 @@ const CONFIDENCE_COLORS = {
 
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
-export default function EdgeAlerts({ playerProps = [], propHistory = {}, propClosingLines = {} }) {
+export default function EdgeAlerts({ playerProps = [], propHistory = {}, propClosingLines = {}, embedded = false }) {
   const { tier } = useAuth();
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,10 +101,17 @@ export default function EdgeAlerts({ playerProps = [], propHistory = {}, propClo
     return [...propCards, ...edgeCards].sort((a, b) => (b.sortMetric || 0) - (a.sortMetric || 0)).slice(0, 24);
   }, [edges, propAlerts]);
 
+  const feedSummary = useMemo(() => ({
+    total: combinedAlerts.length,
+    props: combinedAlerts.filter(alert => alert.isProp).length,
+    games: combinedAlerts.filter(alert => !alert.isProp).length,
+    highConfidence: combinedAlerts.filter(alert => alert.confidence === 'HIGH').length,
+  }), [combinedAlerts]);
+
   // Free users see upgrade banner
   if (tier !== 'pro') {
     return (
-      <div style={{ padding: '20px 24px' }}>
+      <div style={{ padding: embedded ? '0' : '20px 24px' }}>
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{
             width: '56px', height: '56px', margin: '0 auto 16px',
@@ -150,9 +157,9 @@ export default function EdgeAlerts({ playerProps = [], propHistory = {}, propClo
   }
 
   return (
-    <div style={{ padding: '20px 24px' }}>
+    <div style={{ padding: embedded ? '0' : '20px 24px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      {!embedded && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Zap size={20} color="#eab308" />
           <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f8fafc', margin: 0 }}>Edge Alerts</h2>
@@ -178,7 +185,23 @@ export default function EdgeAlerts({ playerProps = [], propHistory = {}, propClo
             <RefreshCw size={14} color="#94a3b8" style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           </button>
         </div>
-      </div>
+      </div>}
+
+      {(embedded || combinedAlerts.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+          {[
+            ['Live alerts', feedSummary.total],
+            ['Prop-led', feedSummary.props],
+            ['Game edges', feedSummary.games],
+            ['High conf.', feedSummary.highConfidence],
+          ].map(([label, value]) => (
+            <div key={label} style={{ padding: '10px 12px', borderRadius: '10px', background: 'rgba(15,23,42,0.42)', border: '1px solid rgba(71,85,105,0.22)' }}>
+              <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>{label}</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc' }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
