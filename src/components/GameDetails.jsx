@@ -56,55 +56,20 @@ export default function GameDetails({
 
   const spreadCandidates = spreadOutcomes.map(o => {
     const best = bestOddsMap[`spreads-${o.name}`];
-    const fair = spreadFair?.outcomes?.find(fo => fo.name === o.name);
-    return best ? {
-      ...best,
-      market: 'spreads',
-      point: o.point,
-      name: o.name,
-      fairPrice: fair?.fairPrice ?? null,
-      isPositiveEV: fair ? isPositiveEV(best.price, fair.fairPrice) : false,
-      bookTitle: BOOKMAKERS[best.book] || best.book,
-    } : null;
+    return best ? { ...best, market: 'spreads', point: o.point, name: o.name } : null;
   }).filter(Boolean);
   const totalCandidates = totalOutcomes.map(o => {
     const best = bestOddsMap[`totals-${o.name}`];
-    const fair = totalFair?.outcomes?.find(fo => fo.name === o.name);
-    return best ? {
-      ...best,
-      market: 'totals',
-      point: o.point,
-      name: o.name,
-      fairPrice: fair?.fairPrice ?? null,
-      isPositiveEV: fair ? isPositiveEV(best.price, fair.fairPrice) : false,
-      bookTitle: BOOKMAKERS[best.book] || best.book,
-    } : null;
+    return best ? { ...best, market: 'totals', point: o.point, name: o.name } : null;
   }).filter(Boolean);
   const moneylineCandidates = moneylineOutcomes.map(o => {
     const best = bestOddsMap[`h2h-${o.name}`];
-    const fair = h2hFair?.outcomes?.find(fo => fo.name === o.name);
-    return best ? {
-      ...best,
-      market: 'h2h',
-      name: o.name,
-      fairPrice: fair?.fairPrice ?? null,
-      isPositiveEV: fair ? isPositiveEV(best.price, fair.fairPrice) : false,
-      bookTitle: BOOKMAKERS[best.book] || best.book,
-    } : null;
+    return best ? { ...best, market: 'h2h', name: o.name } : null;
   }).filter(Boolean);
 
-  const pickSignalCandidate = (candidates, preferredName) => {
-    if (!candidates?.length) return null;
-    return candidates.find(c => c.isPositiveEV && (!preferredName || c.name === preferredName))
-      || candidates.find(c => c.isPositiveEV)
-      || candidates.find(c => c.name === preferredName)
-      || candidates[0]
-      || null;
-  };
-
-  const bestSpreadCandidate = pickSignalCandidate(spreadCandidates, game.home_team);
-  const bestTotalCandidate = pickSignalCandidate(totalCandidates);
-  const bestMoneylineCandidate = pickSignalCandidate(moneylineCandidates, game.home_team);
+  const bestSpreadCandidate = spreadCandidates.find(c => c.name === game.home_team) || spreadCandidates[0] || null;
+  const bestTotalCandidate = totalCandidates[0] || null;
+  const bestMoneylineCandidate = moneylineCandidates.find(c => c.name === game.home_team) || moneylineCandidates[0] || null;
 
   // Injury data - try new prefixed format first, then fall back to old format
   // This prevents cross-league collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
@@ -197,34 +162,9 @@ export default function GameDetails({
             <span style={{ color: '#94a3b8' }}>Sport note:</span> {premiumSummary.sportNote}
           </div>
 
-          <div style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600, marginBottom: '10px' }}>
+          <div style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600 }}>
             <span style={{ color: '#94a3b8', fontWeight: 500 }}>Best angle:</span> {premiumSummary.bestAngle}
           </div>
-
-          {(premiumSummary.reasonFlags?.length > 0 || premiumSummary.sourceTagLabels?.length > 0) && (
-            <div style={{ marginBottom: '8px' }}>
-              {premiumSummary.reasonFlags?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
-                  {premiumSummary.reasonFlags.map((flag) => (
-                    <span key={flag} style={{ fontSize: '10px', color: '#cbd5e1', background: 'rgba(51,65,85,0.7)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '999px', padding: '3px 7px' }}>
-                      {flag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {premiumSummary.sourceTagLabels?.length > 0 && (
-                <div style={{ fontSize: '10px', color: '#94a3b8' }}>
-                  Sources: {premiumSummary.sourceTagLabels.join(' · ')}
-                </div>
-              )}
-            </div>
-          )}
-
-          {premiumSummary.validation && (
-            <div style={{ fontSize: '10px', color: '#94a3b8', borderTop: '1px solid rgba(148,163,184,0.12)', paddingTop: '8px' }}>
-              Validation: {premiumSummary.validation.confidence} confidence · v{premiumSummary.validation.summaryVersion.replace(/^v/, '')} · tracked {premiumSummary.validation.trackedMarkets.spread}/{premiumSummary.validation.trackedMarkets.total}/{premiumSummary.validation.trackedMarkets.moneyline} markets
-            </div>
-          )}
         </div>
       ) : (
         <div style={{
