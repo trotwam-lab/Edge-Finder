@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SPORTS, BOOKMAKERS, SPORT_ESPN_MAP } from '../constants.js';
+import { createPropHistoryKey, createPropMarketKey } from '../utils/props.js';
 
 // ============================================================
 // Persistent state — survives page refreshes via localStorage
@@ -37,6 +38,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [countdown, setCountdown] = useState(defaultInterval);
     const [sportLastUpdated, setSportLastUpdated] = useState({});
     const [propHistory, setPropHistory] = usePersistentState('edgefinder_prop_history', {});
+    const [propClosingLines, setPropClosingLines] = usePersistentState('edgefinder_prop_closing_lines', {});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
 
@@ -190,9 +192,25 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                     }
           }
 
-          // Fetch player props — all major sports every cycle, decoupled from odds rotation
-          const PROPS_SPORTS = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
-          const PROPS_NAME_MAP = { basketball_nba: 'NBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
+          // Fetch player props — all app-supported prop sports every cycle, decoupled from odds rotation
+          const PROPS_SPORTS = [
+            'basketball_nba',
+            'americanfootball_nfl',
+            'icehockey_nhl',
+            'baseball_mlb',
+            'basketball_ncaab',
+            'americanfootball_ncaaf',
+            'basketball_wncaab',
+          ];
+          const PROPS_NAME_MAP = {
+            basketball_nba: 'NBA',
+            americanfootball_nfl: 'NFL',
+            icehockey_nhl: 'NHL',
+            baseball_mlb: 'MLB',
+            basketball_ncaab: 'NCAAB',
+            americanfootball_ncaaf: 'NCAAF',
+            basketball_wncaab: 'WNCAAB',
+          };
           const propsToFetch = PROPS_SPORTS.filter(s =>
             !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
           );
@@ -214,6 +232,19 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                     ...allProps,
                   ]
             );
+
+            const capturedAt = new Date().toISOString();
+            setPropHistory(prev => {
+              const next = { ...prev };
+              allProps.forEach(prop => {
+                const key = createPropHistoryKey(prop);
+                const history = next[key] || [];
+                const last = history[history.length - 1];
+                if (last && last.price === prop.price && last.line === prop.line) return;
+                next[key] = [...history, { price: prop.price, line: prop.line, capturedAt }].slice(-8);
+              });
+              return next;
+            });
           }
 
           // Merge new games with existing (replace by id, keep others)
@@ -280,12 +311,47 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                    } finally {
                                            setLoading(false);
                                    }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds, setPropHistory]);
 
   // Initial load
   useEffect(() => {
         loadData(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!playerProps.length) return;
+    setPropClosingLines(prev => {
+      const next = { ...prev };
+      let changed = false;
+      playerProps.forEach(prop => {
+        const entryKey = createPropHistoryKey(prop);
+        const history = propHistory[entryKey] || [];
+        const gameTime = Date.parse(prop.commence_time || '');
+        const hasStarted = Number.isFinite(gameTime) && gameTime <= Date.now();
+        if (!hasStarted || !history.length || next[entryKey]?.locked) return;
+        const first = history[0];
+        const last = history[history.length - 1];
+        next[entryKey] = {
+          marketKey: createPropMarketKey(prop),
+          sport: prop.sport,
+          gameId: prop.gameId,
+          player: prop.player,
+          market: prop.market,
+          side: prop.outcome,
+          book: prop.book || prop.bookTitle || prop.bookKey,
+          firstLine: first?.line ?? null,
+          firstPrice: first?.price ?? null,
+          closingLine: last?.line ?? null,
+          closingPrice: last?.price ?? null,
+          observedMoves: history.length,
+          capturedAt: last?.capturedAt || new Date().toISOString(),
+          locked: true,
+        };
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [playerProps, propHistory, setPropClosingLines]);
 
   // Countdown + auto-refresh
   useEffect(() => {
@@ -318,6 +384,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         countdown,
         gameLineHistory,
         propHistory,
+        propClosingLines,
         sportLastUpdated,
         manualRefresh,
         setGameLineHistory,
