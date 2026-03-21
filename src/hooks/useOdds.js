@@ -175,7 +175,6 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                 newGames.push(...gamesWithScores);
 
           // Build injury lookup — keyed by sport prefix + team name to avoid cross-league collisions
-          const injuriesByTeam = {};
           injuryList.forEach(inj => {
             const sportPrefix = sportKey.split('_')[0]; // 'basketball', 'americanfootball', etc.
             const fullKey = `${sportPrefix}:${inj.team}`;
