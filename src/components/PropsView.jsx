@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Loader, Lock, ChevronDown, ChevronUp, X, Plus, Check, ShoppingCart, ArrowUpDown, Zap } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
@@ -112,7 +112,7 @@ function OddsCell({ price, isBest, side, player, marketKey, line, book, game, on
   );
 }
 
-export default function PropsView({ playerProps, games = [], loading, propHistory, propClosingLines, setPendingBet }) {
+export default function PropsView({ playerProps = [], games = [], loading, propHistory = {}, propClosingLines = {}, setPendingBet }) {
   const { tier } = useAuth();
   const [propFilter, setPropFilter] = useState('ALL');
   const [sportFilter, setSportFilter] = useState('ALL');
@@ -125,7 +125,15 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
   const [teamIndexMap, setTeamIndexMap] = useState({});
   const [playerHeadshots, setPlayerHeadshots] = useState({});
 
-  const resolveTrustedHeadshot = (player, sportTeams) => {
+  const normalizedPlayerProps = useMemo(() => {
+    return (Array.isArray(playerProps) ? playerProps : []).filter(prop => {
+      if (!prop || typeof prop !== 'object') return false;
+      if (!prop.player || !prop.market || !prop.outcome) return false;
+      return true;
+    });
+  }, [playerProps]);
+
+  const resolveTrustedHeadshot = useCallback((player, sportTeams) => {
     const normalizedName = normalizePersonName(player.name);
     const candidates = playerHeadshots[`${player.sport}::${normalizedName}`] || [];
     if (!candidates.length) return null;
@@ -144,13 +152,13 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
     const uniqueUrls = Array.from(new Set(pool.map(candidate => candidate.url).filter(Boolean)));
 
     return uniqueUrls.length === 1 ? uniqueUrls[0] : null;
-  };
+  }, [playerHeadshots]);
 
   useEffect(() => {
-    const sports = Array.from(new Set(playerProps.map(prop => prop.sport).filter(Boolean)));
+    const sports = Array.from(new Set(normalizedPlayerProps.map(prop => prop.sport).filter(Boolean)));
     sports.forEach(async (sport) => {
       const meta = getSportMeta(sport);
-      if (!meta.espnPath || (logoMap[sport] && teamIndexMap[sport])) return;
+      if (!meta?.espnPath || (logoMap[sport] && teamIndexMap[sport])) return;
       try {
         const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${meta.espnPath}/teams`);
         if (!res.ok) return;
@@ -172,12 +180,14 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
         setTeamIndexMap(prev => ({ ...prev, [sport]: nextTeams }));
       } catch {}
     });
-  }, [playerProps, logoMap, teamIndexMap]);
+  }, [normalizedPlayerProps, logoMap, teamIndexMap]);
 
   useEffect(() => {
     const rosterTargets = [];
     const seen = new Set();
-    playerProps.forEach(prop => {
+    normalizedPlayerProps.forEach(prop => {
+      const meta = getSportMeta(prop.sport);
+      if (!meta?.espnPath) return;
       const sportTeams = teamIndexMap[prop.sport] || {};
       const teams = String(prop.game || '').split(' @ ').map(name => name.trim()).filter(Boolean);
       teams.forEach(teamName => {
@@ -186,7 +196,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
         const key = `${prop.sport}::${match.id}`;
         if (seen.has(key)) return;
         seen.add(key);
-        rosterTargets.push({ sport: prop.sport, teamId: match.id, espnPath: getSportMeta(prop.sport).espnPath });
+        rosterTargets.push({ sport: prop.sport, teamId: match.id, espnPath: meta.espnPath });
       });
     });
 
@@ -221,7 +231,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
         });
       } catch {}
     });
-  }, [playerProps, teamIndexMap]);
+  }, [normalizedPlayerProps, teamIndexMap]);
 
   const gameStatusMap = useMemo(() => {
     const map = {};
@@ -240,7 +250,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
 
   const players = useMemo(() => {
     const map = {};
-    playerProps.forEach(prop => {
+    normalizedPlayerProps.forEach(prop => {
       const sport = prop.sport || 'unknown';
       const pk = `${sport}::${prop.player}`;
       if (!prop.player) return;
@@ -317,17 +327,17 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
       }
       return Object.keys(b.markets).length - Object.keys(a.markets).length;
     });
-  }, [playerProps, propHistory, logoMap, playerHeadshots, gameStatusMap]);
+  }, [normalizedPlayerProps, propHistory, logoMap, playerHeadshots, gameStatusMap, teamIndexMap, resolveTrustedHeadshot]);
 
   const propAlerts = useMemo(() => buildPropAlerts(players, propHistory, propClosingLines), [players, propHistory, propClosingLines]);
 
-  const marketFilterOptions = useMemo(() => ['ALL', ...Array.from(new Map(playerProps.filter(p => p.market).map(p => [p.market, (playerProps.filter(x => x.market === p.market).length)])).entries()).sort((a, b) => b[1] - a[1] || getMarketDisplayName(a[0]).localeCompare(getMarketDisplayName(b[0]))).map(([market]) => market)], [playerProps]);
+  const marketFilterOptions = useMemo(() => ['ALL', ...Array.from(new Map(normalizedPlayerProps.filter(p => p.market).map(p => [p.market, (normalizedPlayerProps.filter(x => x.market === p.market).length)])).entries()).sort((a, b) => b[1] - a[1] || getMarketDisplayName(a[0]).localeCompare(getMarketDisplayName(b[0]))).map(([market]) => market)], [normalizedPlayerProps]);
 
-  const sportOptions = useMemo(() => ['ALL', ...Array.from(new Set(playerProps.map(prop => prop.sport).filter(Boolean))).sort((a, b) => {
+  const sportOptions = useMemo(() => ['ALL', ...Array.from(new Set(normalizedPlayerProps.map(prop => prop.sport).filter(Boolean))).sort((a, b) => {
     const aIndex = SPORT_SORT_ORDER.indexOf(a); const bIndex = SPORT_SORT_ORDER.indexOf(b);
     if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
     if (aIndex === -1) return 1; if (bIndex === -1) return -1; return aIndex - bIndex;
-  })], [playerProps]);
+  })], [normalizedPlayerProps]);
 
   const filteredPlayers = useMemo(() => {
     let filtered = players;
@@ -347,7 +357,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
 
   const playersBySport = useMemo(() => filteredPlayers.reduce((acc, player) => { if (!acc[player.sport]) acc[player.sport] = []; acc[player.sport].push(player); return acc; }, {}), [filteredPlayers]);
   const toggleExpand = key => setExpandedPlayers(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
-  const stats = useMemo(() => ({ totalPlayers: players.length, totalProps: playerProps.length, totalSports: Object.keys(playersBySport).length, topMarketLabel: marketFilterOptions[1] && marketFilterOptions[1] !== 'ALL' ? getMarketDisplayName(marketFilterOptions[1]) : '—', hockeyProps: playerProps.filter(p => p.sport === 'icehockey_nhl').length }), [players, playerProps, playersBySport, marketFilterOptions]);
+  const stats = useMemo(() => ({ totalPlayers: players.length, totalProps: normalizedPlayerProps.length, totalSports: Object.keys(playersBySport).length, topMarketLabel: marketFilterOptions[1] && marketFilterOptions[1] !== 'ALL' ? getMarketDisplayName(marketFilterOptions[1]) : '—', hockeyProps: normalizedPlayerProps.filter(p => p.sport === 'icehockey_nhl').length }), [players, normalizedPlayerProps, playersBySport, marketFilterOptions]);
   const handleConfirm = (betWithWager) => { if (setPendingBet) setPendingBet({ game: betWithWager.game || betWithWager.player, type: 'Player Prop', pick: betWithWager.pick, odds: betWithWager.odds, wager: betWithWager.wager, date: betWithWager.date || new Date().toISOString(), book: betWithWager.book || null, line: betWithWager.line ?? null, gameId: betWithWager.gameId || null, marketKey: betWithWager.marketKey || null }); setPendingModal(null); };
 
   if (loading) return <div style={{ padding: '20px 24px', textAlign: 'center', paddingTop: '60px' }}><Loader size={36} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} /><p style={{ marginTop: '16px', color: '#94a3b8' }}>Loading player props...</p></div>;
