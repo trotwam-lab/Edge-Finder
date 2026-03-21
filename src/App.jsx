@@ -9,11 +9,9 @@ import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
 import GameDetails from './components/GameDetails.jsx';
 import PropsView from './components/PropsView.jsx';
-import EVCalculator from './components/EVCalculator.jsx';
 import BetTracker from './components/BetTracker.jsx';
-import EdgeAlerts from './components/EdgeAlerts.jsx';
-import LineMovement from './components/LineMovement.jsx';
-import KellyCriterion from './components/KellyCriterion.jsx';
+import EdgeFinderHub from './components/EdgeFinderHub.jsx';
+import ProTools from './components/ProTools.jsx';
 import MobileNav from './components/MobileNav.jsx';
 
 export default function BettingApp() {
@@ -163,27 +161,9 @@ export default function BettingApp() {
           )}
         </div>
       )}
-      {activeTab === 'EDGES' && <EdgeAlerts playerProps={playerProps} propHistory={propHistory} propClosingLines={propClosingLines} />}
-      {activeTab === 'LINES' && <LineMovement />}
+      {activeTab === 'EDGE_FINDER' && <EdgeFinderHub games={games} playerProps={playerProps} loading={loading} propHistory={propHistory} propClosingLines={propClosingLines} gameLineHistory={gameLineHistory} />}
       {activeTab === 'PROPS' && <PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} propClosingLines={propClosingLines} setPendingBet={handleSetPendingBet} />}
-      {activeTab === 'EV_CALC' && (
-        tier === 'pro' ? <EVCalculator /> : (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>EV Calculator - Pro Feature</div>
-            <ProBanner />
-          </div>
-        )
-      )}
-      {activeTab === 'KELLY' && (
-        tier === 'pro' ? <KellyCriterion /> : (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>Kelly Criterion - Pro Feature</div>
-            <ProBanner />
-          </div>
-        )
-      )}
+      {activeTab === 'PRO_TOOLS' && <ProTools />}
       {activeTab === 'TRACKER' && (
         <BetTracker
           pendingBet={pendingBet}

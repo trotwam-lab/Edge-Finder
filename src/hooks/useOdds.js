@@ -116,16 +116,18 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                 !enabledSports || enabledSports.includes(name)
                                                             );
 
-                                           if (filter && filter !== 'ALL') {
-                                                   const sportKey = SPORTS[filter];
-                                                   if (sportKey) return [[filter, sportKey]];
-                                                   const match = allSports.find(([, v]) => v.includes(filter.toLowerCase()));
-                                                   if (match) return [match];
-                                                   return allSports.slice(0, 3);
-                                           }
+        if (allSports.length === 0) return [];
 
-                                           // ALL selected — rotate through sports in batches of 4
-                                           const batchSize = 4;
+        if (filter && filter !== 'ALL') {
+          const sportKey = SPORTS[filter];
+          if (sportKey) return [[filter, sportKey]];
+          const match = allSports.find(([, v]) => v.includes(filter.toLowerCase()));
+          if (match) return [match];
+          return allSports.slice(0, 3);
+        }
+
+        // ALL selected — rotate through sports in batches of 4
+        const batchSize = Math.min(4, allSports.length);
         const start = rotationIndexRef.current % allSports.length;
         const batch = [];
         for (let i = 0; i < batchSize; i++) {

@@ -13,7 +13,7 @@ const THRESHOLDS = {
   MONEYLINE: 15,  // 15+ cents
 };
 
-export default function LineMovement() {
+export default function LineMovement({ embedded = false }) {
   const { tier } = useAuth();
   const [odds, setOdds] = useState([]);
   const [movements, setMovements] = useState([]);
@@ -216,6 +216,13 @@ export default function LineMovement() {
     return () => clearInterval(interval);
   }, [tier, fetchOdds]);
 
+  const movementSummary = {
+    total: movements.length,
+    favorable: movements.filter(movement => movement.isFavorable).length,
+    spreads: movements.filter(movement => movement.marketType === 'Spread').length,
+    totalsAndMl: movements.filter(movement => movement.marketType !== 'Spread').length,
+  };
+
   // Format time ago
   const formatTimeAgo = (timestamp) => {
     const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -229,7 +236,7 @@ export default function LineMovement() {
   // Free users see upgrade banner
   if (tier !== 'pro') {
     return (
-      <div style={{ padding: '20px 24px' }}>
+      <div style={{ padding: embedded ? '0' : '20px 24px' }}>
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{
             width: '56px', height: '56px', margin: '0 auto 16px',
@@ -284,9 +291,9 @@ export default function LineMovement() {
   };
 
   return (
-    <div style={{ padding: '20px 24px' }}>
+    <div style={{ padding: embedded ? '0' : '20px 24px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      {!embedded && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Activity size={20} color="#6366f1" />
           <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f8fafc', margin: 0 }}>Line Movement</h2>
@@ -312,14 +319,32 @@ export default function LineMovement() {
             <RefreshCw size={14} color="#94a3b8" style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           </button>
         </div>
-      </div>
+      </div>}
 
-      {/* Info text */}
-      <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
-        Tracking significant line movements: spreads ±1+ points, totals ±2+ points, moneylines ±15+ cents. 
-        <span style={{ color: '#22c55e' }}> Green = favorable move</span>, 
-        <span style={{ color: '#ef4444' }}> Red = unfavorable</span>.
-      </p>
+      {!embedded && <>
+        {/* Info text */}
+        <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
+          Tracking significant line movements: spreads ±1+ points, totals ±2+ points, moneylines ±15+ cents. 
+          <span style={{ color: '#22c55e' }}> Green = favorable move</span>, 
+          <span style={{ color: '#ef4444' }}> Red = unfavorable</span>.
+        </p>
+      </>}
+
+      {(embedded || movements.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+          {[
+            ['Tracked moves', movementSummary.total],
+            ['Favorable', movementSummary.favorable],
+            ['Spreads', movementSummary.spreads],
+            ['Totals / ML', movementSummary.totalsAndMl],
+          ].map(([label, value]) => (
+            <div key={label} style={{ padding: '10px 12px', borderRadius: '10px', background: 'rgba(15,23,42,0.42)', border: '1px solid rgba(71,85,105,0.22)' }}>
+              <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>{label}</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc' }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
