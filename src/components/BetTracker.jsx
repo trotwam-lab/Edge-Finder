@@ -14,7 +14,7 @@ import {
 import { americanToDecimal, americanToImplied } from '../utils/odds-math.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
-import { useCloudBets } from '../hooks/useCloudBets.js';
+import { useCloudBets, scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
 
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
@@ -151,7 +151,7 @@ function findLivePrice(games, bet) {
 }
 
 export default function BetTracker({ pendingBet, onBetConsumed, games = [], historicOdds = {} }) {
-  const { tier } = useAuth();
+  const { tier, user } = useAuth();
   const isPro = tier === 'pro';
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
   
@@ -528,6 +528,41 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     }
   }
 
+  // Last-ditch recovery: scan every localStorage key on this device plus every
+  // historical cloud snapshot doc, then additively merge anything bet-shaped
+  // back in. Only ever adds — never overwrites or removes.
+  async function scanAndRecover() {
+    try {
+      const local = scanLocalStorageForBets();
+      const cloud = user?.uid ? await loadCloudSnapshots(user.uid) : [];
+      const knownIds = new Set(bets.map(b => b.id));
+      const incoming = [...local, ...cloud].filter(b => b && b.id != null);
+      const newOnes = incoming.filter(b => !knownIds.has(b.id));
+      if (newOnes.length === 0) {
+        alert('Scan complete. No additional bets found on this device or in cloud snapshots.');
+        return;
+      }
+      setBets(prev => {
+        const map = new Map();
+        prev.forEach(b => { if (b?.id != null) map.set(b.id, b); });
+        incoming.forEach(b => {
+          const existing = map.get(b.id);
+          if (!existing) { map.set(b.id, b); return; }
+          const filled = { ...existing };
+          let changed = false;
+          Object.keys(b).forEach(k => {
+            if (filled[k] == null && b[k] != null) { filled[k] = b[k]; changed = true; }
+          });
+          if (changed) map.set(b.id, filled);
+        });
+        return Array.from(map.values()).sort((a, c) => (c.id || 0) - (a.id || 0));
+      });
+      alert(`Recovered ${newOnes.length} bet(s) from this device and cloud snapshots.`);
+    } catch (err) {
+      alert('Scan failed: ' + err.message);
+    }
+  }
+
   function setTimingOdds(id, { openingOdds, closingOdds }) {
     setBets(prev => prev.map(bet => {
       if (bet.id !== id) return bet;
@@ -842,6 +877,23 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
                   <RotateCcw size={14} /> Restore all deleted
                 </button>
               )}
+              <button
+                onClick={scanAndRecover}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 14px',
+                  background: 'rgba(14, 165, 233, 0.15)',
+                  border: '1px solid rgba(14, 165, 233, 0.4)',
+                  borderRadius: '8px',
+                  color: '#38bdf8', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                }}
+                title="Scan this device's localStorage and all cloud snapshots for any missing bets"
+              >
+                <Search size={14} /> Scan &amp; recover
+              </button>
+            </div>
+            <div style={{ fontSize: '10px', color: '#475569', marginTop: '8px', lineHeight: 1.5 }}>
+              Scan &amp; recover pulls from every localStorage key on this device and every daily cloud snapshot. Only adds — never overwrites.
             </div>
           </div>
         )}
