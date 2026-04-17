@@ -17,6 +17,7 @@ import {
   buildPropAlerts,
   getPropTimingState,
 } from '../utils/props.js';
+import { getSportVisual } from '../utils/team-logos.js';
 
 const FREE_PLAYERS_LIMIT = 3;
 const SORT_OPTIONS = [
@@ -113,7 +114,9 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
   const [sportFilter, setSportFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('default');
   const [propSearch, setPropSearch] = useState('');
-  const [viewMode, setViewMode] = useState('best');
+  // Browse All is the primary discovery view — default to it so users land
+  // on the full grid of props by sport, then can toggle to Best Props.
+  const [viewMode, setViewMode] = useState('all');
   const [expandedPlayers, setExpandedPlayers] = useState(new Set());
   const [pendingModal, setPendingModal] = useState(null);
   const [logoMap, setLogoMap] = useState({});
@@ -323,7 +326,26 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
     <div style={{ padding: '20px 24px' }}>
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
         {tier === 'pro' ? <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '8px', flex: '1', minWidth: '200px' }}><Search size={14} color="#64748b" /><input type="text" placeholder="Search player, team, or sport..." value={propSearch} onChange={e => setPropSearch(e.target.value)} style={{ background: 'transparent', border: 'none', outline: 'none', color: '#e2e8f0', fontSize: '13px', width: '100%', fontFamily: 'JetBrains Mono, monospace' }} /></div> : <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(30,41,59,0.3)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: '8px', flex: '1', minWidth: '200px', opacity: 0.6 }}><Lock size={14} color="#64748b" /><span style={{ color: '#64748b', fontSize: '13px' }}>Search (Pro only)</span></div>}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>{sportOptions.map(sport => { const meta = getSportMeta(sport); const active = sportFilter === sport; return <button key={sport} onClick={() => setSportFilter(sport)} style={{ padding: '8px 12px', background: active ? 'rgba(99,102,241,0.3)' : 'rgba(30,41,59,0.4)', border: active ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(71,85,105,0.3)', borderRadius: '6px', color: active ? '#f8fafc' : '#94a3b8', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>{sport === 'ALL' ? 'ALL SPORTS' : `${meta.icon} ${meta.label}`}</button>; })}</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>{sportOptions.map(sport => {
+          const meta = getSportMeta(sport);
+          const active = sportFilter === sport;
+          const accent = sport === 'ALL' ? '#6366f1' : getSportVisual(sport).color;
+          return (
+            <button key={sport} onClick={() => setSportFilter(sport)} style={{
+              padding: '8px 12px',
+              background: active ? `${accent}30` : 'rgba(30,41,59,0.4)',
+              border: active ? `1px solid ${accent}80` : '1px solid rgba(71,85,105,0.3)',
+              borderLeft: active ? `3px solid ${accent}` : '1px solid rgba(71,85,105,0.3)',
+              borderRadius: '6px',
+              color: active ? '#f8fafc' : '#94a3b8',
+              fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'JetBrains Mono, monospace',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+            }}>
+              {sport === 'ALL' ? 'ALL SPORTS' : <><span>{meta.icon}</span><span>{meta.label}</span></>}
+            </button>
+          );
+        })}</div>
       </div>
       <div style={{ display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flex: 1 }}>{marketFilterOptions.map(type => { const active = propFilter === type; return <button key={type} onClick={() => setPropFilter(type)} style={{ padding: '8px 12px', background: active ? 'rgba(99,102,241,0.3)' : 'rgba(30,41,59,0.4)', border: active ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(71,85,105,0.3)', borderRadius: '6px', color: active ? '#f8fafc' : '#94a3b8', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'pre-line' }}>{type === 'ALL' ? 'ALL MARKETS' : normalizeMarketFilterLabel(type)}</button>; })}</div>
@@ -337,10 +359,10 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
         { label: 'Top Market', value: stats.topMarketLabel, color: '#3b82f6' },
       ].map((stat, i) => <div key={i} style={{ padding: '14px', background: 'rgba(30,41,59,0.5)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '10px' }}><div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px', fontFamily: 'JetBrains Mono, monospace' }}>{stat.label}</div><div style={{ fontSize: stat.label === 'Top Market' ? '15px' : '22px', fontWeight: 700, color: stat.color }}>{stat.value}</div></div>)}</div>
 
-      {/* View mode toggle */}
+      {/* View mode toggle — Browse All listed first so it is the primary view */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '18px', padding: '4px', background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '10px', width: 'fit-content' }}>
-        <button onClick={() => setViewMode('best')} style={{ padding: '7px 16px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s', background: viewMode === 'best' ? 'rgba(251,191,36,0.18)' : 'transparent', border: viewMode === 'best' ? '1px solid rgba(251,191,36,0.4)' : '1px solid transparent', color: viewMode === 'best' ? '#fbbf24' : '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>⚡ Best Props</button>
         <button onClick={() => setViewMode('all')} style={{ padding: '7px 16px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s', background: viewMode === 'all' ? 'rgba(99,102,241,0.18)' : 'transparent', border: viewMode === 'all' ? '1px solid rgba(99,102,241,0.4)' : '1px solid transparent', color: viewMode === 'all' ? '#818cf8' : '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>Browse All</button>
+        <button onClick={() => setViewMode('best')} style={{ padding: '7px 16px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s', background: viewMode === 'best' ? 'rgba(251,191,36,0.18)' : 'transparent', border: viewMode === 'best' ? '1px solid rgba(251,191,36,0.4)' : '1px solid transparent', color: viewMode === 'best' ? '#fbbf24' : '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>⚡ Best Props</button>
       </div>
 
       {/* Best Props view */}
@@ -350,15 +372,29 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
       {viewMode === 'all' && <>
       {propAlerts.length > 0 && <div style={{ marginBottom: '16px', padding: '14px', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '10px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', color: '#facc15', fontSize: '12px', fontWeight: 700 }}><Zap size={14} />Prop alerts</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>{propAlerts.slice(0, 4).map(alert => <div key={alert.id} style={{ padding: '10px', background: 'rgba(15,23,42,0.45)', borderRadius: '8px', border: '1px solid rgba(71,85,105,0.25)' }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}><div style={{ fontSize: '11px', color: '#e2e8f0', fontWeight: 700 }}>{alert.title}</div><div style={{ fontSize: '10px', color: '#facc15' }}>{alert.metricDisplay}</div></div><div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{alert.edge}</div><div style={{ fontSize: '10px', color: '#64748b' }}>{alert.note}</div></div>)}</div></div>}
       {filteredPlayers.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 14px', marginBottom: '16px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '8px', fontSize: '11px', color: '#818cf8' }}><ShoppingCart size={13} />Click any odds cell to quick-add to your Bet Tracker</div>}
-      {filteredPlayers.length === 0 ? <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>No props available. Props load for upcoming games only.</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>{Object.entries(playersBySport).map(([sport, sportPlayers]) => {
+      {filteredPlayers.length === 0 ? <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>No props available. Props load for upcoming games only.</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>{Object.entries(playersBySport).map(([sport, sportPlayers]) => {
         const meta = getSportMeta(sport);
+        const visual = getSportVisual(sport);
         const visiblePlayers = tier === 'pro' ? sportPlayers : sportPlayers.slice(0, FREE_PLAYERS_LIMIT);
-        return <div key={sport}><div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}><div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '999px', background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(71,85,105,0.25)' }}><span style={{ fontSize: '16px' }}>{meta.icon}</span><span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 700 }}>{meta.label}</span><span style={{ fontSize: '10px', color: '#64748b' }}>{sportPlayers.length} player{sportPlayers.length !== 1 ? 's' : ''}</span></div></div>
+        return <div key={sport}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '8px 14px', borderRadius: '999px',
+              background: `${visual.color}18`,
+              border: `1px solid ${visual.color}55`,
+            }}>
+              <span style={{ fontSize: '16px' }}>{meta.icon}</span>
+              <span style={{ fontSize: '12px', color: visual.color, fontWeight: 800, letterSpacing: '0.5px' }}>{meta.label}</span>
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>{sportPlayers.length} player{sportPlayers.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div style={{ flex: 1, height: '1px', background: `linear-gradient(to right, ${visual.color}55, transparent)` }} />
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>{visiblePlayers.map(player => {
             const isExpanded = expandedPlayers.has(player.key);
             const marketKeys = Object.keys(player.markets);
             const visibleMarkets = propFilter === 'ALL' ? marketKeys : marketKeys.filter(k => k === propFilter);
-            return <div key={player.key} style={{ background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', overflow: 'hidden' }}>
+            return <div key={player.key} style={{ background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderLeft: `3px solid ${visual.color}`, borderRadius: '12px', overflow: 'hidden' }}>
               <div onClick={() => toggleExpand(player.key)} style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: isExpanded ? 'rgba(99,102,241,0.08)' : 'transparent', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                   <PlayerBadge name={player.name} photo={player.photo} />

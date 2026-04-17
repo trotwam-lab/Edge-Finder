@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, Calculator, TrendingUp, Zap, Activity, DollarSign, Settings } from 'lucide-react';
+import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, Calculator, TrendingUp, Zap, DollarSign, Settings } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 export default function Header({
@@ -17,14 +17,13 @@ export default function Header({
 
   // Tab definitions: { key, label, icon, proOnly }
   const TABS = [
-    { key: 'GAMES',   label: `Games (${games.length})`,      icon: Target,      proOnly: false },
-    { key: 'EDGES',   label: 'Edges',                        icon: Zap,         proOnly: false },
-    { key: 'LINES',   label: 'Lines',                        icon: Activity,    proOnly: false },
-    { key: 'PROPS',   label: `Props (${playerProps.length})`, icon: Users,       proOnly: false },
-    { key: 'EV_CALC', label: 'EV Calc',                      icon: Calculator,  proOnly: true  },
-    { key: 'KELLY',   label: 'Kelly',                        icon: DollarSign,  proOnly: true  },
-    { key: 'TRACKER', label: 'Tracker',                      icon: TrendingUp,  proOnly: false },
-    { key: 'SETTINGS',label: 'Settings',                     icon: Settings,    proOnly: false },
+    { key: 'GAMES',        label: `Games (${games.length})`,      icon: Target,      proOnly: false },
+    { key: 'EDGES_LINES',  label: 'Edges & Lines',                icon: Zap,         proOnly: false },
+    { key: 'PROPS',        label: `Props (${playerProps.length})`, icon: Users,       proOnly: false },
+    { key: 'EV_CALC',      label: 'EV Calc',                      icon: Calculator,  proOnly: true  },
+    { key: 'KELLY',        label: 'Kelly',                        icon: DollarSign,  proOnly: true  },
+    { key: 'TRACKER',      label: 'Tracker',                      icon: TrendingUp,  proOnly: false },
+    { key: 'SETTINGS',     label: 'Settings',                     icon: Settings,    proOnly: false },
   ];
 
   return (

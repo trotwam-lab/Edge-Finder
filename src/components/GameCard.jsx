@@ -3,10 +3,29 @@ import { Star, ChevronDown, ChevronUp, Share2, Lock } from 'lucide-react';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, americanToImplied, calculateEV, calculateEdgeScore } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
+import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
 
-function getSportColor(sport) {
-  const colors = { NBA: '#f97316', NFL: '#22c55e', NHL: '#3b82f6', MLB: '#ef4444' };
-  return colors[sport] || '#6b7280';
+function TeamLogo({ name, url, size = 26 }) {
+  const [fallback, setFallback] = useState(!url);
+  const initials = String(name || '')
+    .split(/\s+/).filter(Boolean).slice(-2)
+    .map(w => w[0]).join('').toUpperCase() || '—';
+  return (
+    <div
+      title={name}
+      style={{
+        width: size, height: size, borderRadius: '999px', overflow: 'hidden',
+        border: '1px solid rgba(148,163,184,0.25)',
+        background: fallback ? 'rgba(30,41,59,0.95)' : '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#e2e8f0', fontSize: '10px', fontWeight: 800, flexShrink: 0,
+      }}
+    >
+      {fallback || !url
+        ? initials
+        : <img src={url} alt={name} onError={() => setFallback(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+    </div>
+  );
 }
 
 function formatGameTime(date) {
@@ -30,8 +49,11 @@ function HoldBadge({ hold }) {
 
 export default function GameCard({
   game, expanded, onToggle, watchlist, onToggleWatchlist,
-  injuries, gameLineHistory, setPendingBet
+  injuries, gameLineHistory, setPendingBet, logoMap = {},
 }) {
+  const sportVisual = getSportVisual(game.sport_key);
+  const awayLogo = resolveTeamLogo(logoMap, game.sport_key, game.away_team);
+  const homeLogo = resolveTeamLogo(logoMap, game.sport_key, game.home_team);
   const { tier } = useAuth(); // Get tier for EV display
   const [copied, setCopied] = useState(false); // For share button "Copied!" tooltip
   const [showQuickPick, setShowQuickPick] = useState(false); // Quick-pick bet popover
@@ -64,7 +86,7 @@ export default function GameCard({
       setTimeout(() => setCopied(false), 1500);
     });
   };
-  const sportLabel = game.sport_title?.split(' ')[0] || 'NBA';
+  const sportLabel = sportVisual.short;
 
   // Consensus fair odds for spreads
   const spreadFair = getConsensusFairOdds(game.bookmakers, 'spreads');
@@ -103,6 +125,7 @@ export default function GameCard({
         padding: '16px 20px',
         background: expanded ? 'rgba(99, 102, 241, 0.15)' : 'rgba(30, 41, 59, 0.6)',
         border: `1px solid ${expanded ? 'rgba(99, 102, 241, 0.4)' : 'rgba(71, 85, 105, 0.2)'}`,
+        borderLeft: `4px solid ${sportVisual.color}`,
         borderRadius: '12px', cursor: 'pointer',
         display: 'grid', gridTemplateColumns: '40px 2fr 120px 120px 80px',
         alignItems: 'center', gap: '16px'
@@ -216,10 +239,14 @@ export default function GameCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
             <span style={{
               padding: '2px 6px',
-              background: game.scores ? 'rgba(239, 68, 68, 0.2)' : `${getSportColor(sportLabel)}20`,
-              color: game.scores ? '#ef4444' : getSportColor(sportLabel),
-              borderRadius: '4px', fontSize: '9px', fontWeight: 700
-            }}>{game.scores ? 'LIVE' : sportLabel}</span>
+              background: game.scores ? 'rgba(239, 68, 68, 0.2)' : `${sportVisual.color}20`,
+              color: game.scores ? '#ef4444' : sportVisual.color,
+              borderRadius: '4px', fontSize: '9px', fontWeight: 700,
+              display: 'inline-flex', alignItems: 'center', gap: '4px',
+            }}>
+              <span aria-hidden="true">{game.scores ? '🔴' : sportVisual.icon}</span>
+              {game.scores ? 'LIVE' : sportLabel}
+            </span>
             {/* Edge Score™ badge — Pro users see score, free users see lock */}
             {tier === 'pro' ? (
               <span style={{
@@ -247,7 +274,10 @@ export default function GameCard({
                 color: move > 0 ? '#f97316' : '#3b82f6', fontWeight: 700
               }}>{move > 0 ? '🔥 STEAM' : '❄️ FADE'}</span>
             )}
-            <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.away_team}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <TeamLogo name={game.away_team} url={awayLogo} />
+              <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.away_team}</span>
+            </span>
             {awayInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
                 🏥 {awayInjuries.length}
@@ -255,7 +285,10 @@ export default function GameCard({
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.awayScore}</span>}
             <span style={{ color: '#64748b', fontSize: '12px' }}>@</span>
-            <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.home_team}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <TeamLogo name={game.home_team} url={homeLogo} />
+              <span style={{ fontWeight: 600, fontSize: '14px' }}>{game.home_team}</span>
+            </span>
             {homeInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
                 🏥 {homeInjuries.length}

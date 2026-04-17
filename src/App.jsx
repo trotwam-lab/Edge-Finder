@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader, X } from 'lucide-react';
 import { SPORTS, BOOKMAKERS } from './constants.js';
 import { useAuth } from './AuthGate.jsx';
@@ -11,10 +11,10 @@ import GameDetails from './components/GameDetails.jsx';
 import PropsView from './components/PropsView.jsx';
 import EVCalculator from './components/EVCalculator.jsx';
 import BetTracker from './components/BetTracker.jsx';
-import EdgeAlerts from './components/EdgeAlerts.jsx';
-import LineMovement from './components/LineMovement.jsx';
+import EdgesLines from './components/EdgesLines.jsx';
 import KellyCriterion from './components/KellyCriterion.jsx';
 import MobileNav from './components/MobileNav.jsx';
+import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 
 export default function BettingApp() {
   const { tier, refreshTier } = useAuth();
@@ -68,6 +68,23 @@ export default function BettingApp() {
       const s = searchTerm.toLowerCase();
       return g.home_team?.toLowerCase().includes(s) || g.away_team?.toLowerCase().includes(s);
     });
+
+  // Group filtered games by sport so each sport gets its own header + accent.
+  // When the user filters to a specific sport the grouping still works but
+  // only that group will render, keeping the Games tab consistent.
+  const gamesBySport = useMemo(() => {
+    const buckets = new Map();
+    filteredGames.forEach(g => {
+      const key = g.sport_key || 'other';
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(g);
+    });
+    // Put live-games-first sports at the top by preserving insertion order,
+    // which mirrors the order returned by the odds API (hottest first).
+    return Array.from(buckets.entries());
+  }, [filteredGames]);
+
+  const teamLogoMap = useTeamLogos(games);
 
   const toastBase = {
     position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
@@ -129,33 +146,70 @@ export default function BettingApp() {
               <p style={{ marginTop: '16px', color: '#94a3b8' }}>Loading games...</p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {filteredGames.map(game => (
-                <div key={game.id}>
-                  <GameCard
-                    game={game}
-                    expanded={expandedGame === game.id}
-                    onToggle={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
-                    watchlist={watchlist}
-                    onToggleWatchlist={toggleWatchlist}
-                    injuries={injuries}
-                    gameLineHistory={gameLineHistory}
-                    setPendingBet={handleSetPendingBet}
-                  />
-                  {expandedGame === game.id && (
-                    <GameDetails
-                      game={game}
-                      injuries={injuries}
-                      gameLineHistory={gameLineHistory}
-                      manualOpeners={manualOpeners}
-                      setManualOpeners={setManualOpeners}
-                      historicOdds={historicOdds}
-                      enabledBooks={enabledBooks}
-                      setPendingBet={handleSetPendingBet}
-                    />
-                  )}
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+              {gamesBySport.map(([sportKey, sportGames]) => {
+                const visual = getSportVisual(sportKey);
+                const liveCount = sportGames.filter(g => g.scores).length;
+                return (
+                  <div key={sportKey}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      marginBottom: '10px', paddingLeft: '4px',
+                    }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '6px 12px', borderRadius: '999px',
+                        background: `${visual.color}18`,
+                        border: `1px solid ${visual.color}55`,
+                      }}>
+                        <span style={{ fontSize: '16px' }}>{visual.icon}</span>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: visual.color, letterSpacing: '0.5px' }}>
+                          {visual.short}
+                        </span>
+                        <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                          {sportGames.length} game{sportGames.length !== 1 ? 's' : ''}
+                        </span>
+                        {liveCount > 0 && (
+                          <span style={{
+                            fontSize: '9px', padding: '2px 6px', borderRadius: '4px',
+                            background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: 700,
+                          }}>{liveCount} LIVE</span>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, height: '1px', background: `linear-gradient(to right, ${visual.color}55, transparent)` }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {sportGames.map(game => (
+                        <div key={game.id}>
+                          <GameCard
+                            game={game}
+                            expanded={expandedGame === game.id}
+                            onToggle={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
+                            watchlist={watchlist}
+                            onToggleWatchlist={toggleWatchlist}
+                            injuries={injuries}
+                            gameLineHistory={gameLineHistory}
+                            setPendingBet={handleSetPendingBet}
+                            logoMap={teamLogoMap}
+                          />
+                          {expandedGame === game.id && (
+                            <GameDetails
+                              game={game}
+                              injuries={injuries}
+                              gameLineHistory={gameLineHistory}
+                              manualOpeners={manualOpeners}
+                              setManualOpeners={setManualOpeners}
+                              historicOdds={historicOdds}
+                              enabledBooks={enabledBooks}
+                              setPendingBet={handleSetPendingBet}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
               {filteredGames.length === 0 && !loading && (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No games found. Try adjusting filters.</div>
               )}
@@ -163,9 +217,8 @@ export default function BettingApp() {
           )}
         </div>
       )}
-      {activeTab === 'EDGES' && <EdgeAlerts />}
-      {activeTab === 'LINES' && <LineMovement />}
-      {activeTab === 'PROPS' && <PropsView playerProps={playerProps} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} />}
+      {activeTab === 'EDGES_LINES' && <EdgesLines />}
+      {activeTab === 'PROPS' && <PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} />}
       {activeTab === 'EV_CALC' && (
         tier === 'pro' ? <EVCalculator /> : (
           <div style={{ padding: '40px 24px', textAlign: 'center' }}>
@@ -271,7 +324,7 @@ export default function BettingApp() {
             </div>
           </div>
           <div style={{ textAlign: 'center', padding: '16px', fontSize: '10px', color: '#475569' }}>
-            Edge Finder v2.1
+            Edge Finder v2.4
           </div>
         </div>
       )}
