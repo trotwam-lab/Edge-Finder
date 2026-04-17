@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, onSnapshot, collection } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import { useAuth } from '../AuthGate.jsx';
 
@@ -76,6 +76,76 @@ function unionBets(...lists) {
   return Array.from(map.values()).sort((a, b) => (b.id || 0) - (a.id || 0));
 }
 
+// Heuristic: does this value look like a bet? Bets always carry an id and at
+// least one of the common tracking fields. Used when scanning localStorage for
+// anything that might be recoverable bet data under an unexpected key.
+function looksLikeBet(x) {
+  if (!x || typeof x !== 'object' || x.id == null) return false;
+  const keys = ['team','market','stake','odds','pick','sport','wager','selection','sportKey','result'];
+  return keys.some(k => x[k] !== undefined);
+}
+
+// Walk every localStorage entry looking for arrays of bet-like records.
+// Returns the union of everything found. Safe to call repeatedly.
+export function scanLocalStorageForBets() {
+  const found = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      let raw;
+      try { raw = localStorage.getItem(k); } catch { continue; }
+      if (!raw || raw[0] !== '[' && raw[0] !== '{') continue;
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { continue; }
+      const candidate = Array.isArray(parsed) ? parsed
+        : Array.isArray(parsed?.bets) ? parsed.bets
+        : null;
+      if (!candidate) continue;
+      const hits = candidate.filter(looksLikeBet);
+      if (hits.length > 0) found.push(hits);
+    }
+  } catch {}
+  return unionBets(...found);
+}
+
+// Pull every daily snapshot doc we've written so far and union them. Lets us
+// recover from any point-in-time backup even if the main `bets` doc got
+// clobbered by a bad write.
+export async function loadCloudSnapshots(userId) {
+  try {
+    const snapsRef = collection(db, 'users', userId, 'bets_snapshots');
+    const snap = await getDocs(snapsRef);
+    const lists = [];
+    snap.forEach(d => {
+      const data = d.data();
+      if (Array.isArray(data?.bets)) lists.push(data.bets);
+    });
+    return unionBets(...lists);
+  } catch (err) {
+    console.error('Snapshot load failed:', err);
+    return [];
+  }
+}
+
+const snapshotDateKey = (key) => `${key}_snapshot_date`;
+
+// Write today's snapshot at most once per day (keyed in localStorage) to a
+// date-stamped Firestore doc. Each day gets its own doc so snapshots are
+// additive — today's bad write can never overwrite yesterday's snapshot.
+async function maybeWriteDailySnapshot(userId, key, bets) {
+  try {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const last = localStorage.getItem(snapshotDateKey(key));
+    if (last === today) return;
+    const ref = doc(db, 'users', userId, 'bets_snapshots', today);
+    await setDoc(ref, { bets, savedAt: new Date().toISOString() }, { merge: true });
+    localStorage.setItem(snapshotDateKey(key), today);
+  } catch (err) {
+    console.error('Daily snapshot failed:', err);
+  }
+}
+
 export function useCloudBets(key, defaultValue = []) {
   const { user } = useAuth();
   const [state, setState] = useState(() => {
@@ -127,7 +197,7 @@ export function useCloudBets(key, defaultValue = []) {
 
     // First, try to get the data once
     getDoc(betsDocRef)
-      .then((docSnap) => {
+      .then(async (docSnap) => {
         const localBets = (() => {
           try {
             const saved = localStorage.getItem(key);
@@ -137,12 +207,16 @@ export function useCloudBets(key, defaultValue = []) {
           }
         })();
 
+        // Pull every daily snapshot we've ever saved and merge them in too,
+        // so a bad write to the live `bets` doc can't erase older data.
+        const snapshotBets = await loadCloudSnapshots(userId);
+
         if (docSnap.exists()) {
           const cloudBets = docSnap.data().bets || defaultValue;
-          
-          // Merge local and cloud bets
-          const mergedBets = mergeBets(localBets, cloudBets);
-          
+
+          // Merge local, cloud, and every historical snapshot
+          const mergedBets = unionBets(localBets, cloudBets, snapshotBets);
+
           setState(mergedBets);
           
           // If we merged new local bets into cloud, save back to Firestore
@@ -155,9 +229,12 @@ export function useCloudBets(key, defaultValue = []) {
               .catch(err => console.error('Error saving merged bets to Firestore:', err));
           }
         } else {
-          // No cloud data yet, save local bets to Firestore
-          if (localBets.length > 0) {
-            setDoc(betsDocRef, { bets: localBets, updatedAt: new Date().toISOString() }, { merge: true })
+          // No live doc yet. Seed from local + any historical snapshots so
+          // a cleared live doc still recovers from the archive and snapshots.
+          const seed = unionBets(localBets, snapshotBets);
+          if (seed.length > 0) {
+            setState(seed);
+            setDoc(betsDocRef, { bets: seed, updatedAt: new Date().toISOString() }, { merge: true })
               .catch(err => console.error('Error saving initial bets to Firestore:', err));
           }
         }
@@ -216,12 +293,17 @@ export function useCloudBets(key, defaultValue = []) {
     debounceTimer.current = setTimeout(() => {
       const userId = user.uid;
       const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
-      
-      setDoc(betsDocRef, { 
-        bets: state, 
-        updatedAt: new Date().toISOString() 
+
+      setDoc(betsDocRef, {
+        bets: state,
+        updatedAt: new Date().toISOString()
       }, { merge: true })
         .catch(err => console.error('Error saving bets to Firestore:', err));
+
+      // Also write a daily point-in-time snapshot (at most once/day). These
+      // snapshots live under a different path and are additive, so they can
+      // never be clobbered by a bad write to the live `bets` doc.
+      maybeWriteDailySnapshot(userId, key, state);
     }, 2000);
 
     return () => {
@@ -229,7 +311,7 @@ export function useCloudBets(key, defaultValue = []) {
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [state, user]);
+  }, [state, user, key]);
 
   return [state, setState];
 }
