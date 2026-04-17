@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   PlusCircle, Trophy, XCircle, RotateCcw, TrendingUp,
   DollarSign, Target, BarChart3, Trash2, ChevronDown, ChevronUp,
-  Search, Calendar, Filter, Clock, Edit3, Check
+  Search, Calendar, Filter, Clock, Edit3, Check, Download, Upload, Archive
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -133,7 +133,24 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-export default function BetTracker({ pendingBet, onBetConsumed }) {
+// Find the current live price for a bet's market/outcome in the games feed.
+// Returns null if anything is missing — callers use the result only if truthy.
+function findLivePrice(games, bet) {
+  if (!bet?.gameId || !bet?.marketKey || !bet?.outcomeName) return null;
+  const game = games?.find(g => g.id === bet.gameId);
+  if (!game) return null;
+  const book = game.bookmakers?.[0];
+  const market = book?.markets?.find(m => m.key === bet.marketKey);
+  if (!market) return null;
+  const outcome = market.outcomes?.find(o => {
+    if (o.name !== bet.outcomeName) return false;
+    if (bet.outcomePoint != null && o.point != null) return o.point === bet.outcomePoint;
+    return true;
+  });
+  return outcome?.price ?? null;
+}
+
+export default function BetTracker({ pendingBet, onBetConsumed, games = [], historicOdds = {} }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
@@ -157,6 +174,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showDataPanel, setShowDataPanel] = useState(false);
   
   useEffect(() => {
     if (pendingBet) {
@@ -165,10 +183,70 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       setPick(pendingBet.pick || '');
       setOdds(pendingBet.odds != null ? String(pendingBet.odds) : '');
       setDate(pendingBet.date ? new Date(pendingBet.date).toISOString().split('T')[0] : todayStr());
+      setOpeningOdds(pendingBet.openingOdds != null ? String(pendingBet.openingOdds) : '');
       setShowForm(true);
       setIsPreFilled(true);
     }
   }, [pendingBet]);
+
+  // Auto-capture CLV: for every pending bet whose market we can identify,
+  // track the latest live price and, once the game starts, snapshot it as
+  // the closing line. Also backfill opening odds from historicOdds when seen.
+  useEffect(() => {
+    if (!games?.length) return;
+    const now = Date.now();
+    // Build a patch map keyed by bet id. We apply it via a functional setBets
+    // so we never overwrite a newer bets array (e.g. a bet the user just added
+    // while the odds feed was refreshing).
+    const patches = new Map();
+    bets.forEach(bet => {
+      if (!bet.gameId || !bet.marketKey) return;
+      const patch = {};
+
+      // Backfill opening odds from historicOdds once we have a capture.
+      if (bet.openingOdds == null && bet.marketKey === 'h2h' && bet.outcomeName) {
+        const opener = historicOdds?.[bet.gameId]?.h2h?.find(o => o.name === bet.outcomeName);
+        if (opener?.price != null) patch.openingOdds = opener.price;
+      }
+
+      if (bet.closingOdds == null && bet.status === 'pending') {
+        const livePrice = findLivePrice(games, bet);
+        const commence = bet.commenceTime ? new Date(bet.commenceTime).getTime() : null;
+        const gameStillListed = games.some(g => g.id === bet.gameId);
+
+        if (livePrice != null && commence && now < commence) {
+          if (bet.lastPreGameOdds !== livePrice) {
+            patch.lastPreGameOdds = livePrice;
+            patch.lastPreGameAt = now;
+          }
+        } else if (commence && now >= commence) {
+          const closing = bet.lastPreGameOdds ?? livePrice;
+          if (closing != null) {
+            patch.closingOdds = closing;
+            patch.closingCapturedAt = now;
+          }
+        } else if (!gameStillListed && bet.lastPreGameOdds != null) {
+          patch.closingOdds = bet.lastPreGameOdds;
+          patch.closingCapturedAt = now;
+        }
+      }
+
+      if (Object.keys(patch).length) patches.set(bet.id, patch);
+    });
+
+    if (patches.size === 0) return;
+    setBets(prev => {
+      let changed = false;
+      const next = prev.map(b => {
+        const patch = patches.get(b.id);
+        if (!patch) return b;
+        changed = true;
+        return { ...b, ...patch };
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games, historicOdds]);
   
   // Auto-detect sports
   const detectedSports = useMemo(() => {
@@ -185,6 +263,8 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   // Filter bets
   const filteredBets = useMemo(() => {
     return bets.filter(bet => {
+      // Hide soft-deleted tombstones from every view.
+      if (bet.deleted) return false;
       if (activeSport !== 'All') {
         const betSport = getSportFromGame(bet.game);
         if (betSport !== activeSport) return false;
@@ -306,7 +386,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     };
   }, [filteredBets]);
   
-  const atLimit = !isPro && bets.length >= FREE_BET_LIMIT;
+  const atLimit = !isPro && bets.filter(b => !b.deleted).length >= FREE_BET_LIMIT;
   
   function handleAddBet(e) {
     e.preventDefault();
@@ -326,6 +406,14 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       settledDate: null,
       openingOdds: openingOdds === '' ? null : Number(openingOdds),
       closingOdds: closingOdds === '' ? null : Number(closingOdds),
+      // Identifiers let the auto-capture effect match this bet back to the
+      // live odds feed and backfill its closing price after the game starts.
+      gameId: pendingBet?.gameId ?? null,
+      sportKey: pendingBet?.sportKey ?? null,
+      marketKey: pendingBet?.marketKey ?? null,
+      outcomeName: pendingBet?.outcomeName ?? null,
+      outcomePoint: pendingBet?.outcomePoint ?? null,
+      commenceTime: pendingBet?.commenceTime ?? null,
     };
 
     setBets(prev => [newBet, ...prev]);
@@ -355,8 +443,89 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
     }));
   }
   
+  // Soft delete: bets are marked with a tombstone instead of being removed
+  // outright. This lets deletes propagate across devices without the additive
+  // cloud merge ever "resurrecting" a deleted bet, and it preserves the record
+  // in the local archive so the user can always recover it if needed.
   function deleteBet(id) {
-    setBets(prev => prev.filter(b => b.id !== id));
+    setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: true, deletedAt: Date.now() } : b));
+  }
+
+  function restoreBet(id) {
+    setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: false, deletedAt: null } : b));
+  }
+
+  // Export all bets (including soft-deleted tombstones) as a JSON file so
+  // users can keep their own backup or move data between browsers.
+  function exportBets() {
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        source: 'EdgeFinder',
+        bets,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edgefinder-bets-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Export failed: ' + err.message);
+    }
+  }
+
+  // Merge imported bets into the current list by id. Never overwrites or
+  // drops an existing bet — we only fill in fields that are empty on the
+  // current copy, so local edits are preserved.
+  function importBets(fileOrText) {
+    const handle = (text) => {
+      try {
+        const parsed = JSON.parse(text);
+        const incoming = Array.isArray(parsed) ? parsed : (parsed.bets || []);
+        if (!Array.isArray(incoming) || incoming.length === 0) {
+          alert('No bets found in file.');
+          return;
+        }
+        let added = 0;
+        let merged = 0;
+        setBets(prev => {
+          const map = new Map();
+          prev.forEach(b => { if (b?.id != null) map.set(b.id, b); });
+          incoming.forEach(b => {
+            if (!b || b.id == null) return;
+            const existing = map.get(b.id);
+            if (!existing) {
+              map.set(b.id, b);
+              added += 1;
+            } else {
+              // Fill in any missing fields on the existing record; don't clobber.
+              const filled = { ...existing };
+              let changed = false;
+              Object.keys(b).forEach(k => {
+                if (filled[k] == null && b[k] != null) { filled[k] = b[k]; changed = true; }
+              });
+              if (changed) { map.set(b.id, filled); merged += 1; }
+            }
+          });
+          return Array.from(map.values()).sort((a, c) => (c.id || 0) - (a.id || 0));
+        });
+        alert(`Imported ${added} new bets, filled in ${merged} existing records.`);
+      } catch (err) {
+        alert('Could not parse backup file: ' + err.message);
+      }
+    };
+
+    if (typeof fileOrText === 'string') {
+      handle(fileOrText);
+    } else if (fileOrText instanceof File) {
+      const reader = new FileReader();
+      reader.onload = e => handle(String(e.target.result || ''));
+      reader.readAsText(fileOrText);
+    }
   }
 
   function setTimingOdds(id, { openingOdds, closingOdds }) {
@@ -520,7 +689,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
 
         {stats.timing.recordedBets === 0 ? (
           <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
-            Add closing odds to your bets to unlock CLV analytics — measure how your timing compares to the market close.
+            Bets added from the Games tab capture closing odds automatically once the game kicks off. You can also enter opening/closing odds manually.
           </div>
         ) : (
           <>
@@ -582,6 +751,99 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
               ))}
             </div>
           </>
+        )}
+      </div>
+
+      {/* DATA BACKUP PANEL — export/import so nothing is ever truly lost */}
+      <div style={{
+        background: 'rgba(30, 41, 59, 0.45)',
+        border: '1px solid rgba(71, 85, 105, 0.25)',
+        borderRadius: '12px',
+        marginBottom: '12px',
+        overflow: 'hidden',
+      }}>
+        <button
+          type="button"
+          onClick={() => setShowDataPanel(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            width: '100%', padding: '10px 14px', background: 'transparent', border: 'none',
+            cursor: 'pointer', color: '#94a3b8',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.5px' }}>
+            <Archive size={13} /> DATA BACKUP &amp; RESTORE
+            <span style={{
+              fontSize: '9px', padding: '2px 6px',
+              background: 'rgba(34, 197, 94, 0.15)', borderRadius: '4px',
+              color: '#22c55e', fontWeight: 700,
+            }}>
+              {bets.filter(b => !b.deleted).length} live · {bets.filter(b => b.deleted).length} deleted
+            </span>
+          </span>
+          {showDataPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+
+        {showDataPanel && (
+          <div style={{ padding: '0 14px 14px 14px' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '10px', lineHeight: 1.5 }}>
+              Export every bet (including deleted) to a JSON file, or import a previous backup. Imports merge by ID — nothing on this device is overwritten, and no duplicates are created.
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={exportBets}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 14px',
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                  borderRadius: '8px',
+                  color: '#22c55e', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                <Download size={14} /> Export JSON
+              </button>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '8px 14px',
+                background: 'rgba(99, 102, 241, 0.15)',
+                border: '1px solid rgba(99, 102, 241, 0.4)',
+                borderRadius: '8px',
+                color: '#818cf8', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              }}>
+                <Upload size={14} /> Import JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) importBets(file);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {bets.some(b => b.deleted) && (
+                <button
+                  onClick={() => {
+                    const ids = bets.filter(b => b.deleted).map(b => b.id);
+                    if (!confirm(`Restore ${ids.length} deleted bet(s)?`)) return;
+                    ids.forEach(restoreBet);
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px',
+                    background: 'rgba(234, 179, 8, 0.15)',
+                    border: '1px solid rgba(234, 179, 8, 0.4)',
+                    borderRadius: '8px',
+                    color: '#eab308', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  <RotateCcw size={14} /> Restore all deleted
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

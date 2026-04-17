@@ -40,7 +40,20 @@ export default function BettingApp() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedGame, setExpandedGame] = useState(null);
   const [pendingBet, setPendingBet] = useState(null);
-  const handleSetPendingBet = (bet) => { setPendingBet(bet); setActiveTab('TRACKER'); };
+  // Enrich incoming bet with the historic opener price (if one was captured
+  // when we first saw this game), so CLV can be computed automatically.
+  const handleSetPendingBet = (bet) => {
+    let openingOdds = null;
+    try {
+      const opener = bet.gameId ? historicOdds?.[bet.gameId] : null;
+      if (opener && bet.marketKey === 'h2h' && bet.outcomeName) {
+        const match = opener.h2h?.find(o => o.name === bet.outcomeName);
+        if (match?.price != null) openingOdds = match.price;
+      }
+    } catch {}
+    setPendingBet({ ...bet, openingOdds });
+    setActiveTab('TRACKER');
+  };
 
   const [watchlist, setWatchlist] = usePersistentState('edgefinder_watchlist', []);
   const [manualOpeners, setManualOpeners] = usePersistentState('edgefinder_manual_openers', {});
@@ -237,7 +250,7 @@ export default function BettingApp() {
           </div>
         )
       )}
-      {activeTab === 'TRACKER' && <BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} />}
+      {activeTab === 'TRACKER' && <BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} games={games} historicOdds={historicOdds} />}
       {activeTab === 'SETTINGS' && (
         <div style={{ padding: '20px 24px', maxWidth: '600px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>Settings</h2>

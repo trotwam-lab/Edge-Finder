@@ -236,6 +236,11 @@ export default function GameDetails({
                           pick: `${o.name} ${formatOdds(o.price)}`,
                           odds: o.price,
                           date: game.commence_time,
+                          gameId: game.id,
+                          sportKey: game.sport_key,
+                          marketKey: 'h2h',
+                          outcomeName: o.name,
+                          commenceTime: game.commence_time,
                         })}
                         className="clickable-odds"
                         style={{
@@ -267,6 +272,12 @@ export default function GameDetails({
                           pick: `${o.name} ${o.point > 0 ? '+' : ''}${o.point}`,
                           odds: o.price,
                           date: game.commence_time,
+                          gameId: game.id,
+                          sportKey: game.sport_key,
+                          marketKey: 'spreads',
+                          outcomeName: o.name,
+                          outcomePoint: o.point,
+                          commenceTime: game.commence_time,
                         })}
                         className="clickable-odds"
                         style={{
@@ -298,6 +309,12 @@ export default function GameDetails({
                           pick: `${o.name} ${o.point}`,
                           odds: o.price,
                           date: game.commence_time,
+                          gameId: game.id,
+                          sportKey: game.sport_key,
+                          marketKey: 'totals',
+                          outcomeName: o.name,
+                          outcomePoint: o.point,
+                          commenceTime: game.commence_time,
                         })}
                         className="clickable-odds"
                         style={{

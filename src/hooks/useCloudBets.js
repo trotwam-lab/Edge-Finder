@@ -14,13 +14,79 @@ import { useAuth } from '../AuthGate.jsx';
  * 
  * Usage: const [bets, setBets] = useCloudBets('edgefinder_bets', []);
  */
+// Archive of every bet we have ever seen locally. Writes are append-only
+// (deduped by id) so a bad cloud snapshot or a concurrent-write race can never
+// make a bet permanently disappear from the user's device.
+const archiveKey = (key) => `${key}_archive`;
+
+function readArchive(key) {
+  try {
+    const saved = localStorage.getItem(archiveKey(key));
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Prefer the "most complete" version of a bet when the same id appears twice:
+// pick the one with more filled-in fields and a later settled/updated date.
+function mergePair(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const out = { ...a };
+  Object.keys(b).forEach(k => {
+    const bv = b[k];
+    const av = out[k];
+    if (bv != null && (av == null || bv === av)) out[k] = bv;
+  });
+  // Deleted tombstones sync both ways — later deletedAt wins.
+  const aDel = a.deletedAt || 0;
+  const bDel = b.deletedAt || 0;
+  if (aDel || bDel) {
+    out.deleted = (aDel >= bDel ? a.deleted : b.deleted) || false;
+    out.deletedAt = Math.max(aDel, bDel) || null;
+  }
+  return out;
+}
+
+function writeArchive(key, bets) {
+  try {
+    const existing = readArchive(key);
+    const map = new Map();
+    existing.forEach(b => { if (b?.id != null) map.set(b.id, b); });
+    bets.forEach(b => {
+      if (b?.id == null) return;
+      map.set(b.id, mergePair(map.get(b.id), b));
+    });
+    // Cap archive to the 500 most recent bets by id (ids are Date.now()).
+    const all = Array.from(map.values()).sort((x, y) => (y.id || 0) - (x.id || 0)).slice(0, 500);
+    localStorage.setItem(archiveKey(key), JSON.stringify(all));
+  } catch {}
+}
+
+// Union bets from cloud/local/archive by id. Never drops a known bet — a
+// tombstone (`deleted: true`) is how we represent intentional removal so that
+// a bad write can't silently erase data.
+function unionBets(...lists) {
+  const map = new Map();
+  lists.forEach(list => (list || []).forEach(bet => {
+    if (!bet || bet.id == null) return;
+    map.set(bet.id, mergePair(map.get(bet.id), bet));
+  }));
+  return Array.from(map.values()).sort((a, b) => (b.id || 0) - (a.id || 0));
+}
+
 export function useCloudBets(key, defaultValue = []) {
   const { user } = useAuth();
   const [state, setState] = useState(() => {
-    // Always start with localStorage value for immediate UI
+    // On first mount, hydrate from localStorage AND the local archive, so
+    // any bets that were previously saved but lost from the "live" list
+    // (e.g., due to a prior overwrite bug) come back automatically.
     try {
       const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : defaultValue;
+      const liveList = saved ? JSON.parse(saved) : defaultValue;
+      const archive = readArchive(key);
+      return unionBets(archive, liveList);
     } catch {
       return defaultValue;
     }
@@ -33,35 +99,10 @@ export function useCloudBets(key, defaultValue = []) {
   // Track previous user state to detect login/logout
   const prevUserRef = useRef(null);
 
-  // Helper to merge bets (avoiding duplicates by id)
+  // Helper to merge bets — union by id, preserving the most complete record.
+  // Deletes propagate via tombstones (deleted:true) carried in mergePair.
   const mergeBets = useCallback((localBets, cloudBets) => {
-    const betMap = new Map();
-    
-    // Add cloud bets first (Firestore is the primary synced copy when available)
-    cloudBets.forEach(bet => {
-      if (bet && bet.id) {
-        betMap.set(bet.id, bet);
-      }
-    });
-    
-    // Add local bets, but don't overwrite cloud bets unless local is newer
-    localBets.forEach(bet => {
-      if (bet && bet.id) {
-        const existing = betMap.get(bet.id);
-        if (!existing) {
-          // Local bet not in cloud, add it
-          betMap.set(bet.id, bet);
-        }
-        // If bet exists in both, keep the cloud version as the primary synced copy
-      }
-    });
-    
-    // Convert back to array, sorted by date (newest first)
-    return Array.from(betMap.values()).sort((a, b) => {
-      const dateA = a.id || 0;
-      const dateB = b.id || 0;
-      return dateB - dateA;
-    });
+    return unionBets(localBets, cloudBets);
   }, []);
 
   // Effect 1: Load from Firestore when user logs in
@@ -128,28 +169,17 @@ export function useCloudBets(key, defaultValue = []) {
         // Keep using localStorage data on error
       });
 
-    // Set up real-time listener for updates from other devices
+    // Set up real-time listener for updates from other devices. We always
+    // MERGE cloud state into local state rather than replacing — this way
+    // a bad write from another device can't silently delete bets. Intentional
+    // deletes still propagate because they ride along as `deleted: true`
+    // tombstones, which `mergePair` preserves.
     const unsubscribe = onSnapshot(
       betsDocRef,
       (docSnap) => {
-        if (docSnap.exists()) {
-          const cloudBets = docSnap.data().bets || defaultValue;
-          // Only update if we didn't just save (avoid flickering)
-          // This is a simple check - in production you might want version numbers
-          setState(prev => {
-            // Only update if cloud has different data
-            const prevIds = new Set(prev.map(b => b.id));
-            const cloudIds = new Set(cloudBets.map(b => b.id));
-            const isDifferent = prev.length !== cloudBets.length || 
-                              prev.some(b => !cloudIds.has(b.id)) ||
-                              cloudBets.some(b => !prevIds.has(b.id));
-            
-            if (isDifferent && hasLoadedFromFirestore.current) {
-              return cloudBets;
-            }
-            return prev;
-          });
-        }
+        if (!docSnap.exists() || !hasLoadedFromFirestore.current) return;
+        const cloudBets = docSnap.data().bets || defaultValue;
+        setState(prev => unionBets(prev, cloudBets));
       },
       (err) => {
         console.error('Firestore snapshot error:', err);
@@ -160,13 +190,16 @@ export function useCloudBets(key, defaultValue = []) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, key, mergeBets]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
 
-  // Effect 2: Save to localStorage on every change (fast)
+  // Effect 2: Save to localStorage on every change (fast), and mirror every
+  // bet we've ever seen into the local archive so it can be restored if the
+  // live list ever gets truncated.
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(state));
     } catch (err) {
       console.error('Error saving to localStorage:', err);
     }
+    writeArchive(key, state);
   }, [key, state]);
 
   // Effect 3: Debounced save to Firestore
