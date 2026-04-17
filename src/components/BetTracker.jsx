@@ -194,50 +194,56 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   useEffect(() => {
     if (!games?.length) return;
     const now = Date.now();
-    let dirty = false;
-    const next = bets.map(bet => {
-      if (!bet.gameId || !bet.marketKey) return bet;
-      let updated = bet;
+    // Build a patch map keyed by bet id. We apply it via a functional setBets
+    // so we never overwrite a newer bets array (e.g. a bet the user just added
+    // while the odds feed was refreshing).
+    const patches = new Map();
+    bets.forEach(bet => {
+      if (!bet.gameId || !bet.marketKey) return;
+      const patch = {};
 
       // Backfill opening odds from historicOdds once we have a capture.
-      if (updated.openingOdds == null && updated.marketKey === 'h2h' && updated.outcomeName) {
-        const opener = historicOdds?.[updated.gameId]?.h2h?.find(o => o.name === updated.outcomeName);
-        if (opener?.price != null) {
-          updated = { ...updated, openingOdds: opener.price };
-          dirty = true;
+      if (bet.openingOdds == null && bet.marketKey === 'h2h' && bet.outcomeName) {
+        const opener = historicOdds?.[bet.gameId]?.h2h?.find(o => o.name === bet.outcomeName);
+        if (opener?.price != null) patch.openingOdds = opener.price;
+      }
+
+      if (bet.closingOdds == null && bet.status === 'pending') {
+        const livePrice = findLivePrice(games, bet);
+        const commence = bet.commenceTime ? new Date(bet.commenceTime).getTime() : null;
+        const gameStillListed = games.some(g => g.id === bet.gameId);
+
+        if (livePrice != null && commence && now < commence) {
+          if (bet.lastPreGameOdds !== livePrice) {
+            patch.lastPreGameOdds = livePrice;
+            patch.lastPreGameAt = now;
+          }
+        } else if (commence && now >= commence) {
+          const closing = bet.lastPreGameOdds ?? livePrice;
+          if (closing != null) {
+            patch.closingOdds = closing;
+            patch.closingCapturedAt = now;
+          }
+        } else if (!gameStillListed && bet.lastPreGameOdds != null) {
+          patch.closingOdds = bet.lastPreGameOdds;
+          patch.closingCapturedAt = now;
         }
       }
 
-      // Only close-out bets that are still pending.
-      if (updated.closingOdds != null || updated.status !== 'pending') return updated;
-      const livePrice = findLivePrice(games, updated);
-      const commence = updated.commenceTime ? new Date(updated.commenceTime).getTime() : null;
-      const gameStillListed = games.some(g => g.id === updated.gameId);
-
-      if (livePrice != null && commence && now < commence) {
-        // Pre-game: roll the "last seen" price forward.
-        if (updated.lastPreGameOdds !== livePrice) {
-          updated = { ...updated, lastPreGameOdds: livePrice, lastPreGameAt: now };
-          dirty = true;
-        }
-      } else if (commence && now >= commence) {
-        // Post-kickoff: lock in the closing line from the last pre-game snapshot,
-        // or from whatever the book still shows if we never snapshotted.
-        const closing = updated.lastPreGameOdds ?? livePrice;
-        if (closing != null) {
-          updated = { ...updated, closingOdds: closing, closingCapturedAt: now };
-          dirty = true;
-        }
-      } else if (!gameStillListed && updated.lastPreGameOdds != null) {
-        // Game dropped off the board before we saw commence_time pass — use
-        // the last snapshot we have as closing.
-        updated = { ...updated, closingOdds: updated.lastPreGameOdds, closingCapturedAt: now };
-        dirty = true;
-      }
-
-      return updated;
+      if (Object.keys(patch).length) patches.set(bet.id, patch);
     });
-    if (dirty) setBets(next);
+
+    if (patches.size === 0) return;
+    setBets(prev => {
+      let changed = false;
+      const next = prev.map(b => {
+        const patch = patches.get(b.id);
+        if (!patch) return b;
+        changed = true;
+        return { ...b, ...patch };
+      });
+      return changed ? next : prev;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [games, historicOdds]);
   
