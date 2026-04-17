@@ -5,13 +5,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   PlusCircle, Trophy, XCircle, RotateCcw, TrendingUp,
   DollarSign, Target, BarChart3, Trash2, ChevronDown, ChevronUp,
-  Search, Calendar, Filter
+  Search, Calendar, Filter, Clock, Edit3, Check
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts';
-import { americanToDecimal } from '../utils/odds-math.js';
+import { americanToDecimal, americanToImplied } from '../utils/odds-math.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { useCloudBets } from '../hooks/useCloudBets.js';
@@ -53,6 +53,40 @@ function todayStr() {
 
 function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+// CLV (Closing Line Value) — compares the price you got to the closing price.
+// Positive CLV means you beat the close (good timing); negative means the market
+// moved against you. Measured in implied-probability points for accuracy.
+function calculateCLV(placedOdds, closingOdds) {
+  if (placedOdds == null || closingOdds == null) return null;
+  const pPlaced = americanToImplied(Number(placedOdds));
+  const pClose = americanToImplied(Number(closingOdds));
+  if (!pPlaced || !pClose) return null;
+  // A lower implied prob at the time of bet = better price than close.
+  // CLV = (close - placed) * 100 in percentage points.
+  return Number(((pClose - pPlaced) * 100).toFixed(2));
+}
+
+// Opening-line edge — how much better/worse the price you got was vs
+// the opening number. Positive = you got the opener value, negative = late.
+function calculateOpenerEdge(placedOdds, openingOdds) {
+  if (placedOdds == null || openingOdds == null) return null;
+  const pPlaced = americanToImplied(Number(placedOdds));
+  const pOpen = americanToImplied(Number(openingOdds));
+  if (!pPlaced || !pOpen) return null;
+  return Number(((pOpen - pPlaced) * 100).toFixed(2));
+}
+
+// Classify a bet's timing into a grade so users can see at a glance how
+// sharp their bet-placement was vs the market's eventual resolution.
+function gradeTiming(clv) {
+  if (clv == null) return { label: '—', color: '#64748b', bg: 'rgba(100,116,139,0.15)' };
+  if (clv >= 3)  return { label: 'Sharp',     color: '#22c55e', bg: 'rgba(34,197,94,0.15)' };
+  if (clv >= 1)  return { label: 'Good',      color: '#84cc16', bg: 'rgba(132,204,22,0.15)' };
+  if (clv > -1)  return { label: 'Neutral',   color: '#eab308', bg: 'rgba(234,179,8,0.15)' };
+  if (clv > -3)  return { label: 'Late',      color: '#f97316', bg: 'rgba(249,115,22,0.15)' };
+  return           { label: 'Chased',    color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
 }
 
 function getRelativeDate(dateStr) {
@@ -111,6 +145,8 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   const [odds, setOdds] = useState('');
   const [wager, setWager] = useState('');
   const [date, setDate] = useState(todayStr());
+  const [openingOdds, setOpeningOdds] = useState('');
+  const [closingOdds, setClosingOdds] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [isPreFilled, setIsPreFilled] = useState(false);
   
@@ -227,7 +263,47 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       sportBreakdown[sport].bets    += 1;
     });
 
-    return { wins, losses, pushes, total, totalWagered, netPL, winPct, roi, units, avgWager, sportBreakdown };
+    // ===== EV Timing Analytics (CLV) =====
+    // For every bet with a closingOdds value recorded, compute CLV%.
+    // We surface: average CLV, % of bets that beat the close, and
+    // an opening-line edge (how many bets got the opening number).
+    const timedBets = filteredBets.filter(b => b.closingOdds != null);
+    const clvValues = timedBets
+      .map(b => calculateCLV(b.odds, b.closingOdds))
+      .filter(v => v != null);
+    const avgCLV = clvValues.length
+      ? Number((clvValues.reduce((a, b) => a + b, 0) / clvValues.length).toFixed(2))
+      : null;
+    const beatClose = clvValues.filter(v => v > 0).length;
+    const beatCloseRate = clvValues.length ? (beatClose / clvValues.length) * 100 : 0;
+
+    const openerBets = filteredBets.filter(b => b.openingOdds != null);
+    const openerValues = openerBets
+      .map(b => calculateOpenerEdge(b.odds, b.openingOdds))
+      .filter(v => v != null);
+    const avgOpenerEdge = openerValues.length
+      ? Number((openerValues.reduce((a, b) => a + b, 0) / openerValues.length).toFixed(2))
+      : null;
+
+    // CLV units: implied profit over the close across all timed bets.
+    // Using a flat 1u stake per bet to keep the metric wager-agnostic.
+    const clvUnits = clvValues.length
+      ? Number(clvValues.reduce((a, b) => a + b, 0).toFixed(2))
+      : 0;
+
+    return {
+      wins, losses, pushes, total, totalWagered, netPL, winPct, roi, units, avgWager, sportBreakdown,
+      timing: {
+        recordedBets: timedBets.length,
+        totalBets: filteredBets.length,
+        avgCLV,
+        beatClose,
+        beatCloseRate,
+        avgOpenerEdge,
+        openerRecorded: openerBets.length,
+        clvUnits,
+      },
+    };
   }, [filteredBets]);
   
   const atLimit = !isPro && bets.length >= FREE_BET_LIMIT;
@@ -248,14 +324,18 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       status: 'pending',
       profit: null,
       settledDate: null,
+      openingOdds: openingOdds === '' ? null : Number(openingOdds),
+      closingOdds: closingOdds === '' ? null : Number(closingOdds),
     };
-    
+
     setBets(prev => [newBet, ...prev]);
     setGame('');
     setPick('');
     setOdds('');
     setWager('');
     setDate(todayStr());
+    setOpeningOdds('');
+    setClosingOdds('');
     setShowForm(false);
     setIsPreFilled(false);
     if (onBetConsumed) onBetConsumed();
@@ -277,6 +357,16 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
   
   function deleteBet(id) {
     setBets(prev => prev.filter(b => b.id !== id));
+  }
+
+  function setTimingOdds(id, { openingOdds, closingOdds }) {
+    setBets(prev => prev.map(bet => {
+      if (bet.id !== id) return bet;
+      const next = { ...bet };
+      if (openingOdds !== undefined) next.openingOdds = openingOdds === null || openingOdds === '' ? null : Number(openingOdds);
+      if (closingOdds !== undefined) next.closingOdds = closingOdds === null || closingOdds === '' ? null : Number(closingOdds);
+      return next;
+    }));
   }
   
   return (
@@ -402,6 +492,98 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
           )}
         </div>
       )}
+
+      {/* EV TIMING ANALYTICS PANEL — Edge Finder V2.4 */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))',
+        border: '1px solid rgba(99, 102, 241, 0.25)',
+        borderRadius: '12px',
+        padding: '16px',
+        marginBottom: '12px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Clock size={14} color="#818cf8" />
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#c4b5fd', letterSpacing: '0.5px' }}>
+              EV TIMING ANALYTICS
+            </div>
+            <span style={{
+              fontSize: '9px', padding: '2px 6px',
+              background: 'rgba(99, 102, 241, 0.2)',
+              borderRadius: '4px', color: '#a5b4fc', fontWeight: 700,
+            }}>V2.4</span>
+          </div>
+          <div style={{ fontSize: '10px', color: '#475569' }}>
+            {stats.timing.recordedBets}/{stats.timing.totalBets} bets tracked
+          </div>
+        </div>
+
+        {stats.timing.recordedBets === 0 ? (
+          <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
+            Add closing odds to your bets to unlock CLV analytics — measure how your timing compares to the market close.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '10px' }}>
+              {[
+                {
+                  label: 'Avg CLV',
+                  value: stats.timing.avgCLV != null ? `${stats.timing.avgCLV >= 0 ? '+' : ''}${stats.timing.avgCLV.toFixed(2)}%` : '—',
+                  sub: 'vs closing line',
+                  color: stats.timing.avgCLV == null ? '#64748b' : stats.timing.avgCLV >= 0 ? '#22c55e' : '#ef4444',
+                },
+                {
+                  label: 'Beat Close',
+                  value: `${stats.timing.beatCloseRate.toFixed(0)}%`,
+                  sub: `${stats.timing.beatClose} of ${stats.timing.recordedBets} bets`,
+                  color: stats.timing.beatCloseRate >= 55 ? '#22c55e' : stats.timing.beatCloseRate >= 45 ? '#eab308' : '#ef4444',
+                },
+                {
+                  label: 'CLV Units',
+                  value: `${stats.timing.clvUnits >= 0 ? '+' : ''}${stats.timing.clvUnits.toFixed(2)}`,
+                  sub: 'total edge earned',
+                  color: stats.timing.clvUnits >= 0 ? '#22c55e' : '#ef4444',
+                },
+                {
+                  label: 'Vs Opener',
+                  value: stats.timing.avgOpenerEdge != null ? `${stats.timing.avgOpenerEdge >= 0 ? '+' : ''}${stats.timing.avgOpenerEdge.toFixed(2)}%` : '—',
+                  sub: stats.timing.openerRecorded > 0 ? `${stats.timing.openerRecorded} opener(s)` : 'none tracked',
+                  color: stats.timing.avgOpenerEdge == null ? '#64748b' : stats.timing.avgOpenerEdge >= 0 ? '#22c55e' : '#f97316',
+                },
+              ].map((m, i) => (
+                <div key={i} style={{
+                  background: 'rgba(15, 23, 42, 0.5)',
+                  borderRadius: '8px', padding: '10px 12px', textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>{m.label}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: m.color, fontFamily: "'JetBrains Mono', monospace" }}>{m.value}</div>
+                  <div style={{ fontSize: '9px', color: '#475569', marginTop: '2px' }}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '6px',
+              fontSize: '9px', color: '#64748b',
+              paddingTop: '8px', borderTop: '1px solid rgba(71, 85, 105, 0.2)',
+            }}>
+              <span>Timing grade:</span>
+              {[
+                { label: 'Sharp', color: '#22c55e', range: '≥ +3%' },
+                { label: 'Good', color: '#84cc16', range: '+1 to +3%' },
+                { label: 'Neutral', color: '#eab308', range: '±1%' },
+                { label: 'Late', color: '#f97316', range: '-1 to -3%' },
+                { label: 'Chased', color: '#ef4444', range: '< -3%' },
+              ].map(g => (
+                <span key={g.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: g.color }} />
+                  <span style={{ color: g.color, fontWeight: 600 }}>{g.label}</span>
+                  <span>{g.range}</span>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* SPORT TABS */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', overflowX: 'auto', paddingBottom: '4px' }}>
@@ -598,6 +780,22 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
                 <input type="number" value={wager} onChange={(e) => setWager(e.target.value)} placeholder="100" style={inputStyle} />
               </div>
             </div>
+            {/* Optional timing fields power the EV Timing Analytics panel.
+                Users can leave them blank at entry and fill in the close later. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={11} /> Opening Odds <span style={{ color: '#475569' }}>(optional)</span>
+                </label>
+                <input type="number" value={openingOdds} onChange={(e) => setOpeningOdds(e.target.value)} placeholder="-105" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={11} /> Closing Odds <span style={{ color: '#475569' }}>(optional)</span>
+                </label>
+                <input type="number" value={closingOdds} onChange={(e) => setClosingOdds(e.target.value)} placeholder="-115" style={inputStyle} />
+              </div>
+            </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button type="button" onClick={() => setShowForm(false)} style={{
                 padding: '8px 16px', background: 'transparent',
@@ -632,7 +830,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
             PENDING ({pendingBets.length})
           </div>
           {pendingBets.map(bet => (
-            <BetCard key={bet.id} bet={bet} onSettle={settleBet} onDelete={deleteBet} isPending />
+            <BetCard key={bet.id} bet={bet} onSettle={settleBet} onDelete={deleteBet} onSetTimingOdds={setTimingOdds} isPending />
           ))}
         </div>
       )}
@@ -648,7 +846,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
               {dateLabel}
             </div>
             {bets.map(bet => (
-              <BetCard key={bet.id} bet={bet} onSettle={settleBet} onDelete={deleteBet} />
+              <BetCard key={bet.id} bet={bet} onSettle={settleBet} onDelete={deleteBet} onSetTimingOdds={setTimingOdds} />
             ))}
           </div>
         ))
@@ -664,75 +862,158 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
 }
 
 // Bet Card Component
-function BetCard({ bet, onSettle, onDelete, isPending }) {
+function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
   const statusColors = {
     pending: '#f59e0b', won: '#22c55e', lost: '#ef4444', push: '#64748b',
   };
-  
+
+  const [editingTiming, setEditingTiming] = useState(false);
+  const [openDraft, setOpenDraft] = useState(bet.openingOdds ?? '');
+  const [closeDraft, setCloseDraft] = useState(bet.closingOdds ?? '');
+
+  const clv = calculateCLV(bet.odds, bet.closingOdds);
+  const grade = gradeTiming(clv);
+  const hasTiming = bet.openingOdds != null || bet.closingOdds != null;
+
+  function saveTiming() {
+    onSetTimingOdds?.(bet.id, {
+      openingOdds: openDraft === '' ? null : openDraft,
+      closingOdds: closeDraft === '' ? null : closeDraft,
+    });
+    setEditingTiming(false);
+  }
+
   return (
-    <div style={{
-      ...cardStyle,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '12px 16px',
-    }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>{bet.game}</span>
-          <span style={{
-            fontSize: '10px', padding: '2px 6px',
-            background: 'rgba(99, 102, 241, 0.15)', borderRadius: '4px', color: '#818cf8',
-          }}>{bet.type}</span>
-        </div>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-          {bet.pick} @ {formatOdds(bet.odds)} • ${bet.wager}
-        </div>
-      </div>
-      
-      <div style={{ textAlign: 'right' }}>
-        {isPending ? (
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button onClick={() => onSettle(bet.id, 'won')} style={{
-              padding: '6px 12px', background: 'rgba(34, 197, 94, 0.2)',
-              border: '1px solid rgba(34, 197, 94, 0.5)', borderRadius: '6px',
-              color: '#22c55e', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            }}>Won</button>
-            <button onClick={() => onSettle(bet.id, 'lost')} style={{
-              padding: '6px 12px', background: 'rgba(239, 68, 68, 0.2)',
-              border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '6px',
-              color: '#ef4444', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            }}>Lost</button>
-            <button onClick={() => onSettle(bet.id, 'push')} style={{
-              padding: '6px 12px', background: 'rgba(100, 116, 139, 0.2)',
-              border: '1px solid rgba(100, 116, 139, 0.5)', borderRadius: '6px',
-              color: '#64748b', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            }}>Push</button>
-          </div>
-        ) : (
-          <div>
-            <div style={{
-              fontSize: '12px', fontWeight: 700,
-              color: bet.profit >= 0 ? '#22c55e' : '#ef4444',
-            }}>
-              {bet.profit > 0 ? '+' : ''}{formatMoney(bet.profit)}
-            </div>
-            <div style={{
+    <div style={{ ...cardStyle, padding: '12px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>{bet.game}</span>
+            <span style={{
               fontSize: '10px', padding: '2px 6px',
-              background: `rgba(${bet.status === 'won' ? '34, 197, 94' : bet.status === 'lost' ? '239, 68, 68' : '100, 116, 139'}, 0.15)`,
-              borderRadius: '4px', color: statusColors[bet.status], display: 'inline-block',
-            }}>
-              {bet.status.toUpperCase()}
-            </div>
+              background: 'rgba(99, 102, 241, 0.15)', borderRadius: '4px', color: '#818cf8',
+            }}>{bet.type}</span>
+            {clv != null && (
+              <span style={{
+                fontSize: '10px', padding: '2px 6px', borderRadius: '4px',
+                background: grade.bg, color: grade.color, fontWeight: 700,
+                display: 'inline-flex', alignItems: 'center', gap: '3px',
+              }}>
+                <Clock size={9} />
+                {grade.label} {clv >= 0 ? '+' : ''}{clv.toFixed(2)}%
+              </span>
+            )}
           </div>
-        )}
+          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+            {bet.pick} @ {formatOdds(bet.odds)} • ${bet.wager}
+          </div>
+          {hasTiming && !editingTiming && (
+            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '8px' }}>
+              {bet.openingOdds != null && <span>Open: {formatOdds(bet.openingOdds)}</span>}
+              {bet.closingOdds != null && <span>Close: {formatOdds(bet.closingOdds)}</span>}
+            </div>
+          )}
+        </div>
+
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          {isPending ? (
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onClick={() => onSettle(bet.id, 'won')} style={{
+                padding: '6px 12px', background: 'rgba(34, 197, 94, 0.2)',
+                border: '1px solid rgba(34, 197, 94, 0.5)', borderRadius: '6px',
+                color: '#22c55e', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              }}>Won</button>
+              <button onClick={() => onSettle(bet.id, 'lost')} style={{
+                padding: '6px 12px', background: 'rgba(239, 68, 68, 0.2)',
+                border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '6px',
+                color: '#ef4444', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              }}>Lost</button>
+              <button onClick={() => onSettle(bet.id, 'push')} style={{
+                padding: '6px 12px', background: 'rgba(100, 116, 139, 0.2)',
+                border: '1px solid rgba(100, 116, 139, 0.5)', borderRadius: '6px',
+                color: '#64748b', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              }}>Push</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{
+                fontSize: '12px', fontWeight: 700,
+                color: bet.profit >= 0 ? '#22c55e' : '#ef4444',
+              }}>
+                {bet.profit > 0 ? '+' : ''}{formatMoney(bet.profit)}
+              </div>
+              <div style={{
+                fontSize: '10px', padding: '2px 6px',
+                background: `rgba(${bet.status === 'won' ? '34, 197, 94' : bet.status === 'lost' ? '239, 68, 68' : '100, 116, 139'}, 0.15)`,
+                borderRadius: '4px', color: statusColors[bet.status], display: 'inline-block',
+              }}>
+                {bet.status.toUpperCase()}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+          {onSetTimingOdds && (
+            <button
+              onClick={() => setEditingTiming(v => !v)}
+              title="Edit opening/closing odds for CLV tracking"
+              style={{
+                padding: '6px', background: editingTiming ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                border: 'none', borderRadius: '4px',
+                color: editingTiming ? '#818cf8' : '#64748b', cursor: 'pointer',
+              }}>
+              <Edit3 size={14} />
+            </button>
+          )}
+          <button onClick={() => onDelete(bet.id)} style={{
+            padding: '6px', background: 'transparent', border: 'none',
+            color: '#64748b', cursor: 'pointer',
+          }}>
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
-      
-      <button onClick={() => onDelete(bet.id)} style={{
-        marginLeft: '12px', padding: '6px',
-        background: 'transparent', border: 'none',
-        color: '#64748b', cursor: 'pointer',
-      }}>
-        <Trash2 size={16} />
-      </button>
+
+      {editingTiming && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          marginTop: '10px', paddingTop: '10px',
+          borderTop: '1px solid rgba(71, 85, 105, 0.2)',
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Open</label>
+            <input
+              type="number" value={openDraft} onChange={(e) => setOpenDraft(e.target.value)}
+              placeholder="-105"
+              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Close</label>
+            <input
+              type="number" value={closeDraft} onChange={(e) => setCloseDraft(e.target.value)}
+              placeholder="-115"
+              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
+            />
+          </div>
+          <button onClick={saveTiming} style={{
+            display: 'flex', alignItems: 'center', gap: '4px',
+            padding: '6px 10px',
+            background: 'rgba(34, 197, 94, 0.2)',
+            border: '1px solid rgba(34, 197, 94, 0.5)', borderRadius: '6px',
+            color: '#22c55e', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+          }}>
+            <Check size={12} /> Save
+          </button>
+          <button onClick={() => { setEditingTiming(false); setOpenDraft(bet.openingOdds ?? ''); setCloseDraft(bet.closingOdds ?? ''); }} style={{
+            padding: '6px 10px', background: 'transparent',
+            border: '1px solid rgba(71, 85, 105, 0.3)', borderRadius: '6px',
+            color: '#94a3b8', fontSize: '11px', cursor: 'pointer',
+          }}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
