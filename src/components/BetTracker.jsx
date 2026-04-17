@@ -133,7 +133,24 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-export default function BetTracker({ pendingBet, onBetConsumed }) {
+// Find the current live price for a bet's market/outcome in the games feed.
+// Returns null if anything is missing — callers use the result only if truthy.
+function findLivePrice(games, bet) {
+  if (!bet?.gameId || !bet?.marketKey || !bet?.outcomeName) return null;
+  const game = games?.find(g => g.id === bet.gameId);
+  if (!game) return null;
+  const book = game.bookmakers?.[0];
+  const market = book?.markets?.find(m => m.key === bet.marketKey);
+  if (!market) return null;
+  const outcome = market.outcomes?.find(o => {
+    if (o.name !== bet.outcomeName) return false;
+    if (bet.outcomePoint != null && o.point != null) return o.point === bet.outcomePoint;
+    return true;
+  });
+  return outcome?.price ?? null;
+}
+
+export default function BetTracker({ pendingBet, onBetConsumed, games = [], historicOdds = {} }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
@@ -165,10 +182,64 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       setPick(pendingBet.pick || '');
       setOdds(pendingBet.odds != null ? String(pendingBet.odds) : '');
       setDate(pendingBet.date ? new Date(pendingBet.date).toISOString().split('T')[0] : todayStr());
+      setOpeningOdds(pendingBet.openingOdds != null ? String(pendingBet.openingOdds) : '');
       setShowForm(true);
       setIsPreFilled(true);
     }
   }, [pendingBet]);
+
+  // Auto-capture CLV: for every pending bet whose market we can identify,
+  // track the latest live price and, once the game starts, snapshot it as
+  // the closing line. Also backfill opening odds from historicOdds when seen.
+  useEffect(() => {
+    if (!games?.length) return;
+    const now = Date.now();
+    let dirty = false;
+    const next = bets.map(bet => {
+      if (!bet.gameId || !bet.marketKey) return bet;
+      let updated = bet;
+
+      // Backfill opening odds from historicOdds once we have a capture.
+      if (updated.openingOdds == null && updated.marketKey === 'h2h' && updated.outcomeName) {
+        const opener = historicOdds?.[updated.gameId]?.h2h?.find(o => o.name === updated.outcomeName);
+        if (opener?.price != null) {
+          updated = { ...updated, openingOdds: opener.price };
+          dirty = true;
+        }
+      }
+
+      // Only close-out bets that are still pending.
+      if (updated.closingOdds != null || updated.status !== 'pending') return updated;
+      const livePrice = findLivePrice(games, updated);
+      const commence = updated.commenceTime ? new Date(updated.commenceTime).getTime() : null;
+      const gameStillListed = games.some(g => g.id === updated.gameId);
+
+      if (livePrice != null && commence && now < commence) {
+        // Pre-game: roll the "last seen" price forward.
+        if (updated.lastPreGameOdds !== livePrice) {
+          updated = { ...updated, lastPreGameOdds: livePrice, lastPreGameAt: now };
+          dirty = true;
+        }
+      } else if (commence && now >= commence) {
+        // Post-kickoff: lock in the closing line from the last pre-game snapshot,
+        // or from whatever the book still shows if we never snapshotted.
+        const closing = updated.lastPreGameOdds ?? livePrice;
+        if (closing != null) {
+          updated = { ...updated, closingOdds: closing, closingCapturedAt: now };
+          dirty = true;
+        }
+      } else if (!gameStillListed && updated.lastPreGameOdds != null) {
+        // Game dropped off the board before we saw commence_time pass — use
+        // the last snapshot we have as closing.
+        updated = { ...updated, closingOdds: updated.lastPreGameOdds, closingCapturedAt: now };
+        dirty = true;
+      }
+
+      return updated;
+    });
+    if (dirty) setBets(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games, historicOdds]);
   
   // Auto-detect sports
   const detectedSports = useMemo(() => {
@@ -326,6 +397,14 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
       settledDate: null,
       openingOdds: openingOdds === '' ? null : Number(openingOdds),
       closingOdds: closingOdds === '' ? null : Number(closingOdds),
+      // Identifiers let the auto-capture effect match this bet back to the
+      // live odds feed and backfill its closing price after the game starts.
+      gameId: pendingBet?.gameId ?? null,
+      sportKey: pendingBet?.sportKey ?? null,
+      marketKey: pendingBet?.marketKey ?? null,
+      outcomeName: pendingBet?.outcomeName ?? null,
+      outcomePoint: pendingBet?.outcomePoint ?? null,
+      commenceTime: pendingBet?.commenceTime ?? null,
     };
 
     setBets(prev => [newBet, ...prev]);
@@ -520,7 +599,7 @@ export default function BetTracker({ pendingBet, onBetConsumed }) {
 
         {stats.timing.recordedBets === 0 ? (
           <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
-            Add closing odds to your bets to unlock CLV analytics — measure how your timing compares to the market close.
+            Bets added from the Games tab capture closing odds automatically once the game kicks off. You can also enter opening/closing odds manually.
           </div>
         ) : (
           <>

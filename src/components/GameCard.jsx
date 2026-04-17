@@ -183,23 +183,24 @@ export default function GameCard({
                   const spreads = book.markets?.find(m => m.key === 'spreads');
                   const h2h = book.markets?.find(m => m.key === 'h2h');
                   const totals = book.markets?.find(m => m.key === 'totals');
-                  // Each option: { label, type, pick, odds }
+                  // Each option tracks its market/outcome so the tracker can
+                  // auto-match the bet back to future odds snapshots for CLV.
                   const options = [];
                   // Away spread
                   spreads?.outcomes?.filter(o => o.name === game.away_team).forEach(o => {
-                    options.push({ label: `${game.away_team} ${o.point > 0 ? '+' : ''}${o.point}`, type: 'Spread', pick: `${game.away_team} ${o.point > 0 ? '+' : ''}${o.point}`, odds: o.price });
+                    options.push({ label: `${game.away_team} ${o.point > 0 ? '+' : ''}${o.point}`, type: 'Spread', pick: `${game.away_team} ${o.point > 0 ? '+' : ''}${o.point}`, odds: o.price, marketKey: 'spreads', outcomeName: o.name, outcomePoint: o.point });
                   });
                   // Home spread
                   spreads?.outcomes?.filter(o => o.name === game.home_team).forEach(o => {
-                    options.push({ label: `${game.home_team} ${o.point > 0 ? '+' : ''}${o.point}`, type: 'Spread', pick: `${game.home_team} ${o.point > 0 ? '+' : ''}${o.point}`, odds: o.price });
+                    options.push({ label: `${game.home_team} ${o.point > 0 ? '+' : ''}${o.point}`, type: 'Spread', pick: `${game.home_team} ${o.point > 0 ? '+' : ''}${o.point}`, odds: o.price, marketKey: 'spreads', outcomeName: o.name, outcomePoint: o.point });
                   });
                   // Moneylines
                   h2h?.outcomes?.forEach(o => {
-                    options.push({ label: `${o.name} ML`, type: 'Moneyline', pick: `${o.name} ${formatOdds(o.price)}`, odds: o.price });
+                    options.push({ label: `${o.name} ML`, type: 'Moneyline', pick: `${o.name} ${formatOdds(o.price)}`, odds: o.price, marketKey: 'h2h', outcomeName: o.name });
                   });
                   // Totals
                   totals?.outcomes?.forEach(o => {
-                    options.push({ label: `${o.name} ${o.point}`, type: 'Total', pick: `${o.name} ${o.point}`, odds: o.price });
+                    options.push({ label: `${o.name} ${o.point}`, type: 'Total', pick: `${o.name} ${o.point}`, odds: o.price, marketKey: 'totals', outcomeName: o.name, outcomePoint: o.point });
                   });
                   return options.map((opt, i) => (
                     <button
@@ -211,6 +212,12 @@ export default function GameCard({
                           pick: opt.pick,
                           odds: opt.odds,
                           date: game.commence_time,
+                          gameId: game.id,
+                          sportKey: game.sport_key,
+                          marketKey: opt.marketKey,
+                          outcomeName: opt.outcomeName,
+                          outcomePoint: opt.outcomePoint,
+                          commenceTime: game.commence_time,
                         });
                         setShowQuickPick(false);
                       }}
