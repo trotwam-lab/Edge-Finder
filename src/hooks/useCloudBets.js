@@ -34,10 +34,27 @@ function mergePair(a, b) {
   if (!a) return b;
   if (!b) return a;
   const out = { ...a };
+  // Determine which record is "newer" so differing values can actually update.
+  // Uses settledDate (YYYY-MM-DD) as a proxy for "last meaningful update",
+  // falling back to id (Date.now() at creation) for a deterministic order.
+  const aTime = Date.parse(a.settledDate || '') || 0;
+  const bTime = Date.parse(b.settledDate || '') || 0;
+  const bIsNewer = bTime !== aTime ? bTime > aTime : (b.id || 0) > (a.id || 0);
   Object.keys(b).forEach(k => {
     const bv = b[k];
     const av = out[k];
-    if (bv != null && (av == null || bv === av)) out[k] = bv;
+    if (bv == null) return;
+    if (av == null) { out[k] = bv; return; }
+    if (bv === av) return;
+    // Values differ. For status, prefer a settled value over pending so a
+    // stale archive entry can never shadow an updated live entry (this is
+    // the core fix for the "settled bets revert to pending" bug).
+    if (k === 'status') {
+      if (av === 'pending' && bv !== 'pending') { out[k] = bv; return; }
+      if (bv === 'pending' && av !== 'pending') return; // keep av
+    }
+    // Otherwise the newer record wins.
+    if (bIsNewer) out[k] = bv;
   });
   // Deleted tombstones sync both ways — later deletedAt wins.
   const aDel = a.deletedAt || 0;
