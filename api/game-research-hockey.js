@@ -24,7 +24,7 @@ const cache = new Map();
 // ────────────────────────────────────────────────────────────────
 
 /**
- * Safe wrapper around axios.get with caching and basic retry.
+ * Safe wrapper around fetch with caching and basic retry.
  * @param {string} url
  * @param {object} [params]
  * @returns {Promise<object|null>} Parsed JSON or null on failure
@@ -37,7 +37,13 @@ async function safeFetch(url, params = {}, retries = 2) {
   }
 
   try {
-    const { data } = await axios.get(url, { params, timeout: 15000 });
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== undefined && value !== null)
+    );
+    const fullUrl = qs.toString() ? `${url}?${qs.toString()}` : url;
+    const res = await fetch(fullUrl, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
     cache.set(cacheKey, { data, ts: Date.now() });
     return data;
   } catch (err) {
