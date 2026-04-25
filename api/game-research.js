@@ -9,25 +9,13 @@
  *   - else -> generic last-10 fallback
  */
 
-const axios = require('axios');
+// axios removed - using native fetch
 
 // Sport-specific modules (loaded lazily to avoid hard deps)
-let baseballModule = null;
-let basketballModule = null;
-let hockeyModule = null;
+import { getBaseballResearch } from "./game-research-baseball.js";
+import { getBasketballGameResearch } from "./game-research-basketball.js";
+import { getHockeyGameResearch } from "./game-research-hockey.js";
 
-function loadBaseball() {
-  if (!baseballModule) baseballModule = require('./game-research-baseball');
-  return baseballModule;
-}
-function loadBasketball() {
-  if (!basketballModule) basketballModule = require('./game-research-basketball');
-  return basketballModule;
-}
-function loadHockey() {
-  if (!hockeyModule) hockeyModule = require('./game-research-hockey');
-  return hockeyModule;
-}
 
 // ────────────────────────────────────────────────────────────────
 // Generic fallback: last-10 games via ESPN
@@ -131,22 +119,22 @@ async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
   const key = (sport || '').toLowerCase().trim();
 
   if (key === 'baseball_mlb') {
-    const mod = loadBaseball();
-    return mod.getBaseballGameResearch(homeTeam, awayTeam, gameDate);
+    // Using direct import
+    return getBaseballResearch(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'basketball_nba') {
-    const mod = loadBasketball();
-    return mod.getBasketballGameResearch(homeTeam, awayTeam, gameDate);
+    // Using direct import
+    return getBasketballGameResearch(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'icehockey_nhl') {
-    const mod = loadHockey();
-    return mod.getHockeyGameResearch(homeTeam, awayTeam, gameDate);
+    // Using direct import
+    return getHockeyGameResearch(homeTeam, awayTeam, gameDate);
   }
 
   // Fallback for unsupported sports
   return getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
 }
 
-module.exports = { getGameResearch };
+export { getGameResearch };

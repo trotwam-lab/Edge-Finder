@@ -7,8 +7,6 @@
  * - Odds API: ATS trends (if available)
  */
 
-const { safeFetch, cache } = require('../utils');
-
 // ESPN API base URLs
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 
@@ -290,7 +288,7 @@ function computeStreak(games) {
 async function fetchInjuries(teamName) {
   try {
     // Attempt to use a project-level injuries endpoint if available
-    const { getInjuries } = require('./injuries');
+    const { getInjuries } = await import('./injuries.js');
     if (typeof getInjuries === 'function') {
       return await getInjuries(teamName);
     }
@@ -350,7 +348,7 @@ function calculateRestDays(schedule, gameDateStr) {
  */
 async function fetchAtsTrends(teamName) {
   try {
-    const { getHistoricalOdds } = require('./odds');
+    const { getHistoricalOdds } = await import('./odds.js');
     if (typeof getHistoricalOdds === 'function') {
       const odds = await getHistoricalOdds(teamName);
       return computeAtsFromOdds(odds);
@@ -667,6 +665,28 @@ async function cachedFetch(url) {
 }
 
 /* ------------------------------------------------------------------ */
+/* safeFetch — local implementation (replaces missing utils module)    */
+/* ------------------------------------------------------------------ */
+
+async function safeFetch(url, retries = 2) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) {
+      console.error(`[safeFetch] HTTP ${res.status}: ${url}`);
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      return safeFetch(url, retries - 1);
+    }
+    console.error(`[safeFetch] Failed: ${url}`, err.message);
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Utilities                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -752,6 +772,4 @@ const NBA_TEAM_IDS = {
 /* Exports                                                             */
 /* ------------------------------------------------------------------ */
 
-module.exports = {
-  getBasketballGameResearch,
-};
+export { getBasketballGameResearch };

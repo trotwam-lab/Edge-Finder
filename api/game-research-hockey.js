@@ -8,7 +8,7 @@
  * Data sources: ESPN NHL APIs (team statistics, schedule, roster, box scores)
  */
 
-const axios = require('axios');
+// Using native fetch
 
 // ────────────────────────────────────────────────────────────────
 // Constants & Config
@@ -751,4 +751,4 @@ async function getHockeyGameResearch(homeTeam, awayTeam, gameDate) {
   };
 }
 
-module.exports = { getHockeyGameResearch };
+export { getHockeyGameResearch };

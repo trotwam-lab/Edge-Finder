@@ -828,7 +828,7 @@ async function fetchH2H(homeTeam, awayTeam, homeId, awayId) {
  * @param {string} gameDate - ISO date string for the game
  * @returns {Object} Structured research data
  */
-export default async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
+export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
   const homeId = getTeamId(homeTeam);
   const awayId = getTeamId(awayTeam);
 
