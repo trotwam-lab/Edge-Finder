@@ -134,7 +134,7 @@ async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
 
   if (key === 'baseball_mlb') {
     const mod = await loadBaseball();
-    return mod.getBaseballGameResearch(homeTeam, awayTeam, gameDate);
+    return mod.default(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'basketball_nba') {
@@ -152,3 +152,32 @@ async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
 }
 
 export { getGameResearch };
+
+export default async function handler(req, res) {
+  if (req.method && req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed. Use GET.' });
+  }
+
+  try {
+    const {
+      homeTeam,
+      awayTeam,
+      sport = 'basketball_nba',
+      commenceTime,
+    } = req.query || {};
+
+    if (!homeTeam || !awayTeam) {
+      return res.status(400).json({ error: 'Missing homeTeam or awayTeam query parameter.' });
+    }
+
+    const gameDate = commenceTime
+      ? new Date(commenceTime).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    const data = await getGameResearch(homeTeam, awayTeam, sport, gameDate);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error('Game research API error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to fetch game research' });
+  }
+}
