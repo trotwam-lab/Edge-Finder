@@ -1,85 +1,152 @@
 /**
- * Game Research Router
- * Delegates to sport-specific modules for enriched pre-game data.
- */
-
-const { safeFetch } = require('../utils');
-
-// Sport-specific modules
-const { getBaseballGameResearch } = require('./game-research-baseball');
-const { getBasketballGameResearch } = require('./game-research-basketball');
-
-/**
- * Main entry point.  Routes to the correct research module based on sport.
+ * game-research.js
+ * EdgeFinder game research router.
  *
- * @param {string} sport       - Sport key, e.g. 'baseball_mlb', 'basketball_nba', 'americanfootball_nfl'
- * @param {string} homeTeam    - Home team name or abbreviation
- * @param {string} awayTeam    - Away team name or abbreviation
- * @param {string} gameDate    - ISO date string (YYYY-MM-DD)
- * @returns {Promise<Object>}  - Structured research object
+ * Routes to sport-specific modules:
+ *   - MLB  -> game-research-baseball.js
+ *   - NBA  -> game-research-basketball.js
+ *   - NHL  -> game-research-hockey.js   (icehockey_nhl)
+ *   - else -> generic last-10 fallback
  */
-async function getGameResearch(sport, homeTeam, awayTeam, gameDate) {
-  switch (sport) {
-    case 'baseball_mlb':
-      return getBaseballGameResearch(homeTeam, awayTeam, gameDate);
 
-    case 'basketball_nba':
-      return getBasketballGameResearch(homeTeam, awayTeam, gameDate);
+const axios = require('axios');
 
-    default:
-      // Generic fallback for NFL and any other sport
-      return getGenericGameResearch(homeTeam, awayTeam, gameDate);
-  }
+// Sport-specific modules (loaded lazily to avoid hard deps)
+let baseballModule = null;
+let basketballModule = null;
+let hockeyModule = null;
+
+function loadBaseball() {
+  if (!baseballModule) baseballModule = require('./game-research-baseball');
+  return baseballModule;
+}
+function loadBasketball() {
+  if (!basketballModule) basketballModule = require('./game-research-basketball');
+  return basketballModule;
+}
+function loadHockey() {
+  if (!hockeyModule) hockeyModule = require('./game-research-hockey');
+  return hockeyModule;
 }
 
-/**
- * Generic fallback research used for NFL and unhandled sports.
- * Provides basic last-10 form, streaks, and head-to-head.
- */
-async function getGenericGameResearch(homeTeam, awayTeam, gameDate) {
-  const [homeForm, awayForm, h2h] = await Promise.all([
-    fetchBasicForm(homeTeam),
-    fetchBasicForm(awayTeam),
-    fetchHeadToHead(homeTeam, awayTeam),
+// ────────────────────────────────────────────────────────────────
+// Generic fallback: last-10 games via ESPN
+// ────────────────────────────────────────────────────────────────
+
+async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
+  const ESPN_BASE = `https://site.api.espn.com/apis/site/v2/sports/${sport}`;
+
+  async function safeFetch(url) {
+    try {
+      const { data } = await axios.get(url, { timeout: 10000 });
+      return data;
+    } catch (err) {
+      console.error(`[generic] fetch failed: ${url}`, err.message);
+      return null;
+    }
+  }
+
+  async function resolveTeamId(teamName) {
+    const normalized = teamName.toLowerCase().trim();
+    const teamsData = await safeFetch(`${ESPN_BASE}/teams`);
+    if (!teamsData || !Array.isArray(teamsData.sports?.[0]?.leagues?.[0]?.teams)) {
+      return null;
+    }
+    const teams = teamsData.sports[0].leagues[0].teams;
+    for (const entry of teams) {
+      const t = entry.team;
+      const candidates = [
+        t.id,
+        t.name?.toLowerCase(),
+        t.abbreviation?.toLowerCase(),
+        t.displayName?.toLowerCase(),
+        t.shortDisplayName?.toLowerCase(),
+        t.nickname?.toLowerCase(),
+        t.location?.toLowerCase(),
+      ];
+      if (candidates.includes(normalized)) return String(t.id);
+    }
+    return null;
+  }
+
+  async function getLast10(teamId) {
+    const schedule = await safeFetch(`${ESPN_BASE}/teams/${teamId}/schedule`);
+    const events = schedule?.events || [];
+    const completed = events
+      .filter((e) => e.competitions?.[0]?.status?.type?.completed)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 10);
+
+    return completed.map((e) => {
+      const comp = e.competitions[0];
+      const opponent = comp.competitors.find((c) => String(c.team?.id) !== String(teamId));
+      const self = comp.competitors.find((c) => String(c.team?.id) === String(teamId));
+      return {
+        date: e.date.split('T')[0],
+        opponent: opponent?.team?.displayName || 'Unknown',
+        result: self?.winner === true ? 'W' : self?.winner === false ? 'L' : 'T',
+        score: self?.score?.displayValue || null,
+        opponentScore: opponent?.score?.displayValue || null,
+      };
+    });
+  }
+
+  const [homeId, awayId] = await Promise.all([
+    resolveTeamId(homeTeam),
+    resolveTeamId(awayTeam),
+  ]);
+
+  if (!homeId || !awayId) {
+    throw new Error(`Could not resolve team IDs for generic research`);
+  }
+
+  const [homeGames, awayGames] = await Promise.all([
+    getLast10(homeId),
+    getLast10(awayId),
   ]);
 
   return {
-    sport: 'generic',
+    sport,
     gameDate,
-    homeTeam,
-    awayTeam,
-    home: { form: homeForm },
-    away: { form: awayForm },
-    headToHead: h2h,
+    home: { name: homeTeam, id: homeId, last10: homeGames },
+    away: { name: awayTeam, id: awayId, last10: awayGames },
     generatedAt: new Date().toISOString(),
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Generic helpers (retained from original implementation)             */
-/* ------------------------------------------------------------------ */
+// ────────────────────────────────────────────────────────────────
+// Main Router
+// ────────────────────────────────────────────────────────────────
 
-async function fetchBasicForm(team) {
-  // Stub: replace with real generic form fetch if needed
-  return {
-    last10: { wins: 0, losses: 0 },
-    streak: 'N/A',
-    note: 'Generic form data not yet implemented',
-  };
+/**
+ * Fetch game research for a matchup.
+ * @param {string} homeTeam
+ * @param {string} awayTeam
+ * @param {string} sport       — e.g. 'baseball_mlb', 'basketball_nba', 'icehockey_nhl'
+ * @param {string} gameDate    — YYYY-MM-DD
+ * @returns {Promise<object>}
+ */
+async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
+  // Normalize sport key
+  const key = (sport || '').toLowerCase().trim();
+
+  if (key === 'baseball_mlb') {
+    const mod = loadBaseball();
+    return mod.getBaseballGameResearch(homeTeam, awayTeam, gameDate);
+  }
+
+  if (key === 'basketball_nba') {
+    const mod = loadBasketball();
+    return mod.getBasketballGameResearch(homeTeam, awayTeam, gameDate);
+  }
+
+  if (key === 'icehockey_nhl') {
+    const mod = loadHockey();
+    return mod.getHockeyGameResearch(homeTeam, awayTeam, gameDate);
+  }
+
+  // Fallback for unsupported sports
+  return getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
 }
 
-async function fetchHeadToHead(home, away) {
-  // Stub: replace with real H2H fetch if needed
-  return {
-    lastMeetings: [],
-    note: 'Head-to-head data not yet implemented',
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* Exports                                                             */
-/* ------------------------------------------------------------------ */
-
-module.exports = {
-  getGameResearch,
-};
+module.exports = { getGameResearch };
