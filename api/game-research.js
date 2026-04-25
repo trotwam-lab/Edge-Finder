@@ -9,25 +9,9 @@
  *   - else -> generic last-10 fallback
  */
 
-// Using native fetch
-
-// Sport-specific modules (loaded lazily to avoid hard deps)
-let baseballModule = null;
-let basketballModule = null;
-let hockeyModule = null;
-
-async function loadBaseball() {
-  if (!baseballModule) baseballModule = await import('./game-research-baseball.js');
-  return baseballModule;
-}
-async function loadBasketball() {
-  if (!basketballModule) basketballModule = await import('./game-research-basketball.js');
-  return basketballModule;
-}
-async function loadHockey() {
-  if (!hockeyModule) hockeyModule = await import('./game-research-hockey.js');
-  return hockeyModule;
-}
+import { getBaseballResearch } from './game-research-baseball.js';
+import { getBasketballGameResearch } from './game-research-basketball.js';
+import { getHockeyGameResearch } from './game-research-hockey.js';
 
 // ────────────────────────────────────────────────────────────────
 // Generic fallback: last-10 games via ESPN
@@ -128,31 +112,25 @@ async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
  * @param {string} gameDate    — YYYY-MM-DD
  * @returns {Promise<object>}
  */
-async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
-  // Normalize sport key
+export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
   const key = (sport || '').toLowerCase().trim();
 
   if (key === 'baseball_mlb') {
-    const mod = await loadBaseball();
-    return mod.default(homeTeam, awayTeam, gameDate);
+    return getBaseballResearch(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'basketball_nba') {
-    const mod = await loadBasketball();
-    return mod.getBasketballGameResearch(homeTeam, awayTeam, gameDate);
+    return getBasketballGameResearch(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'icehockey_nhl') {
-    const mod = await loadHockey();
-    return mod.getHockeyGameResearch(homeTeam, awayTeam, gameDate);
+    return getHockeyGameResearch(homeTeam, awayTeam, gameDate);
   }
 
-  // Fallback for unsupported sports
   return getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
 }
 
-export { getGameResearch };
-
+// Vercel serverless handler
 export default async function handler(req, res) {
   if (req.method && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed. Use GET.' });
