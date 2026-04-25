@@ -9,13 +9,25 @@
  *   - else -> generic last-10 fallback
  */
 
-// axios removed - using native fetch
+// Using native fetch
 
 // Sport-specific modules (loaded lazily to avoid hard deps)
-import { getBaseballResearch } from "./game-research-baseball.js";
-import { getBasketballGameResearch } from "./game-research-basketball.js";
-import { getHockeyGameResearch } from "./game-research-hockey.js";
+let baseballModule = null;
+let basketballModule = null;
+let hockeyModule = null;
 
+async function loadBaseball() {
+  if (!baseballModule) baseballModule = await import('./game-research-baseball.js');
+  return baseballModule;
+}
+async function loadBasketball() {
+  if (!basketballModule) basketballModule = await import('./game-research-basketball.js');
+  return basketballModule;
+}
+async function loadHockey() {
+  if (!hockeyModule) hockeyModule = await import('./game-research-hockey.js');
+  return hockeyModule;
+}
 
 // ────────────────────────────────────────────────────────────────
 // Generic fallback: last-10 games via ESPN
@@ -26,7 +38,9 @@ async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
 
   async function safeFetch(url) {
     try {
-      const { data } = await axios.get(url, { timeout: 10000 });
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       return data;
     } catch (err) {
       console.error(`[generic] fetch failed: ${url}`, err.message);
@@ -119,18 +133,18 @@ async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
   const key = (sport || '').toLowerCase().trim();
 
   if (key === 'baseball_mlb') {
-    // Using direct import
-    return getBaseballResearch(homeTeam, awayTeam, gameDate);
+    const mod = await loadBaseball();
+    return mod.getBaseballGameResearch(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'basketball_nba') {
-    // Using direct import
-    return getBasketballGameResearch(homeTeam, awayTeam, gameDate);
+    const mod = await loadBasketball();
+    return mod.getBasketballGameResearch(homeTeam, awayTeam, gameDate);
   }
 
   if (key === 'icehockey_nhl') {
-    // Using direct import
-    return getHockeyGameResearch(homeTeam, awayTeam, gameDate);
+    const mod = await loadHockey();
+    return mod.getHockeyGameResearch(homeTeam, awayTeam, gameDate);
   }
 
   // Fallback for unsupported sports
