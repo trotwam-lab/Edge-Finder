@@ -983,3 +983,5 @@ function buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen,
 
   return trends;
 }
+
+export default getBaseballResearch;
