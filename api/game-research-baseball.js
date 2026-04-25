@@ -880,7 +880,7 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
     const parkFactor = getParkFactorData(homeTeam);
 
     // Build betting trends
-    const trends = buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen, pitchingMatchup, parkFactor, h2h);
+    const trends = buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen, pitchingMatchup, parkFactor, h2h, homeTeam, awayTeam);
 
     return {
       sport: 'baseball_mlb',
@@ -924,7 +924,7 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
 
 // ─── TREND BUILDER ─────────────────────────────────────────────────────────
 
-function buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen, pitchingMatchup, parkFactor, h2h) {
+function buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen, pitchingMatchup, parkFactor, h2h, homeTeam, awayTeam) {
   const trends = [];
   const push = (label, desc, confidence, icon) => trends.push({ label, description: desc, confidence, icon });
 
