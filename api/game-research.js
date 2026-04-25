@@ -1,4 +1,7 @@
 // api/game-research.js — ESPN (Last 10) + Odds API (H2H scores) hybrid
+// Now with sport-specific routing for baseball (rich MLB data)
+
+import getBaseballResearch, { MLB_IDS } from './game-research-baseball.js';
 
 const cache = {};
 const TTL = 5 * 60 * 1000; // 5 min cache
@@ -37,17 +40,7 @@ const NFL_IDS = {
   'Seattle Seahawks':26,'Tampa Bay Buccaneers':27,'Tennessee Titans':10,'Washington Commanders':28,
 };
 
-// MLB team name → ESPN team ID
-const MLB_IDS = {
-  'Arizona Diamondbacks':29,'Atlanta Braves':15,'Baltimore Orioles':1,'Boston Red Sox':2,
-  'Chicago Cubs':16,'Chicago White Sox':4,'Cincinnati Reds':17,'Cleveland Guardians':5,
-  'Colorado Rockies':27,'Detroit Tigers':6,'Houston Astros':18,'Kansas City Royals':7,
-  'Los Angeles Angels':3,'Los Angeles Dodgers':19,'Miami Marlins':28,'Milwaukee Brewers':8,
-  'Minnesota Twins':9,'New York Mets':21,'New York Yankees':10,'Oakland Athletics':11,
-  'Philadelphia Phillies':22,'Pittsburgh Pirates':23,'San Diego Padres':25,'San Francisco Giants':26,
-  'Seattle Mariners':12,'St. Louis Cardinals':24,'Tampa Bay Rays':30,'Texas Rangers':13,
-  'Toronto Blue Jays':14,'Washington Nationals':20,
-};
+// MLB_IDS imported from game-research-baseball.js to avoid duplication
 
 // NHL team name → ESPN team ID
 const NHL_IDS = {
@@ -240,6 +233,27 @@ export default async function handler(req, res) {
   const apiKey = process.env.ODDS_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ODDS_API_KEY not configured' });
 
+  // ─── BASEBALL BRANCH: Route to rich MLB research module ─────────────────
+  if (sport === 'baseball_mlb') {
+    try {
+      // Parse gameDate from query or default to today
+      const gameDate = req.query.gameDate || new Date().toISOString();
+      const baseballData = await getBaseballResearch(homeTeam, awayTeam, gameDate);
+
+      // Cache the result
+      const cacheKey = `${sport}:${homeTeam}:${awayTeam}`;
+      cache[cacheKey] = { data: baseballData, ts: Date.now() };
+
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('X-Data-Source', 'ESPN-MLB-Rich');
+      return res.json(baseballData);
+    } catch (err) {
+      console.error('Baseball research route error:', err);
+      // Fall through to generic handler on error so we still return something
+    }
+  }
+
+  // ─── GENERIC BRANCH: Existing NBA/NFL/Other logic (unchanged) ───────────
   const cacheKey = `${sport}:${homeTeam}:${awayTeam}`;
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
