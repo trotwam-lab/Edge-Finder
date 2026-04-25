@@ -67,22 +67,26 @@ async function resolveTeamId(teamName) {
   const normalized = teamName.toLowerCase().trim();
 
   const teamsData = await safeFetch(`${ESPN_BASE}/teams`);
-  if (!teamsData || !Array.isArray(teamsData.sports?.[0]?.leagues?.[0]?.teams)) {
-    return null;
-  }
+  const teams = teamsData?.sports?.[0]?.leagues?.[0]?.teams;
+  if (!Array.isArray(teams)) return null;
 
-  const teams = teamsData.sports[0].leagues[0].teams;
   for (const entry of teams) {
-    const t = entry.team;
+    const t = entry.team || {};
     const candidates = [
-      t.id,
-      t.name?.toLowerCase(),
-      t.abbreviation?.toLowerCase(),
-      t.displayName?.toLowerCase(),
-      t.shortDisplayName?.toLowerCase(),
-      t.nickname?.toLowerCase(),
-      t.location?.toLowerCase(),
-    ];
+      t.name,
+      t.abbreviation,
+      t.displayName,
+      t.shortDisplayName,
+      t.nickname,
+      t.location,
+    ]
+      .filter(Boolean)
+      .map((s) => String(s).toLowerCase());
+
+    if (t.location && t.name) {
+      candidates.push(`${t.location} ${t.name}`.toLowerCase());
+    }
+
     if (candidates.includes(normalized)) {
       return String(t.id);
     }
