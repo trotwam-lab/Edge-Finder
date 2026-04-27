@@ -5,15 +5,16 @@ import { useAuth } from '../AuthGate.jsx';
 
 /**
  * useCloudBets - A hook that syncs bets to Firebase Firestore while keeping localStorage as a fast cache.
- * 
+ *
  * This is a drop-in replacement for usePersistentState that:
  * 1. On mount (when user is logged in): Loads bets from Firestore doc at users/{userId}/data/bets
  * 2. When bets change: Saves to both localStorage AND Firestore
  * 3. When user logs in: Merges any localStorage bets with Firestore bets (so offline bets aren't lost)
  * 4. When user logs out: Keeps localStorage bets (they'll merge when they log back in)
- * 
+ *
  * Usage: const [bets, setBets] = useCloudBets('edgefinder_bets', []);
  */
+
 // Archive of every bet we have ever seen locally. Writes are append-only
 // (deduped by id) so a bad cloud snapshot or a concurrent-write race can never
 // make a bet permanently disappear from the user's device.
@@ -115,9 +116,7 @@ export function scanLocalStorageForBets() {
       if (!raw || raw[0] !== '[' && raw[0] !== '{') continue;
       let parsed;
       try { parsed = JSON.parse(raw); } catch { continue; }
-      const candidate = Array.isArray(parsed) ? parsed
-        : Array.isArray(parsed?.bets) ? parsed.bets
-        : null;
+      const candidate = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.bets) ? parsed.bets : null;
       if (!candidate) continue;
       const hits = candidate.filter(looksLikeBet);
       if (hits.length > 0) found.push(hits);
@@ -178,11 +177,13 @@ export function useCloudBets(key, defaultValue = []) {
       return defaultValue;
     }
   });
-  
+
   // Track if we've done the initial Firestore load
   const hasLoadedFromFirestore = useRef(false);
+
   // Debounce timer for Firestore writes
   const debounceTimer = useRef(null);
+
   // Track previous user state to detect login/logout
   const prevUserRef = useRef(null);
 
@@ -224,43 +225,50 @@ export function useCloudBets(key, defaultValue = []) {
           }
         })();
 
+        // Also pull the local archive so any bet ever seen on this device
+        // survives the initial cloud merge, even if it isn't in the live
+        // localStorage list yet.
+        const archiveBets = readArchive(key);
+
         // Pull every daily snapshot we've ever saved and merge them in too,
         // so a bad write to the live `bets` doc can't erase older data.
         const snapshotBets = await loadCloudSnapshots(userId);
 
-        if (docSnap.exists()) {
-          const cloudBets = docSnap.data().bets || defaultValue;
+        const cloudBets = docSnap.exists() ? (docSnap.data().bets || defaultValue) : [];
 
-          // Merge local, cloud, and every historical snapshot
-          const mergedBets = unionBets(localBets, cloudBets, snapshotBets);
+        // CRITICAL race fix: use the functional setState form so that any
+        // bet the user added DURING the cloud load is preserved. Previously,
+        // we read localStorage + cloud and then unconditionally replaced
+        // state — but a bet placed before getDoc resolved lives in React
+        // state and may not have been flushed to localStorage yet (the
+        // localStorage write is debounced via Effect 2). Including `prev`
+        // and the local archive in the merge prevents fresh bets from being
+        // wiped during startup sync.
+        let mergedBets = [];
+        setState(prev => {
+          mergedBets = unionBets(prev, archiveBets, localBets, cloudBets, snapshotBets);
+          return mergedBets;
+        });
 
-          setState(mergedBets);
-          
-          // If we merged new local bets into cloud, save back to Firestore
-          const localIds = new Set(localBets.map(b => b.id));
-          const cloudIds = new Set(cloudBets.map(b => b.id));
-          const hasNewLocalBets = localBets.some(b => !cloudIds.has(b.id));
-          
-          if (hasNewLocalBets) {
-            setDoc(betsDocRef, { bets: mergedBets, updatedAt: new Date().toISOString() }, { merge: true })
-              .catch(err => console.error('Error saving merged bets to Firestore:', err));
-          }
-        } else {
-          // No live doc yet. Seed from local + any historical snapshots so
-          // a cleared live doc still recovers from the archive and snapshots.
-          const seed = unionBets(localBets, snapshotBets);
-          if (seed.length > 0) {
-            setState(seed);
-            setDoc(betsDocRef, { bets: seed, updatedAt: new Date().toISOString() }, { merge: true })
-              .catch(err => console.error('Error saving initial bets to Firestore:', err));
-          }
+        // If the merge produced bets the cloud doesn't have yet, write back
+        // so other devices and future loads see the union.
+        const cloudIds = new Set(cloudBets.map(b => b.id));
+        const hasNewBets = mergedBets.some(b => !cloudIds.has(b.id));
+        if ((hasNewBets || !docSnap.exists()) && mergedBets.length > 0) {
+          setDoc(betsDocRef, {
+            bets: mergedBets,
+            updatedAt: new Date().toISOString()
+          }, { merge: true })
+            .catch(err => console.error('Error saving merged bets to Firestore:', err));
         }
-        
+
         hasLoadedFromFirestore.current = true;
       })
       .catch(err => {
         console.error('Error loading bets from Firestore:', err);
-        // Keep using localStorage data on error
+        // Even if the cloud load failed, mark hydration as complete so
+        // subsequent local writes can sync up to Firestore once available.
+        hasLoadedFromFirestore.current = true;
       });
 
     // Set up real-time listener for updates from other devices. We always
@@ -281,7 +289,7 @@ export function useCloudBets(key, defaultValue = []) {
     );
 
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, key, mergeBets]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
 
   // Effect 2: Save to localStorage on every change (fast), and mirror every
