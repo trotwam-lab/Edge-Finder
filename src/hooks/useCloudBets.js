@@ -184,6 +184,15 @@ export function useCloudBets(key, defaultValue = []) {
   // Debounce timer for Firestore writes
   const debounceTimer = useRef(null);
 
+  // Always-current snapshot of state, so cleanup handlers can flush the
+  // latest data even if React's closure is stale.
+  const latestStateRef = useRef(state);
+  useEffect(() => { latestStateRef.current = state; }, [state]);
+
+  // Stable ref to the user so flush handlers can access the userId.
+  const userRef = useRef(null);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   // Track previous user state to detect login/logout
   const prevUserRef = useRef(null);
 
@@ -191,6 +200,27 @@ export function useCloudBets(key, defaultValue = []) {
   // Deletes propagate via tombstones (deleted:true) carried in mergePair.
   const mergeBets = useCallback((localBets, cloudBets) => {
     return unionBets(localBets, cloudBets);
+  }, []);
+
+  // Synchronously flush whatever is in latestStateRef to Firestore. Used by
+  // unmount cleanup and pagehide handlers so a tab switch or page close
+  // never loses a freshly-added bet.
+  const flushToFirestore = useCallback(() => {
+    const u = userRef.current;
+    if (!u) return;
+    if (!hasLoadedFromFirestore.current) return;
+    try {
+      const userId = u.uid;
+      const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
+      // Fire-and-forget; we don't await because this may be called from
+      // synchronous unmount paths.
+      setDoc(betsDocRef, {
+        bets: latestStateRef.current,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(err => console.error('Flush write failed:', err));
+    } catch (err) {
+      console.error('Flush failed:', err);
+    }
   }, []);
 
   // Effect 1: Load from Firestore when user logs in
@@ -236,14 +266,12 @@ export function useCloudBets(key, defaultValue = []) {
 
         const cloudBets = docSnap.exists() ? (docSnap.data().bets || defaultValue) : [];
 
-        // CRITICAL race fix: use the functional setState form so that any
-        // bet the user added DURING the cloud load is preserved. Previously,
-        // we read localStorage + cloud and then unconditionally replaced
-        // state — but a bet placed before getDoc resolved lives in React
-        // state and may not have been flushed to localStorage yet (the
-        // localStorage write is debounced via Effect 2). Including `prev`
-        // and the local archive in the merge prevents fresh bets from being
-        // wiped during startup sync.
+        // CRITICAL race fix: use the functional setState form so any bet the
+        // user added DURING the cloud load is preserved. Previously we
+        // unconditionally replaced state — a bet placed before getDoc
+        // resolved lives only in React state (the localStorage write is
+        // debounced via Effect 2), so it would be wiped by the merge.
+        // Including `prev` and the local archive prevents that.
         let mergedBets = [];
         setState(prev => {
           mergedBets = unionBets(prev, archiveBets, localBets, cloudBets, snapshotBets);
@@ -304,17 +332,19 @@ export function useCloudBets(key, defaultValue = []) {
     writeArchive(key, state);
   }, [key, state]);
 
-  // Effect 3: Debounced save to Firestore
+  // Effect 3: Debounced save to Firestore, with a hard guarantee that any
+  // pending write is flushed when the component unmounts (e.g. user switches
+  // tabs in the app) or the tab is hidden / page is being unloaded. Without
+  // this flush, a tab switch within the 2s debounce window would silently
+  // drop the cloud write and the bet would appear to vanish on return.
   useEffect(() => {
-    if (!user) return; // Don't save to Firestore if not logged in
-    if (!hasLoadedFromFirestore.current) return; // Don't save until we've loaded
+    if (!user) return;
+    if (!hasLoadedFromFirestore.current) return;
 
-    // Clear existing timer
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
-    // Set new timer - wait 2 seconds after last change before saving
     debounceTimer.current = setTimeout(() => {
       const userId = user.uid;
       const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
@@ -325,18 +355,47 @@ export function useCloudBets(key, defaultValue = []) {
       }, { merge: true })
         .catch(err => console.error('Error saving bets to Firestore:', err));
 
-      // Also write a daily point-in-time snapshot (at most once/day). These
-      // snapshots live under a different path and are additive, so they can
-      // never be clobbered by a bad write to the live `bets` doc.
       maybeWriteDailySnapshot(userId, key, state);
-    }, 2000);
+      debounceTimer.current = null;
+    }, 1500);
 
     return () => {
+      // If a debounced write is still pending when this effect tears down
+      // (state changed, or component is unmounting), flush it immediately
+      // using the latest state. This is the core fix for "bet disappears
+      // when I switch tabs right after logging it" — the previous code
+      // simply cleared the timer and never wrote to Firestore.
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+        flushToFirestore();
       }
     };
-  }, [state, user, key]);
+  }, [state, user, key, flushToFirestore]);
+
+  // Effect 4: Flush on tab hide / page unload. Browsers don't always fire
+  // unmount cleanup before tearing down the page, so we listen for
+  // visibilitychange and pagehide as a belt-and-suspenders safeguard.
+  useEffect(() => {
+    const onHide = () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      flushToFirestore();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') onHide();
+    };
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('beforeunload', onHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('beforeunload', onHide);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [flushToFirestore]);
 
   return [state, setState];
 }
