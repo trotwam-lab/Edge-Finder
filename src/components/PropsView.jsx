@@ -74,18 +74,34 @@ function QuickAddModal({ bet, onConfirm, onCancel }) {
 }
 
 function TeamBadge({ team }) {
+  const [fallback, setFallback] = useState(!team?.logo);
+
+  useEffect(() => {
+    setFallback(!team?.logo);
+  }, [team?.logo]);
+
   if (!team) return null;
   return (
     <div title={team.name} style={{ width: 26, height: 26, borderRadius: '999px', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.2)', background: 'rgba(15,23,42,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '10px', fontWeight: 700 }}>
-      {team.logo ? <img src={team.logo} alt={team.name} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : team.initials}
+      {fallback || !team.logo
+        ? team.initials
+        : <img src={team.logo} alt={team.name} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} onError={() => setFallback(true)} />}
     </div>
   );
 }
 
 function PlayerBadge({ name, photo }) {
+  const [fallback, setFallback] = useState(!photo);
+
+  useEffect(() => {
+    setFallback(!photo);
+  }, [photo]);
+
   return (
     <div style={{ width: 36, height: 36, borderRadius: '999px', background: 'linear-gradient(135deg, rgba(99,102,241,0.35), rgba(14,165,233,0.25))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f8fafc', fontWeight: 800, fontSize: '12px', flexShrink: 0, overflow: 'hidden', border: '1px solid rgba(148,163,184,0.15)' }}>
-      {photo ? <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : getPlayerInitials(name)}
+      {fallback || !photo
+        ? getPlayerInitials(name)
+        : <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setFallback(true)} />}
     </div>
   );
 }
@@ -184,7 +200,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
             const displayName = person?.displayName || person?.fullName;
             const headshot = person?.headshot?.href || person?.image?.href || null;
             if (!displayName || !headshot) return;
-            next[`${sport}::${String(displayName).toLowerCase()}`] = headshot;
+            next[`${sport}::${normalizeTeamKey(displayName)}`] = headshot;
           });
           return next;
         });
@@ -267,7 +283,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
       player.timing = getPropTimingState({ gameStatus: gameStatusMap[player.gameId], commenceTime: player.commenceTime });
       player.visuals = buildTeamVisuals(player.game, player.sport, logoMap);
       player.playerBadge = getPlayerInitials(player.name);
-      player.photo = playerHeadshots[`${player.sport}::${String(player.name).toLowerCase()}`] || null;
+      player.photo = playerHeadshots[`${player.sport}::${normalizeTeamKey(player.name)}`] || null;
       player.topInsight = topMarket?.insights || null;
       player.summaryMetrics = {
         markets: Object.keys(player.markets).length,
