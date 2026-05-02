@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase";
 
 const COLORS = {
@@ -31,6 +31,7 @@ function SignInPopup({ open, onClose }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (!open) return null;
@@ -38,6 +39,7 @@ function SignInPopup({ open, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
     setSubmitting(true);
     try {
       if (tab === "signin") {
@@ -48,6 +50,27 @@ function SignInPopup({ open, onClose }) {
       onClose();
       setEmail("");
       setPass("");
+    } catch (err) {
+      setError(err.message.replace("Firebase: ", ""));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const trimmedEmail = email.trim();
+    setError("");
+    setNotice("");
+
+    if (!trimmedEmail) {
+      setError("Enter your email first, then tap Forgot password.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      setNotice("Password reset email sent. Check your inbox and spam folder.");
     } catch (err) {
       setError(err.message.replace("Firebase: ", ""));
     } finally {
@@ -146,6 +169,16 @@ function SignInPopup({ open, onClose }) {
               {error}
             </div>
           )}
+          {notice && (
+            <div style={{
+              padding: "10px 12px", borderRadius: 8,
+              border: `1px solid ${COLORS.accent}66`, background: COLORS.accentDim,
+              color: COLORS.accent, fontSize: 12, marginBottom: 16,
+              fontFamily: "'Space Grotesk', sans-serif",
+            }}>
+              {notice}
+            </div>
+          )}
           <button
             type="submit"
             disabled={submitting}
@@ -162,7 +195,19 @@ function SignInPopup({ open, onClose }) {
           </button>
           {tab === "signin" && (
             <p style={{ textAlign: "center", margin: "16px 0 0", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, color: COLORS.textDim }}>
-              <span style={{ color: COLORS.accent, cursor: "pointer" }}>Forgot password?</span>
+              <button
+                type="button"
+                onClick={handlePasswordReset}
+                disabled={submitting}
+                style={{
+                  background: "none", border: "none", padding: 0,
+                  color: COLORS.accent, cursor: submitting ? "not-allowed" : "pointer",
+                  fontFamily: "inherit", fontSize: "inherit",
+                  opacity: submitting ? 0.7 : 1,
+                }}
+              >
+                Forgot password?
+              </button>
             </p>
           )}
           {tab === "signup" && (
