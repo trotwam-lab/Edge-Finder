@@ -1,13 +1,26 @@
+import { getRequestTier, isProTier } from './_auth.js';
+
 const cache = {};
 const TTL = 30 * 1000; // 30 seconds - fresher lines for live betting
+const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
+
+function buildFreeOddsPreview(data = []) {
+  return data.map(game => ({
+    ...game,
+    bookmakers: (game.bookmakers || []).filter(book => FREE_BOOKS.has(book.key)),
+  }));
+}
 
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', markets = 'h2h,spreads,totals' } = req.query;
+  const tierInfo = await getRequestTier(req);
+  const isPro = isProTier(tierInfo);
   const cacheKey = `odds-${sport}-${markets}`;
 
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
-    return res.status(200).json(cache[cacheKey].data);
+    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    return res.status(200).json(isPro ? cache[cacheKey].data : buildFreeOddsPreview(cache[cacheKey].data));
   }
 
   const apiKey = process.env.ODDS_API_KEY;
@@ -20,7 +33,8 @@ export default async function handler(req, res) {
     const data = await response.json();
     cache[cacheKey] = { data, ts: Date.now() };
     res.setHeader('X-Cache', 'MISS');
-    return res.status(200).json(data);
+    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    return res.status(200).json(isPro ? data : buildFreeOddsPreview(data));
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

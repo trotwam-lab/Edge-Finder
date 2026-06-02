@@ -3,6 +3,8 @@
 // Uses no-vig consensus probability to calculate true EV (not simplified approximation).
 // Caches results for 60 seconds to save API credits while keeping edges fresh.
 
+import { getRequestTier, isProTier } from './_auth.js';
+
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
 
@@ -32,6 +34,20 @@ const MIN_EV_THRESHOLD = 2.0;
 const MAX_EV_THRESHOLD = 15.0;
 // Minimum books required to calculate consensus (2 is enough for spreads/totals)
 const MIN_BOOKS = 2;
+const FREE_EDGE_PREVIEW_LIMIT = 3;
+
+function buildFreeEdgesPreview(edges = []) {
+  return edges.slice(0, FREE_EDGE_PREVIEW_LIMIT).map(edge => ({
+    sport: edge.sport,
+    emoji: edge.emoji,
+    game: edge.game,
+    commenceTime: edge.commenceTime,
+    confidence: edge.confidence,
+    evDisplay: edge.evDisplay,
+    preview: true,
+    message: 'Upgrade to Pro to unlock the exact book, line, fair probability, and full edge board.',
+  }));
+}
 
 // ============================================================
 // Math helpers
@@ -174,10 +190,14 @@ function findEdges(game, sportKey) {
 // Handler
 // ============================================================
 export default async function handler(req, res) {
+  const tierInfo = await getRequestTier(req);
+  const isPro = isProTier(tierInfo);
+
     // Return cached data if still fresh
   if (cache.data && Date.now() - cache.ts < TTL) {
         res.setHeader('X-Cache', 'HIT');
-        return res.status(200).json(cache.data);
+        res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+        return res.status(200).json(isPro ? cache.data : buildFreeEdgesPreview(cache.data));
   }
 
   const apiKey = process.env.ODDS_API_KEY;
@@ -211,7 +231,8 @@ export default async function handler(req, res) {
         cache.ts = Date.now();
 
       res.setHeader('X-Cache', 'MISS');
-        return res.status(200).json(allEdges);
+      res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+        return res.status(200).json(isPro ? allEdges : buildFreeEdgesPreview(allEdges));
   } catch (e) {
         return res.status(500).json({ error: e.message });
   }

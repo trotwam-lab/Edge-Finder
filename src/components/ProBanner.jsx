@@ -106,13 +106,17 @@ export default function ProBanner({ compact = false }) {
         </div>
         <div>
           <div style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc' }}>
-            Edge Finder Pro
+            Edge Finder Pro — {PRO_FEATURES.price}
           </div>
           <div style={{ fontSize: '11px', color: '#a78bfa' }}>
-            Sharpen your edge with premium tools
+            {PRO_FEATURES.headline}
           </div>
         </div>
       </div>
+
+      <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 18px', position: 'relative' }}>
+        {PRO_FEATURES.subheadline}
+      </p>
 
       {/* Feature list */}
       <div style={{ display: 'grid', gap: '10px', marginBottom: '20px', position: 'relative' }}>
@@ -138,7 +142,7 @@ export default function ProBanner({ compact = false }) {
         transition: 'transform 0.15s',
         opacity: isLoading ? 0.7 : 1,
       }}>
-        {isLoading ? 'Loading...' : `Upgrade to Pro — ${PRO_FEATURES.price}`}
+        {isLoading ? 'Loading...' : `Unlock Pro — ${PRO_FEATURES.price}`}
       </button>
 
       <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: '#64748b' }}>

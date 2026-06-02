@@ -72,6 +72,8 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
 
     // Auto-generated trends with confidence
     const trends = generateTrends({
+      homeTeam,
+      awayTeam,
       homeForm,
       awayForm,
       homeRest,
@@ -274,7 +276,7 @@ function computeStreak(games) {
     if (g.result === first) streak++;
     else break;
   }
-  return `${streak}${first}`;
+  return `${first}${streak}`;
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,13 +1,11 @@
 // ==============================================
 // FIREBASE CONFIG — The central setup file for Firebase
 // ==============================================
-// Firebase gives us: Authentication (login) and Firestore (database).
-// This file initializes both and exports them for use throughout the app.
+// Firebase gives us Authentication here. Firestore lives in firestore.js so
+// the main app does not load database code until tracker-style features need it.
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-// Firestore = Firebase's database. We use it to store user data.
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -21,13 +19,10 @@ const firebaseConfig = {
 };
 
 // Initialize the Firebase app
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // Auth — handles user login/signup
 export const auth = getAuth(app);
-
-// Firestore — our database for storing user data (like subscription tier)
-export const db = getFirestore(app);
 
 // Helper: check a user's subscription tier by calling our API endpoint
 // This asks Stripe (via our serverless function) if the user is Pro or Free

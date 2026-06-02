@@ -17,7 +17,6 @@ const FRIEND_EMAILS = [
   'vchterry@gmail.com',
   'rnegron1105@icloud.com',
   'merobinson19@gmail.com',
-  'austinstraley@gmail.com',
   'theinleague317@gmail.com',
   'g5juan3@gmail.com',
     'dylanmedd2018@gmail.com',

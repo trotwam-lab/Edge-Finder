@@ -25,6 +25,204 @@ const COLORS = {
   blue: "#5b8cff",
 };
 
+function HeroPreviewPanel() {
+  const books = [
+    { name: "FanDuel", line: "Knicks +3.5", price: "-108", tag: "Best", color: "#22c55e" },
+    { name: "DraftKings", line: "Knicks +3", price: "-112", tag: "Hold", color: COLORS.textMuted },
+    { name: "BetMGM", line: "Knicks +2.5", price: "-110", tag: "Weak", color: COLORS.amber },
+  ];
+  const signals = [
+    { label: "Steam", value: "HIGH", color: COLORS.accent },
+    { label: "CLV Window", value: "OPEN", color: "#22c55e" },
+    { label: "Public", value: "68% Favorite", color: COLORS.amber },
+  ];
+
+  return (
+    <div className="hero-preview-panel" style={{
+      width: "100%",
+      maxWidth: 500,
+      border: `1px solid ${COLORS.border}`,
+      background: "rgba(10, 15, 24, 0.82)",
+      borderRadius: 8,
+      overflow: "hidden",
+      boxShadow: "0 28px 80px rgba(0,0,0,0.42)",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 16px", borderBottom: `1px solid ${COLORS.border}`,
+      }}>
+        <div>
+          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 5 }}>
+            Market Intelligence
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text }}>Knicks @ Celtics</div>
+        </div>
+        <div style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#22c55e" }}>82</div>
+          <div style={{ fontSize: 10, color: COLORS.textMuted }}>Edge Score</div>
+        </div>
+      </div>
+
+      <div style={{ padding: 16 }}>
+        <div className="hero-signal-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
+          {signals.map((signal) => (
+            <div className="hero-signal-card" key={signal.label} style={{
+              minHeight: 68,
+              padding: "10px 8px",
+              borderRadius: 8,
+              background: `${signal.color}10`,
+              border: `1px solid ${signal.color}33`,
+            }}>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+                {signal.label}
+              </div>
+              <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 800, color: signal.color }}>
+                {signal.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hero-move-row" style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 0", borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}`,
+          marginBottom: 12,
+        }}>
+          <div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+              Market Move
+            </div>
+            <div style={{ marginTop: 6, color: COLORS.text, fontSize: 14, fontWeight: 600 }}>+2.5 to +3.5 against public pressure</div>
+          </div>
+          <div style={{ width: 96, height: 38 }}>
+            <svg viewBox="0 0 120 46" style={{ width: "100%", height: "100%", display: "block" }}>
+              <polyline points="2,34 18,31 34,28 50,29 66,20 82,18 98,12 118,10" fill="none" stroke={COLORS.accent} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="118" cy="10" r="4" fill={COLORS.accent} />
+            </svg>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {books.map((book) => (
+            <div className="hero-book-row" key={book.name} style={{
+              display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, alignItems: "center",
+              padding: "10px 12px", borderRadius: 8,
+              background: "rgba(13, 17, 23, 0.72)",
+              border: `1px solid ${book.tag === "Best" ? "#22c55e55" : COLORS.border}`,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              <span style={{ color: COLORS.text, fontSize: 12, fontWeight: 700 }}>{book.name}</span>
+              <span style={{ color: COLORS.textMuted, fontSize: 12 }}>{book.line} {book.price}</span>
+              <span style={{ color: book.color, fontSize: 10, fontWeight: 800, textTransform: "uppercase" }}>{book.tag}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroSection({ onSignIn }) {
+  const metrics = [
+    ["Live odds", "7+ books"],
+    ["Signal stack", "Steam + CLV"],
+    ["Decision view", "Best number first"],
+  ];
+
+  return (
+    <section className="welcome-hero" style={{
+      minHeight: "calc(100vh - 100px)",
+      display: "grid",
+      gridTemplateColumns: "minmax(0, 1.05fr) minmax(340px, 0.95fr)",
+      alignItems: "center",
+      gap: 48,
+      padding: "34px 0 66px",
+    }}>
+      <div className="hero-copy">
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          padding: "7px 12px", borderRadius: 8,
+          border: `1px solid ${COLORS.accent}33`,
+          background: COLORS.accentDim,
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 11,
+          letterSpacing: 1.5,
+          textTransform: "uppercase",
+          color: COLORS.accent,
+          marginBottom: 22,
+        }}>
+          Live betting intelligence
+        </div>
+        <h1 className="hero-title" style={{
+          margin: 0,
+          maxWidth: 720,
+          fontSize: "clamp(42px, 7vw, 82px)",
+          lineHeight: 0.98,
+          letterSpacing: 0,
+          color: COLORS.text,
+          fontWeight: 700,
+        }}>
+          EdgeFinder shows the number worth betting.
+        </h1>
+        <p style={{
+          maxWidth: 620,
+          margin: "24px 0 0",
+          color: COLORS.textMuted,
+          fontSize: "clamp(16px, 2vw, 20px)",
+          lineHeight: 1.55,
+        }}>
+          Compare books, track steam, spot public traps, and protect closing line value from one clean board.
+        </p>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 30 }}>
+          <button onClick={onSignIn} style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 13,
+            letterSpacing: 1,
+            padding: "13px 22px",
+            borderRadius: 8,
+            border: "none",
+            background: COLORS.gradient,
+            color: "#fff",
+            cursor: "pointer",
+            fontWeight: 700,
+          }}>
+            Open The Board
+          </button>
+          <a href="#preview" style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 13,
+            letterSpacing: 1,
+            padding: "12px 18px",
+            borderRadius: 8,
+            border: `1px solid ${COLORS.borderActive}`,
+            color: COLORS.text,
+            textDecoration: "none",
+          }}>
+            Preview Signals
+          </a>
+        </div>
+
+        <div className="hero-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, maxWidth: 600, marginTop: 34 }}>
+          {metrics.map(([label, value]) => (
+            <div key={label} style={{
+              minHeight: 74,
+              padding: "12px 14px",
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 8,
+              background: "rgba(21, 27, 37, 0.56)",
+            }}>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1.2 }}>{label}</div>
+              <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 15, color: COLORS.text, fontWeight: 800 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <HeroPreviewPanel />
+    </section>
+  );
+}
+
 // ─── SIGN IN POPUP ────────────────────────────────
 function SignInPopup({ open, onClose }) {
   const [tab, setTab] = useState("signin");
@@ -89,7 +287,7 @@ function SignInPopup({ open, onClose }) {
           zIndex: 999, animation: "fadeIn 0.25s ease",
         }}
       />
-      <div style={{
+      <div className="welcome-signin-popup" style={{
         position: "fixed", top: 72, right: 28, width: 360,
         background: COLORS.surface, border: `1px solid ${COLORS.border}`,
         borderRadius: 16, zIndex: 1000, overflow: "hidden",
@@ -249,7 +447,7 @@ function QualifierBlock() {
   }, []);
 
   return (
-    <section ref={ref} style={{ padding: "80px 0" }}>
+    <section className="welcome-section" ref={ref} style={{ padding: "80px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 56 }}>
         <span style={{
           fontFamily: "'JetBrains Mono', monospace",
@@ -265,8 +463,8 @@ function QualifierBlock() {
           <span style={{ color: COLORS.textMuted }}>And that's the point.</span>
         </h2>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, maxWidth: 880, margin: "0 auto" }}>
-        <div style={{
+      <div className="qualifier-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 24, maxWidth: 880, margin: "0 auto" }}>
+        <div className="qualifier-card" style={{
           background: COLORS.accentDim, border: `1px solid ${COLORS.accent}33`,
           borderRadius: 16, padding: 36,
           opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(24px)",
@@ -291,7 +489,7 @@ function QualifierBlock() {
             </div>
           ))}
         </div>
-        <div style={{
+        <div className="qualifier-card" style={{
           background: COLORS.redDim, border: `1px solid ${COLORS.red}22`,
           borderRadius: 16, padding: 36,
           opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(24px)",
@@ -1387,7 +1585,7 @@ export default function EdgeFinderSections() {
   const [signInOpen, setSignInOpen] = useState(false);
 
   return (
-    <div style={{
+    <div className="welcome-shell" style={{
       background: COLORS.bg, minHeight: "100vh",
       padding: "0 clamp(20px, 4vw, 48px)", fontFamily: "'Space Grotesk', sans-serif",
     }}>
@@ -1396,17 +1594,104 @@ export default function EdgeFinderSections() {
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideDown { from { opacity: 0; transform: translateY(-12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        html { scroll-behavior: smooth; }
         * { box-sizing: border-box; }
         body { margin: 0; background: ${COLORS.bg}; }
         ::-webkit-scrollbar { height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 4px; }
         input::placeholder { color: ${COLORS.textDim}; }
+
+        @media (max-width: 640px) {
+          .welcome-shell {
+            width: min(100%, 390px) !important;
+            padding-left: max(14px, env(safe-area-inset-left, 0px)) !important;
+            padding-right: max(14px, env(safe-area-inset-right, 0px)) !important;
+            overflow-x: hidden;
+          }
+
+          .welcome-header {
+            padding-top: calc(14px + env(safe-area-inset-top, 0px)) !important;
+            padding-bottom: 16px !important;
+            gap: 12px;
+          }
+
+          .welcome-header button {
+            padding: 8px 14px !important;
+            font-size: 11px !important;
+          }
+
+          .welcome-section {
+            padding: 44px 0 !important;
+          }
+
+          .welcome-hero {
+            min-height: auto !important;
+            grid-template-columns: 1fr !important;
+            gap: 26px !important;
+            padding: 24px 0 44px !important;
+          }
+
+          .hero-copy,
+          .hero-title {
+            max-width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .hero-title {
+            font-size: 34px !important;
+            line-height: 1.08 !important;
+            overflow-wrap: anywhere;
+          }
+
+          .hero-preview-panel {
+            max-width: none !important;
+          }
+
+          .hero-signal-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .hero-signal-card {
+            min-height: auto !important;
+          }
+
+          .hero-move-row {
+            grid-template-columns: 1fr !important;
+          }
+
+          .hero-book-row {
+            grid-template-columns: 1fr !important;
+            gap: 5px !important;
+          }
+
+          .hero-metrics {
+            grid-template-columns: 1fr !important;
+          }
+
+          .qualifier-grid {
+            grid-template-columns: 1fr !important;
+            gap: 14px !important;
+          }
+
+          .qualifier-card {
+            padding: 22px !important;
+          }
+
+          .welcome-signin-popup {
+            top: calc(58px + env(safe-area-inset-top, 0px)) !important;
+            left: 14px !important;
+            right: 14px !important;
+            width: auto !important;
+            max-height: calc(100vh - 80px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+            overflow-y: auto !important;
+          }
+        }
       `}</style>
 
       <SignInPopup open={signInOpen} onClose={() => setSignInOpen(false)} />
 
-      <header style={{
+      <header className="welcome-header" style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "24px 0", borderBottom: `1px solid ${COLORS.border}`, marginBottom: 20,
       }}>
@@ -1426,11 +1711,14 @@ export default function EdgeFinderSections() {
         }}>Sign In</button>
       </header>
 
+      <HeroSection onSignIn={() => setSignInOpen(true)} />
       <QualifierBlock />
       <div style={{ height: 1, background: COLORS.border, margin: "0 -48px" }} />
       <LiveSignalStrip />
       <div style={{ height: 1, background: COLORS.border, margin: "0 -48px" }} />
-      <FeaturePreview />
+      <div id="preview">
+        <FeaturePreview />
+      </div>
 
       <section style={{ textAlign: "center", padding: "80px 0 60px" }}>
         <h2 style={{

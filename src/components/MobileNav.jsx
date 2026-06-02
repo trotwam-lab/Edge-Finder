@@ -1,14 +1,13 @@
 import React from 'react';
-import { Target, Users, TrendingUp, Calculator, Settings, Zap, DollarSign } from 'lucide-react';
+import { Target, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 // All tabs — Pro-only tabs are gated with proOnly: true
 const ALL_TABS = [
   { key: 'GAMES',       label: 'Games',     icon: Target,      proOnly: false },
-  { key: 'EDGES_LINES', label: 'Edges',     icon: Zap,         proOnly: false },
   { key: 'PROPS',       label: 'Props',     icon: Users,       proOnly: false },
-  { key: 'EV_CALC',     label: 'EV Calc',   icon: Calculator,  proOnly: true  },
-  { key: 'KELLY',       label: 'Kelly',     icon: DollarSign,  proOnly: true  },
+  { key: 'PRO_TOOLS',   label: 'Tools',     icon: Wrench,      proOnly: true  },
+  { key: 'REPORT',      label: 'Report',    icon: FileText,    proOnly: true  },
   { key: 'TRACKER',     label: 'Tracker',   icon: TrendingUp,  proOnly: false },
   { key: 'SETTINGS',    label: 'Settings',  icon: Settings,    proOnly: false },
 ];
@@ -22,8 +21,8 @@ export default function MobileNav({ activeTab, setActiveTab }) {
       className="mobile-nav"
       style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'rgba(15, 23, 42, 0.97)',
-        borderTop: '1px solid rgba(56, 189, 248, 0.12)',
+        background: 'rgba(7, 17, 31, 0.97)',
+        borderTop: '1px solid rgba(148, 163, 184, 0.14)',
         display: 'none',
         zIndex: 200,
         backdropFilter: 'blur(20px)',
@@ -53,7 +52,7 @@ export default function MobileNav({ activeTab, setActiveTab }) {
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: isLocked ? 'rgba(100, 116, 139, 0.5)' : isActive ? '#818cf8' : '#64748b',
+                color: isLocked ? 'rgba(100, 116, 139, 0.5)' : isActive ? '#5eead4' : '#64748b',
                 fontSize: '10px', fontWeight: isActive ? 700 : 400,
                 padding: '4px 14px', flexShrink: 0,
                 scrollSnapAlign: 'start', minWidth: '60px', position: 'relative',
@@ -64,8 +63,8 @@ export default function MobileNav({ activeTab, setActiveTab }) {
               {isLocked && (
                 <span style={{
                   position: 'absolute', top: '2px', right: '10px',
-                  fontSize: '8px', color: '#c4b5fd', lineHeight: 1,
-                }}>⚡</span>
+                  fontSize: '7px', color: '#fbbf24', lineHeight: 1, fontWeight: 800,
+                }}>PRO</span>
               )}
             </button>
           );

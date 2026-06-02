@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Zap, RefreshCw, Lock, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
+import { auth } from '../firebase.js';
 import ProBanner from './ProBanner.jsx';
 
 const CONFIDENCE_COLORS = {
@@ -10,6 +11,17 @@ const CONFIDENCE_COLORS = {
 };
 
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+async function getAuthHeaders() {
+  const user = auth.currentUser;
+  if (!user) return {};
+  try {
+    const token = await user.getIdToken();
+    return { Authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
+}
 
 export default function EdgeAlerts() {
   const { tier } = useAuth();
@@ -22,7 +34,8 @@ export default function EdgeAlerts() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/edges');
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/edges', { headers });
       if (!res.ok) throw new Error(`API Error: ${res.status}`);
       const data = await res.json();
       setEdges(data);

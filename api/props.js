@@ -1,8 +1,12 @@
 // api/props.js — Player Props Endpoint
 // Markets are sport-aware — basketball markets for NBA, football for NFL, etc.
 
+import { getRequestTier, isProTier } from './_auth.js';
+
 const cache = {};
 const TTL = 60 * 1000; // 1 minute
+const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
+const FREE_PLAYER_LIMIT = 3;
 
 // Sport-specific prop markets supported by the Odds API
 const MARKETS_BY_SPORT = {
@@ -22,12 +26,30 @@ function getMarkets(sport) {
   return MARKETS_BY_SPORT[sport] || DEFAULT_MARKETS;
 }
 
+function buildFreePropsPreview(props = []) {
+  const visiblePlayers = new Set();
+  const preview = [];
+
+  for (const prop of props) {
+    if (!FREE_BOOKS.has(prop.bookKey)) continue;
+    if (!visiblePlayers.has(prop.player)) {
+      if (visiblePlayers.size >= FREE_PLAYER_LIMIT) continue;
+      visiblePlayers.add(prop.player);
+    }
+    preview.push(prop);
+  }
+
+  return preview;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { sport = 'basketball_nba' } = req.query;
+  const tierInfo = await getRequestTier(req);
+  const isPro = isProTier(tierInfo);
   const API_KEY = process.env.ODDS_API_KEY;
 
   if (!API_KEY) return res.status(500).json({ error: 'API key not configured' });
@@ -35,7 +57,8 @@ export default async function handler(req, res) {
   const cacheKey = `props-${sport}`;
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
-    return res.json(cache[cacheKey].data);
+    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    return res.json(isPro ? cache[cacheKey].data : buildFreePropsPreview(cache[cacheKey].data));
   }
 
   try {
@@ -94,7 +117,8 @@ export default async function handler(req, res) {
 
     cache[cacheKey] = { data: allProps, ts: Date.now() };
     res.setHeader('X-Cache', 'MISS');
-    return res.json(allProps);
+    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
   } catch (err) {
     console.error('Props API error:', err);
     return res.status(500).json({ error: 'Failed to fetch props', details: err.message });

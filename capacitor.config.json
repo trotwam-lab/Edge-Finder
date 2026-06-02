@@ -1,0 +1,12 @@
+{
+  "appId": "com.edgefinderdaily.app",
+  "appName": "EdgeFinder",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "automatic",
+    "scrollEnabled": true
+  },
+  "server": {
+    "iosScheme": "https"
+  }
+}

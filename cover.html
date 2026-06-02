@@ -1,129 +1,270 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EdgeFinder Daily Cover</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { width: 1200px; height: 630px; overflow: hidden; }
+body {
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #07111f;
+}
 .cover {
   width: 1200px;
   height: 630px;
-  background: linear-gradient(135deg, #0F172A 0%, #1E293B 40%, #312E81 100%);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 80px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   position: relative;
+  color: #f8fafc;
+  padding: 42px 56px;
+  background:
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.045) 0 1px, transparent 1px 82px),
+    repeating-linear-gradient(0deg, rgba(148, 163, 184, 0.032) 0 1px, transparent 1px 78px),
+    linear-gradient(145deg, #07111f 0%, #0f172a 48%, #111827 100%);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+.mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0f766e, #38bdf8);
+  box-shadow: 0 16px 36px rgba(14, 165, 233, 0.22);
+}
+.brand-muted {
+  color: #94a3b8;
+  font-weight: 650;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 0.94fr 1.06fr;
+  gap: 40px;
+  align-items: center;
+  height: calc(100% - 48px);
+}
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border: 1px solid rgba(45, 212, 191, 0.36);
+  border-radius: 8px;
+  background: rgba(20, 184, 166, 0.11);
+  color: #2dd4bf;
+  font-size: 13px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  margin-bottom: 22px;
+}
+.kicker::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2dd4bf;
+  box-shadow: 0 0 18px rgba(45, 212, 191, 0.72);
+}
+h1 {
+  max-width: 548px;
+  font-size: 68px;
+  line-height: 0.96;
+  letter-spacing: 0;
+  font-weight: 900;
+}
+h1 strong {
+  color: #38bdf8;
+  font-weight: 900;
+}
+.sub {
+  max-width: 520px;
+  margin-top: 24px;
+  color: #cbd5e1;
+  font-size: 22px;
+  line-height: 1.36;
+  font-weight: 560;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+.chip {
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 820;
+}
+.dashboard {
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.62);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.42);
   overflow: hidden;
 }
-.cover::before {
-  content: '';
-  position: absolute;
-  top: -100px;
-  right: -100px;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
-  border-radius: 50%;
-}
-.cover::after {
-  content: '';
-  position: absolute;
-  bottom: -150px;
-  left: -50px;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.1) 0%, transparent 70%);
-  border-radius: 50%;
-}
-.badge {
-  display: inline-flex;
+.topbar {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  background: rgba(99, 102, 241, 0.2);
-  border: 1px solid rgba(99, 102, 241, 0.4);
-  border-radius: 20px;
-  padding: 8px 20px;
-  color: #818CF8;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  margin-bottom: 30px;
-  width: fit-content;
+  padding: 17px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
 }
 .title {
-  color: #F8FAFC;
-  font-size: 56px;
-  font-weight: 800;
-  line-height: 1.15;
-  margin-bottom: 20px;
-  max-width: 900px;
-  position: relative;
-  z-index: 1;
+  font-size: 21px;
+  font-weight: 900;
 }
-.title span {
-  color: #6366F1;
-}
-.subtitle {
-  color: #94A3B8;
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1.5;
-  max-width: 700px;
-  position: relative;
-  z-index: 1;
-}
-.pick-badge {
-  display: inline-flex;
+.live {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.4);
-  border-radius: 8px;
-  padding: 8px 16px;
-  color: #22C55E;
-  font-size: 18px;
-  font-weight: 700;
-  margin-top: 25px;
-  width: fit-content;
-  position: relative;
-  z-index: 1;
-}
-.bottom-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 5px;
-  background: linear-gradient(90deg, #6366F1, #38BDF8, #22C55E);
-}
-.logo {
-  position: absolute;
-  top: 40px;
-  right: 60px;
-  color: #475569;
-  font-size: 18px;
-  font-weight: 700;
+  gap: 7px;
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
   letter-spacing: 1px;
-  z-index: 1;
 }
-.logo span { color: #6366F1; }
-.date {
-  color: #64748B;
-  font-size: 16px;
-  margin-bottom: 8px;
+.live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #22c55e;
+}
+.alert {
+  margin: 18px 20px 0;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.10);
+}
+.alert span,
+.tool span,
+.line-row span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+}
+.alert strong {
+  display: block;
+  margin-top: 7px;
+  color: #fbbf24;
+  font-size: 24px;
+}
+.tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 16px 20px;
+}
+.tool {
+  min-height: 92px;
+  padding: 13px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.62);
+}
+.tool strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 20px;
+}
+.cyan { color: #38bdf8; }
+.green { color: #22c55e; }
+.amber { color: #f59e0b; }
+.line-row {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin: 0 20px 20px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.62);
+}
+.line-row strong {
+  color: #e2e8f0;
+  font-size: 18px;
+}
+.tag {
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.bottom {
+  position: absolute;
+  left: 56px;
+  right: 56px;
+  bottom: 30px;
+  height: 1px;
+  background: linear-gradient(90deg, #2dd4bf, #38bdf8, #f59e0b);
 }
 </style>
 </head>
 <body>
-<div class="cover">
-  <div class="logo">EDGE <span>FINDER</span> DAILY</div>
-  <div class="badge">🏀 NBA TONIGHT</div>
-  <div class="title">Tatum's Return — <span>Where Things Stand</span> as Celtics Visit Golden State</div>
-  <div class="subtitle">39 weeks post-surgery. First practice done. The timeline, the line movement, and tonight's picks.</div>
-  <div class="pick-badge">🎯 OFFICIAL PICK: Pacers ML (-155) — 1.5u</div>
-  <div class="bottom-bar"></div>
-</div>
+<main class="cover">
+  <div class="brand">
+    <div class="mark">E</div>
+    <span>EDGE</span><span class="brand-muted">FINDER DAILY</span>
+  </div>
+
+  <div class="layout">
+    <section>
+      <div class="kicker">Betting Intelligence</div>
+      <h1>Catch the <strong>market move</strong> before the number disappears.</h1>
+      <p class="sub">Live odds, steam alerts, CLV windows, line shopping, EV checks, and Kelly sizing in one pro dashboard.</p>
+      <div class="chips">
+        <div class="chip">Market Alerts</div>
+        <div class="chip">Best Book</div>
+        <div class="chip">Pro Tools</div>
+        <div class="chip">CLV Tracker</div>
+      </div>
+    </section>
+
+    <section class="dashboard">
+      <div class="topbar">
+        <div class="title">Pro Market Board</div>
+        <div class="live">Live Scan</div>
+      </div>
+      <div class="alert">
+        <span>Alert Triggered</span>
+        <strong>Celtics -3.5 to -5 across 5 books</strong>
+      </div>
+      <div class="tools">
+        <div class="tool"><span>Steam</span><strong class="amber">High</strong></div>
+        <div class="tool"><span>EV Check</span><strong class="green">+4.8%</strong></div>
+        <div class="tool"><span>Kelly</span><strong class="cyan">1.6u</strong></div>
+      </div>
+      <div class="line-row">
+        <div><span>Best Book</span><strong>FanDuel</strong></div>
+        <div><span>Current Edge</span><strong>Celtics -4.5 still available</strong></div>
+        <div class="tag">Bettable</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="bottom"></div>
+</main>
 </body>
 </html>

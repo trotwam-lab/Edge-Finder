@@ -29,7 +29,7 @@ function getSplitCredential() {
   return { projectId, clientEmail, privateKey };
 }
 
-function initAdminApp() {
+export function getAdminApp() {
   if (getApps().length) return getApps()[0];
 
   const serviceAccount = parseServiceAccountJson();
@@ -46,7 +46,7 @@ function initAdminApp() {
 }
 
 export function getAdminDb() {
-  const app = initAdminApp();
+  const app = getAdminApp();
   if (!app) return null;
   return getFirestore(app);
 }

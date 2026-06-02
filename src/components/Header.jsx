@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, Calculator, TrendingUp, Zap, DollarSign, Settings } from 'lucide-react';
+import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 export default function Header({
@@ -17,36 +17,38 @@ export default function Header({
 
   // Tab definitions: { key, label, icon, proOnly }
   const TABS = [
-    { key: 'GAMES',        label: `Games (${games.length})`,      icon: Target,      proOnly: false },
-    { key: 'EDGES_LINES',  label: 'Edges & Lines',                icon: Zap,         proOnly: false },
-    { key: 'PROPS',        label: `Props (${playerProps.length})`, icon: Users,       proOnly: false },
-    { key: 'EV_CALC',      label: 'EV Calc',                      icon: Calculator,  proOnly: true  },
-    { key: 'KELLY',        label: 'Kelly',                        icon: DollarSign,  proOnly: true  },
+    { key: 'GAMES',        label: 'Games',                        count: games.length, icon: Target,      proOnly: false },
+    { key: 'PROPS',        label: 'Props',                        count: playerProps.length, icon: Users,       proOnly: false },
+    { key: 'PRO_TOOLS',    label: 'Pro Tools',                    icon: Wrench,      proOnly: true  },
+    { key: 'REPORT',       label: 'Daily Report',                 icon: FileText,    proOnly: true  },
     { key: 'TRACKER',      label: 'Tracker',                      icon: TrendingUp,  proOnly: false },
     { key: 'SETTINGS',     label: 'Settings',                     icon: Settings,    proOnly: false },
   ];
 
   return (
     <header style={{
-      padding: '16px 24px',
-      borderBottom: '1px solid rgba(56, 189, 248, 0.1)',
-      background: 'rgba(15, 23, 42, 0.9)',
+      padding: '12px 24px',
+      borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
+      background: 'rgba(7, 17, 31, 0.88)',
       position: 'sticky',
       top: 0,
-      zIndex: 100
+      zIndex: 100,
+      backdropFilter: 'blur(18px)',
     }}>
       <div className="header-inner" style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '12px',
+        maxWidth: '1240px',
+        margin: '0 auto',
       }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
             width: '36px', height: '36px',
-            background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+            background: 'linear-gradient(135deg, #0f766e, #38bdf8)',
             borderRadius: '8px',
             display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
@@ -55,15 +57,15 @@ export default function Header({
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '18px', fontWeight: 700 }}>EDGE</span>
-              <span style={{ fontSize: '18px', fontWeight: 300, color: '#64748b' }}>FINDER</span>
+              <span style={{ fontSize: '18px', fontWeight: 300, color: '#94a3b8' }}>FINDER</span>
             </div>
-            <div style={{ fontSize: '10px', color: '#64748b' }}>LIVE ODDS & PROPS</div>
+            <div style={{ fontSize: '10px', color: '#64748b' }}>MARKET INTELLIGENCE</div>
           </div>
         </div>
 
         {/* Tab Switcher — desktop only (hidden on mobile via CSS) */}
         <div className="header-tabs" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {TABS.map(({ key, label, icon: Icon, proOnly }) => {
+          {TABS.map(({ key, label, count, icon: Icon, proOnly }) => {
             const isLocked = proOnly && !isPro;
             const isActive = activeTab === key;
             return (
@@ -72,15 +74,15 @@ export default function Header({
                 onClick={() => isLocked ? setActiveTab('SETTINGS') : setActiveTab(key)}
                 title={isLocked ? `${label} — Pro only` : label}
                 style={{
-                  padding: '7px 13px',
+                  padding: '8px 11px',
                   background: isActive
-                    ? 'rgba(99, 102, 241, 0.3)'
+                    ? 'rgba(20, 184, 166, 0.18)'
                     : isLocked
                       ? 'rgba(30, 41, 59, 0.25)'
-                      : 'rgba(30, 41, 59, 0.4)',
+                      : 'rgba(15, 23, 42, 0.45)',
                   border: isActive
-                    ? '1px solid rgba(99, 102, 241, 0.5)'
-                    : '1px solid rgba(71, 85, 105, 0.3)',
+                    ? '1px solid rgba(45, 212, 191, 0.42)'
+                    : '1px solid rgba(100, 116, 139, 0.24)',
                   borderRadius: '6px',
                   color: isActive ? '#f8fafc' : isLocked ? '#475569' : '#94a3b8',
                   fontSize: '11px',
@@ -95,8 +97,19 @@ export default function Header({
               >
                 <Icon size={12} />
                 {label}
+                {count !== undefined && (
+                  <span style={{
+                    minWidth: '18px',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: isActive ? 'rgba(45,212,191,0.18)' : 'rgba(100,116,139,0.18)',
+                    color: isActive ? '#5eead4' : '#94a3b8',
+                    fontSize: '9px',
+                    textAlign: 'center',
+                  }}>{count}</span>
+                )}
                 {isLocked && (
-                  <span style={{ fontSize: '8px', color: '#c4b5fd', marginLeft: '1px' }}>⚡</span>
+                  <span style={{ fontSize: '8px', color: '#fbbf24', marginLeft: '1px' }}>PRO</span>
                 )}
               </button>
             );
@@ -127,8 +140,8 @@ export default function Header({
             disabled={loading}
             style={{
               padding: '6px 12px',
-              background: 'rgba(99, 102, 241, 0.3)',
-              border: '1px solid rgba(99, 102, 241, 0.5)',
+              background: 'rgba(20, 184, 166, 0.14)',
+              border: '1px solid rgba(45, 212, 191, 0.35)',
               borderRadius: '6px',
               color: '#f8fafc',
               fontSize: '11px',
@@ -142,25 +155,25 @@ export default function Header({
           {tier === 'pro' ? (
             <span style={{
               padding: '5px 10px',
-              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3))',
-              border: '1px solid rgba(139, 92, 246, 0.5)',
+              background: 'rgba(245, 158, 11, 0.14)',
+              border: '1px solid rgba(245, 158, 11, 0.34)',
               borderRadius: '6px',
               fontSize: '11px', fontWeight: 700,
-              color: '#c4b5fd',
+              color: '#fbbf24',
               display: 'flex', alignItems: 'center', gap: '4px',
             }}>
-              ⚡ PRO
+              PRO
             </span>
           ) : (
             <button
               onClick={() => setActiveTab('SETTINGS')}
               style={{
                 padding: '5px 10px',
-                background: 'rgba(99, 102, 241, 0.15)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.28)',
                 borderRadius: '6px',
                 fontSize: '11px',
-                color: '#818cf8',
+                color: '#fbbf24',
                 cursor: 'pointer',
                 fontFamily: "'JetBrains Mono', monospace",
               }}

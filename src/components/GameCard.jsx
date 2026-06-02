@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Star, ChevronDown, ChevronUp, Share2, Lock } from 'lucide-react';
-import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, americanToImplied, calculateEV, calculateEdgeScore } from '../utils/odds-math.js';
+import { Star, ChevronDown, ChevronUp, Share2, Lock, Target } from 'lucide-react';
+import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, americanToImplied, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
@@ -100,6 +100,8 @@ export default function GameCard({
   const bestH2hAway = findBestOdds(game.bookmakers, 'h2h', game.away_team);
   const bestTotalOver = findBestOdds(game.bookmakers, 'totals', 'Over');
   const bestTotalUnder = findBestOdds(game.bookmakers, 'totals', 'Under');
+  const lineShopping = getLineShoppingScore(game.bookmakers);
+  const topShop = lineShopping.top;
 
   // Line movement
   const history = gameLineHistory[game.id] || [];
@@ -107,6 +109,8 @@ export default function GameCard({
   const start = history[0]?.spread;
   const current = history[history.length - 1]?.spread;
   const move = hasMovement ? current - start : 0;
+  const spreadMoveSignal = getSpreadMoveSignal(game, history);
+  const disagreement = buildMarketDisagreement(game);
 
   // Injury counts
   const awayKey = game.away_team?.split(' ')?.pop()?.toLowerCase();
@@ -122,13 +126,14 @@ export default function GameCard({
     <div>
       {/* Clickable card header */}
       <div onClick={onToggle} className="game-card-header" style={{
-        padding: '16px 20px',
-        background: expanded ? 'rgba(99, 102, 241, 0.15)' : 'rgba(30, 41, 59, 0.6)',
-        border: `1px solid ${expanded ? 'rgba(99, 102, 241, 0.4)' : 'rgba(71, 85, 105, 0.2)'}`,
+        padding: '14px 18px',
+        background: expanded ? 'rgba(20, 184, 166, 0.12)' : 'rgba(15, 23, 42, 0.72)',
+        border: `1px solid ${expanded ? 'rgba(45, 212, 191, 0.34)' : 'rgba(100, 116, 139, 0.18)'}`,
         borderLeft: `4px solid ${sportVisual.color}`,
-        borderRadius: '12px', cursor: 'pointer',
-        display: 'grid', gridTemplateColumns: '40px 2fr 120px 120px 80px',
-        alignItems: 'center', gap: '16px'
+        borderRadius: '8px', cursor: 'pointer',
+        display: 'grid', gridTemplateColumns: '40px minmax(0, 2fr) 116px 116px 78px',
+        alignItems: 'center', gap: '14px',
+        boxShadow: expanded ? '0 18px 42px rgba(2, 6, 23, 0.22)' : '0 10px 28px rgba(2, 6, 23, 0.16)',
       }}>
         {/* Watchlist star + Share button side by side */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
@@ -159,9 +164,9 @@ export default function GameCard({
               title="Quick bet — track this game"
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                fontSize: '14px', lineHeight: 1,
+                color: '#64748b', lineHeight: 1,
               }}
-            >🎯</button>
+            ><Target size={14} /></button>
             {/* Quick-pick popover: shows the main lines for one-tap tracking */}
             {showQuickPick && (
               <div
@@ -169,7 +174,7 @@ export default function GameCard({
                 style={{
                   position: 'absolute', top: '24px', left: '50%', transform: 'translateX(-50%)',
                   zIndex: 100, background: '#1e293b', border: '1px solid rgba(99,102,241,0.4)',
-                  borderRadius: '10px', padding: '10px', minWidth: '220px',
+                  borderRadius: '8px', padding: '10px', minWidth: '220px',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                 }}
               >
@@ -251,7 +256,7 @@ export default function GameCard({
               borderRadius: '4px', fontSize: '9px', fontWeight: 700,
               display: 'inline-flex', alignItems: 'center', gap: '4px',
             }}>
-              <span aria-hidden="true">{game.scores ? '🔴' : sportVisual.icon}</span>
+              <span aria-hidden="true">{game.scores ? '•' : sportVisual.icon}</span>
               {game.scores ? 'LIVE' : sportLabel}
             </span>
             {/* Edge Score™ badge — Pro users see score, free users see lock */}
@@ -271,15 +276,25 @@ export default function GameCard({
               <span style={{
                 padding: '1px 5px', borderRadius: '3px', fontSize: '9px', fontWeight: 700,
                 background: 'rgba(245,158,11,0.2)', color: '#f59e0b'
-              }}>📊 MOVING</span>
+              }}>MOVING</span>
             )}
-            {hasMovement && Math.abs(move) >= 1 && (
+            {spreadMoveSignal && spreadMoveSignal.moveAbs >= 1 && (
               <span style={{
                 padding: '1px 5px',
-                background: move > 0 ? 'rgba(249, 115, 22, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                background: 'rgba(249, 115, 22, 0.2)',
                 borderRadius: '3px', fontSize: '9px',
-                color: move > 0 ? '#f97316' : '#3b82f6', fontWeight: 700
-              }}>{move > 0 ? '🔥 STEAM' : '❄️ FADE'}</span>
+                color: '#f97316', fontWeight: 700
+              }}>STEAM {spreadMoveSignal.team}</span>
+            )}
+            {tier === 'pro' && disagreement.top && disagreement.top.strength !== 'LOW' && (
+              <span style={{
+                padding: '1px 5px',
+                borderRadius: '3px',
+                fontSize: '9px',
+                fontWeight: 700,
+                background: 'rgba(234,179,8,0.16)',
+                color: '#fbbf24'
+              }}>DISAGREE {disagreement.top.range}{disagreement.top.unit}</span>
             )}
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <TeamLogo name={game.away_team} url={awayLogo} />
@@ -287,7 +302,7 @@ export default function GameCard({
             </span>
             {awayInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
-                🏥 {awayInjuries.length}
+                INJ {awayInjuries.length}
               </span>
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.awayScore}</span>}
@@ -298,7 +313,7 @@ export default function GameCard({
             </span>
             {homeInjuries.length > 0 && (
               <span style={{ padding: '1px 5px', background: 'rgba(239,68,68,0.2)', borderRadius: '3px', fontSize: '9px', color: '#ef4444', fontWeight: 700 }}>
-                🏥 {homeInjuries.length}
+                INJ {homeInjuries.length}
               </span>
             )}
             {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.homeScore}</span>}
@@ -330,6 +345,30 @@ export default function GameCard({
               }
               return null;
             })()}
+            {tier === 'pro' && topShop && (
+              <span style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                background: 'rgba(20,184,166,0.16)',
+                borderRadius: '3px',
+                color: '#2dd4bf',
+                fontWeight: 700
+              }}>
+                Shop {lineShopping.label}: {topShop.label} {formatOdds(topShop.best.price)} at {BOOKMAKERS[topShop.best.book] || topShop.best.bookTitle} saves {topShop.centsSaved}c
+              </span>
+            )}
+            {tier !== 'pro' && topShop && (
+              <span style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                background: 'rgba(20,184,166,0.10)',
+                borderRadius: '3px',
+                color: '#5eead4',
+                fontWeight: 700
+              }}>
+                <Lock size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> Line Shopping
+              </span>
+            )}
           </div>
         </div>
 
@@ -339,7 +378,7 @@ export default function GameCard({
               <div style={{ fontSize: '14px', fontWeight: 700 }}>
                 {homeSpread.point > 0 ? '+' : ''}{homeSpread.point}
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>{firstBook.title}</div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>{game.bookmakers?.length || 0} books</div>
             </>
           ) : <span style={{ color: '#64748b', fontSize: '12px' }}>N/A</span>}
         </div>

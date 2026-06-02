@@ -1,7 +1,7 @@
 // BetTracker.jsx — Redesigned with Option 3: Tab + Dropdown Hybrid
 // Sport tabs at top, filter dropdowns, date-grouped bet list
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   PlusCircle, Trophy, XCircle, RotateCcw, TrendingUp,
   DollarSign, Target, BarChart3, Trash2, ChevronDown, ChevronUp,
@@ -52,7 +52,14 @@ function todayStr() {
 }
 
 function formatOdds(odds) {
+  if (odds === null || odds === undefined || Number.isNaN(Number(odds))) return '—';
   return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+function formatPoint(point) {
+  if (point === null || point === undefined || Number.isNaN(Number(point))) return '—';
+  const n = Number(point);
+  return n > 0 ? `+${n}` : `${n}`;
 }
 
 // CLV (Closing Line Value) — compares the price you got to the closing price.
@@ -66,6 +73,43 @@ function calculateCLV(placedOdds, closingOdds) {
   // A lower implied prob at the time of bet = better price than close.
   // CLV = (close - placed) * 100 in percentage points.
   return Number(((pClose - pPlaced) * 100).toFixed(2));
+}
+
+function getBetPoint(bet) {
+  return bet?.betPoint ?? bet?.outcomePoint ?? bet?.openingPoint ?? null;
+}
+
+function getPointCLV(bet, closingPoint = bet?.closingPoint) {
+  const betPoint = getBetPoint(bet);
+  if (betPoint == null || closingPoint == null) return null;
+  const placed = Number(betPoint);
+  const close = Number(closingPoint);
+  if (Number.isNaN(placed) || Number.isNaN(close)) return null;
+  const marketKey = bet?.marketKey || '';
+  const outcome = String(bet?.outcomeName || bet?.pick || '').toLowerCase();
+
+  if (marketKey === 'spreads' || bet?.type === 'Spread') {
+    return Number((placed - close).toFixed(2));
+  }
+  if (marketKey === 'totals' || marketKey.includes('player_') || bet?.type === 'Total' || bet?.type === 'Prop' || bet?.type === 'Player Prop') {
+    if (outcome.includes('under')) return Number((placed - close).toFixed(2));
+    if (outcome.includes('over')) return Number((close - placed).toFixed(2));
+  }
+  return null;
+}
+
+function getOpenerPointEdge(bet) {
+  const betPoint = getBetPoint(bet);
+  if (betPoint == null || bet?.openingPoint == null) return null;
+  return getPointCLV({ ...bet, closingPoint: bet.openingPoint }, bet.openingPoint);
+}
+
+function getTimingValue(bet) {
+  const pointClv = getPointCLV(bet);
+  const priceClv = calculateCLV(bet?.odds, bet?.closingOdds);
+  if (pointClv != null) return { type: 'point', value: pointClv };
+  if (priceClv != null) return { type: 'price', value: priceClv };
+  return null;
 }
 
 // Opening-line edge — how much better/worse the price you got was vs
@@ -87,6 +131,31 @@ function gradeTiming(clv) {
   if (clv > -1)  return { label: 'Neutral',   color: '#eab308', bg: 'rgba(234,179,8,0.15)' };
   if (clv > -3)  return { label: 'Late',      color: '#f97316', bg: 'rgba(249,115,22,0.15)' };
   return           { label: 'Chased',    color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+}
+
+function gradeLineTiming(pointClv) {
+  if (pointClv == null) return { label: '—', color: '#64748b', bg: 'rgba(100,116,139,0.15)' };
+  if (pointClv >= 1.5) return { label: 'Sharp', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' };
+  if (pointClv >= 0.5) return { label: 'Good', color: '#84cc16', bg: 'rgba(132,204,22,0.15)' };
+  if (pointClv > -0.5) return { label: 'Neutral', color: '#eab308', bg: 'rgba(234,179,8,0.15)' };
+  if (pointClv > -1.5) return { label: 'Late', color: '#f97316', bg: 'rgba(249,115,22,0.15)' };
+  return { label: 'Chased', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' };
+}
+
+function gradePortfolioTiming(beatCloseRate, recordedBets) {
+  if (!recordedBets) return { label: 'Needs Data', color: '#64748b', bg: 'rgba(100,116,139,0.14)' };
+  if (beatCloseRate >= 60) return { label: 'Sharp Timing', color: '#22c55e', bg: 'rgba(34,197,94,0.14)' };
+  if (beatCloseRate >= 52) return { label: 'Positive Timing', color: '#84cc16', bg: 'rgba(132,204,22,0.14)' };
+  if (beatCloseRate >= 45) return { label: 'Neutral Timing', color: '#eab308', bg: 'rgba(234,179,8,0.14)' };
+  return { label: 'Chasing Numbers', color: '#ef4444', bg: 'rgba(239,68,68,0.14)' };
+}
+
+function formatTimingValue(timing) {
+  if (!timing) return '—';
+  const sign = timing.value >= 0 ? '+' : '';
+  return timing.type === 'point'
+    ? `${sign}${timing.value.toFixed(2)} pts`
+    : `${sign}${timing.value.toFixed(2)}%`;
 }
 
 function getRelativeDate(dateStr) {
@@ -133,21 +202,29 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-// Find the current live price for a bet's market/outcome in the games feed.
-// Returns null if anything is missing — callers use the result only if truthy.
-function findLivePrice(games, bet) {
+// Find the current live quote for a bet's market/outcome in the games feed.
+// Returns null if anything is missing. We match line markets by outcome name
+// first so a moved spread/total can still be captured as CLV.
+function findLiveQuote(games, bet) {
   if (!bet?.gameId || !bet?.marketKey || !bet?.outcomeName) return null;
   const game = games?.find(g => g.id === bet.gameId);
   if (!game) return null;
-  const book = game.bookmakers?.[0];
+  const book = bet.book
+    ? game.bookmakers?.find(b => b.key === bet.book) || game.bookmakers?.[0]
+    : game.bookmakers?.[0];
   const market = book?.markets?.find(m => m.key === bet.marketKey);
   if (!market) return null;
   const outcome = market.outcomes?.find(o => {
     if (o.name !== bet.outcomeName) return false;
-    if (bet.outcomePoint != null && o.point != null) return o.point === bet.outcomePoint;
     return true;
   });
-  return outcome?.price ?? null;
+  if (!outcome) return null;
+  return {
+    price: outcome.price ?? null,
+    point: outcome.point ?? null,
+    book: book?.key ?? null,
+    capturedAt: Date.now(),
+  };
 }
 
 export default function BetTracker({ pendingBet, onBetConsumed, games = [], historicOdds = {} }) {
@@ -164,6 +241,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   const [date, setDate] = useState(todayStr());
   const [openingOdds, setOpeningOdds] = useState('');
   const [closingOdds, setClosingOdds] = useState('');
+  const [openingPoint, setOpeningPoint] = useState('');
+  const [closingPoint, setClosingPoint] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [isPreFilled, setIsPreFilled] = useState(false);
   
@@ -175,6 +254,35 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
+  const consumedAutoSaveRef = useRef(new Set());
+
+  function buildBetFromInput(source = pendingBet) {
+    return {
+      id: Date.now(),
+      game,
+      type: betType,
+      pick,
+      odds: Number(odds),
+      wager: Number(wager),
+      date,
+      status: 'pending',
+      profit: null,
+      settledDate: null,
+      openingOdds: openingOdds === '' ? null : Number(openingOdds),
+      closingOdds: closingOdds === '' ? null : Number(closingOdds),
+      betPoint: source?.outcomePoint ?? (openingPoint === '' ? null : Number(openingPoint)),
+      openingPoint: openingPoint === '' ? source?.openingPoint ?? source?.outcomePoint ?? null : Number(openingPoint),
+      closingPoint: closingPoint === '' ? source?.closingPoint ?? null : Number(closingPoint),
+      gameId: source?.gameId ?? null,
+      sportKey: source?.sportKey ?? null,
+      marketKey: source?.marketKey ?? null,
+      outcomeName: source?.outcomeName ?? null,
+      outcomePoint: source?.outcomePoint ?? null,
+      commenceTime: source?.commenceTime ?? null,
+      book: source?.book ?? null,
+      player: source?.player ?? null,
+    };
+  }
   
   useEffect(() => {
     if (pendingBet) {
@@ -182,12 +290,53 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
       setBetType(pendingBet.type || 'Spread');
       setPick(pendingBet.pick || '');
       setOdds(pendingBet.odds != null ? String(pendingBet.odds) : '');
+      setWager(pendingBet.wager != null ? String(pendingBet.wager) : '');
       setDate(pendingBet.date ? new Date(pendingBet.date).toISOString().split('T')[0] : todayStr());
       setOpeningOdds(pendingBet.openingOdds != null ? String(pendingBet.openingOdds) : '');
+      setClosingOdds(pendingBet.closingOdds != null ? String(pendingBet.closingOdds) : '');
+      setOpeningPoint(pendingBet.openingPoint != null ? String(pendingBet.openingPoint) : pendingBet.outcomePoint != null ? String(pendingBet.outcomePoint) : '');
+      setClosingPoint(pendingBet.closingPoint != null ? String(pendingBet.closingPoint) : '');
+      if (pendingBet.autoSave && pendingBet.wager != null && pendingBet.odds != null && pendingBet.pick) {
+        const autoKey = [pendingBet.game, pendingBet.pick, pendingBet.odds, pendingBet.wager, pendingBet.date].join('::');
+        if (!consumedAutoSaveRef.current.has(autoKey)) {
+          consumedAutoSaveRef.current.add(autoKey);
+          const autoBet = {
+            id: Date.now(),
+            game: pendingBet.game || pendingBet.player || '',
+            type: pendingBet.type || 'Player Prop',
+            pick: pendingBet.pick || '',
+            odds: Number(pendingBet.odds),
+            wager: Number(pendingBet.wager),
+            date: pendingBet.date ? new Date(pendingBet.date).toISOString().split('T')[0] : todayStr(),
+            status: 'pending',
+            profit: null,
+            settledDate: null,
+            openingOdds: pendingBet.openingOdds ?? null,
+            closingOdds: pendingBet.closingOdds ?? null,
+            betPoint: pendingBet.outcomePoint ?? null,
+            openingPoint: pendingBet.openingPoint ?? pendingBet.outcomePoint ?? null,
+            closingPoint: pendingBet.closingPoint ?? null,
+            gameId: pendingBet.gameId ?? null,
+            sportKey: pendingBet.sportKey ?? null,
+            marketKey: pendingBet.marketKey ?? null,
+            outcomeName: pendingBet.outcomeName ?? null,
+            outcomePoint: pendingBet.outcomePoint ?? null,
+            commenceTime: pendingBet.commenceTime ?? null,
+            book: pendingBet.book ?? null,
+            player: pendingBet.player ?? null,
+          };
+          setBets(prev => prev.some(b => !b.deleted && b.game === autoBet.game && b.pick === autoBet.pick && b.odds === autoBet.odds && b.wager === autoBet.wager && b.date === autoBet.date) ? prev : [autoBet, ...prev]);
+        }
+        setShowForm(false);
+        setIsPreFilled(false);
+        if (onBetConsumed) onBetConsumed();
+        return;
+      }
+
       setShowForm(true);
       setIsPreFilled(true);
     }
-  }, [pendingBet]);
+  }, [pendingBet, setBets, onBetConsumed]);
 
   // Auto-capture CLV: for every pending bet whose market we can identify,
   // track the latest live price and, once the game starts, snapshot it as
@@ -209,25 +358,35 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
         if (opener?.price != null) patch.openingOdds = opener.price;
       }
 
-      if (bet.closingOdds == null && bet.status === 'pending') {
-        const livePrice = findLivePrice(games, bet);
+      if ((bet.closingOdds == null || bet.closingPoint == null) && bet.status === 'pending') {
+        const liveQuote = findLiveQuote(games, bet);
         const commence = bet.commenceTime ? new Date(bet.commenceTime).getTime() : null;
         const gameStillListed = games.some(g => g.id === bet.gameId);
 
-        if (livePrice != null && commence && now < commence) {
-          if (bet.lastPreGameOdds !== livePrice) {
-            patch.lastPreGameOdds = livePrice;
+        if (liveQuote && commence && now < commence) {
+          if (liveQuote.price != null && bet.lastPreGameOdds !== liveQuote.price) {
+            patch.lastPreGameOdds = liveQuote.price;
+            patch.lastPreGameAt = now;
+          }
+          if (liveQuote.point != null && bet.lastPreGamePoint !== liveQuote.point) {
+            patch.lastPreGamePoint = liveQuote.point;
             patch.lastPreGameAt = now;
           }
         } else if (commence && now >= commence) {
-          const closing = bet.lastPreGameOdds ?? livePrice;
-          if (closing != null) {
-            patch.closingOdds = closing;
+          const closingOdds = bet.lastPreGameOdds ?? liveQuote?.price;
+          const closingPoint = bet.lastPreGamePoint ?? liveQuote?.point;
+          if (closingOdds != null && bet.closingOdds == null) {
+            patch.closingOdds = closingOdds;
             patch.closingCapturedAt = now;
           }
-        } else if (!gameStillListed && bet.lastPreGameOdds != null) {
-          patch.closingOdds = bet.lastPreGameOdds;
-          patch.closingCapturedAt = now;
+          if (closingPoint != null && bet.closingPoint == null) {
+            patch.closingPoint = closingPoint;
+            patch.closingCapturedAt = now;
+          }
+        } else if (!gameStillListed && (bet.lastPreGameOdds != null || bet.lastPreGamePoint != null)) {
+          if (bet.closingOdds == null) patch.closingOdds = bet.lastPreGameOdds;
+          if (bet.closingPoint == null && bet.lastPreGamePoint != null) patch.closingPoint = bet.lastPreGamePoint;
+          if (patch.closingOdds != null || patch.closingPoint != null) patch.closingCapturedAt = now;
         }
       }
 
@@ -344,31 +503,59 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     });
 
     // ===== EV Timing Analytics (CLV) =====
-    // For every bet with a closingOdds value recorded, compute CLV%.
-    // We surface: average CLV, % of bets that beat the close, and
-    // an opening-line edge (how many bets got the opening number).
-    const timedBets = filteredBets.filter(b => b.closingOdds != null);
-    const clvValues = timedBets
+    // Spreads/totals/props use point CLV first; moneylines and same-line
+    // price moves use implied-probability CLV.
+    const timedEntries = filteredBets
+      .map(b => ({ bet: b, timing: getTimingValue(b) }))
+      .filter(item => item.timing);
+    const timedBets = timedEntries.map(item => item.bet);
+
+    const priceClvValues = filteredBets
       .map(b => calculateCLV(b.odds, b.closingOdds))
       .filter(v => v != null);
-    const avgCLV = clvValues.length
-      ? Number((clvValues.reduce((a, b) => a + b, 0) / clvValues.length).toFixed(2))
+    const avgCLV = priceClvValues.length
+      ? Number((priceClvValues.reduce((a, b) => a + b, 0) / priceClvValues.length).toFixed(2))
       : null;
-    const beatClose = clvValues.filter(v => v > 0).length;
-    const beatCloseRate = clvValues.length ? (beatClose / clvValues.length) * 100 : 0;
 
-    const openerBets = filteredBets.filter(b => b.openingOdds != null);
-    const openerValues = openerBets
+    const lineClvValues = filteredBets
+      .map(b => getPointCLV(b))
+      .filter(v => v != null);
+    const avgLineCLV = lineClvValues.length
+      ? Number((lineClvValues.reduce((a, b) => a + b, 0) / lineClvValues.length).toFixed(2))
+      : null;
+
+    const beatClose = timedEntries.filter(item => item.timing.value > 0).length;
+    const beatCloseRate = timedEntries.length ? (beatClose / timedEntries.length) * 100 : 0;
+    const portfolioGrade = gradePortfolioTiming(beatCloseRate, timedEntries.length);
+    const sortedTiming = [...timedEntries].sort((a, b) => b.timing.value - a.timing.value);
+    const bestTiming = sortedTiming[0] || null;
+    const worstTiming = sortedTiming[sortedTiming.length - 1] || null;
+    const pendingNeedsClose = filteredBets.filter(b => (
+      b.status === 'pending' &&
+      (b.marketKey || b.gameId || getBetPoint(b) != null || b.odds != null) &&
+      getTimingValue(b) == null
+    )).length;
+    const coverageRate = filteredBets.length ? (timedEntries.length / filteredBets.length) * 100 : 0;
+
+    const openerPriceBets = filteredBets.filter(b => b.openingOdds != null);
+    const openerValues = openerPriceBets
       .map(b => calculateOpenerEdge(b.odds, b.openingOdds))
       .filter(v => v != null);
     const avgOpenerEdge = openerValues.length
       ? Number((openerValues.reduce((a, b) => a + b, 0) / openerValues.length).toFixed(2))
       : null;
 
-    // CLV units: implied profit over the close across all timed bets.
-    // Using a flat 1u stake per bet to keep the metric wager-agnostic.
-    const clvUnits = clvValues.length
-      ? Number(clvValues.reduce((a, b) => a + b, 0).toFixed(2))
+    const openerPointValues = filteredBets
+      .map(b => getOpenerPointEdge(b))
+      .filter(v => v != null);
+    const avgOpenerPointEdge = openerPointValues.length
+      ? Number((openerPointValues.reduce((a, b) => a + b, 0) / openerPointValues.length).toFixed(2))
+      : null;
+
+    // CLV units: aggregate timing edge using point CLV where possible and
+    // price CLV otherwise. Flat 1u per bet keeps the metric wager-agnostic.
+    const clvUnits = timedEntries.length
+      ? Number(timedEntries.reduce((sum, item) => sum + item.timing.value, 0).toFixed(2))
       : 0;
 
     return {
@@ -377,11 +564,23 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
         recordedBets: timedBets.length,
         totalBets: filteredBets.length,
         avgCLV,
+        avgLineCLV,
         beatClose,
         beatCloseRate,
+        portfolioGrade,
         avgOpenerEdge,
-        openerRecorded: openerBets.length,
+        avgOpenerPointEdge,
+        openerRecorded: new Set([
+          ...openerPriceBets.map(b => b.id),
+          ...filteredBets.filter(b => b.openingPoint != null).map(b => b.id),
+        ]).size,
+        lineRecorded: lineClvValues.length,
+        priceRecorded: priceClvValues.length,
         clvUnits,
+        pendingNeedsClose,
+        coverageRate,
+        bestTiming,
+        worstTiming,
       },
     };
   }, [filteredBets]);
@@ -393,28 +592,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     if (atLimit) return;
     if (!game || !pick || !odds || !wager) return;
     
-    const newBet = {
-      id: Date.now(),
-      game,
-      type: betType,
-      pick,
-      odds: Number(odds),
-      wager: Number(wager),
-      date,
-      status: 'pending',
-      profit: null,
-      settledDate: null,
-      openingOdds: openingOdds === '' ? null : Number(openingOdds),
-      closingOdds: closingOdds === '' ? null : Number(closingOdds),
-      // Identifiers let the auto-capture effect match this bet back to the
-      // live odds feed and backfill its closing price after the game starts.
-      gameId: pendingBet?.gameId ?? null,
-      sportKey: pendingBet?.sportKey ?? null,
-      marketKey: pendingBet?.marketKey ?? null,
-      outcomeName: pendingBet?.outcomeName ?? null,
-      outcomePoint: pendingBet?.outcomePoint ?? null,
-      commenceTime: pendingBet?.commenceTime ?? null,
-    };
+    const newBet = buildBetFromInput();
 
     setBets(prev => [newBet, ...prev]);
     setGame('');
@@ -424,6 +602,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     setDate(todayStr());
     setOpeningOdds('');
     setClosingOdds('');
+    setOpeningPoint('');
+    setClosingPoint('');
     setShowForm(false);
     setIsPreFilled(false);
     if (onBetConsumed) onBetConsumed();
@@ -563,12 +743,17 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     }
   }
 
-  function setTimingOdds(id, { openingOdds, closingOdds }) {
+  function setTimingOdds(id, { openingOdds, closingOdds, openingPoint, closingPoint }) {
     setBets(prev => prev.map(bet => {
       if (bet.id !== id) return bet;
       const next = { ...bet };
       if (openingOdds !== undefined) next.openingOdds = openingOdds === null || openingOdds === '' ? null : Number(openingOdds);
       if (closingOdds !== undefined) next.closingOdds = closingOdds === null || closingOdds === '' ? null : Number(closingOdds);
+      if (openingPoint !== undefined) {
+        next.openingPoint = openingPoint === null || openingPoint === '' ? null : Number(openingPoint);
+        next.betPoint = next.openingPoint;
+      }
+      if (closingPoint !== undefined) next.closingPoint = closingPoint === null || closingPoint === '' ? null : Number(closingPoint);
       return next;
     }));
   }
@@ -697,7 +882,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
         </div>
       )}
 
-      {/* EV TIMING ANALYTICS PANEL — Edge Finder V2.4 */}
+      {/* EV TIMING ANALYTICS PANEL — Edge Finder V2.5 */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))',
         border: '1px solid rgba(99, 102, 241, 0.25)',
@@ -715,7 +900,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
               fontSize: '9px', padding: '2px 6px',
               background: 'rgba(99, 102, 241, 0.2)',
               borderRadius: '4px', color: '#a5b4fc', fontWeight: 700,
-            }}>V2.4</span>
+            }}>V2.5</span>
           </div>
           <div style={{ fontSize: '10px', color: '#475569' }}>
             {stats.timing.recordedBets}/{stats.timing.totalBets} bets tracked
@@ -724,17 +909,50 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
 
         {stats.timing.recordedBets === 0 ? (
           <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '16px 0' }}>
-            Bets added from the Games tab capture closing odds automatically once the game kicks off. You can also enter opening/closing odds manually.
+            Bets added from the Games tab capture the bet line and closing line automatically once the game kicks off. You can also enter the close manually.
           </div>
         ) : (
           <>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '8px',
+              marginBottom: '10px',
+            }}>
+              <div style={{
+                padding: '12px',
+                borderRadius: '8px',
+                background: stats.timing.portfolioGrade.bg,
+                border: `1px solid ${stats.timing.portfolioGrade.color}55`,
+              }}>
+                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>CLV HEALTH</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: stats.timing.portfolioGrade.color }}>{stats.timing.portfolioGrade.label}</div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px', lineHeight: 1.45 }}>
+                  {stats.timing.beatCloseRate.toFixed(0)}% beat-close rate across {stats.timing.recordedBets} tracked bet{stats.timing.recordedBets === 1 ? '' : 's'}.
+                </div>
+              </div>
+              <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(15,23,42,0.5)' }}>
+                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>TRACKING COVERAGE</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: stats.timing.coverageRate >= 70 ? '#22c55e' : '#eab308' }}>
+                  {stats.timing.coverageRate.toFixed(0)}%
+                </div>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>of visible bets have CLV data</div>
+              </div>
+              <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(15,23,42,0.5)' }}>
+                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>NEEDS CLOSE</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: stats.timing.pendingNeedsClose ? '#f59e0b' : '#22c55e' }}>
+                  {stats.timing.pendingNeedsClose}
+                </div>
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>pending bet{stats.timing.pendingNeedsClose === 1 ? '' : 's'} waiting</div>
+              </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: '10px' }}>
               {[
                 {
-                  label: 'Avg CLV',
-                  value: stats.timing.avgCLV != null ? `${stats.timing.avgCLV >= 0 ? '+' : ''}${stats.timing.avgCLV.toFixed(2)}%` : '—',
-                  sub: 'vs closing line',
-                  color: stats.timing.avgCLV == null ? '#64748b' : stats.timing.avgCLV >= 0 ? '#22c55e' : '#ef4444',
+                  label: 'Line CLV',
+                  value: stats.timing.avgLineCLV != null ? `${stats.timing.avgLineCLV >= 0 ? '+' : ''}${stats.timing.avgLineCLV.toFixed(2)} pts` : '—',
+                  sub: `${stats.timing.lineRecorded} spread/total/prop`,
+                  color: stats.timing.avgLineCLV == null ? '#64748b' : stats.timing.avgLineCLV >= 0 ? '#22c55e' : '#ef4444',
                 },
                 {
                   label: 'Beat Close',
@@ -743,16 +961,16 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
                   color: stats.timing.beatCloseRate >= 55 ? '#22c55e' : stats.timing.beatCloseRate >= 45 ? '#eab308' : '#ef4444',
                 },
                 {
-                  label: 'CLV Units',
+                  label: 'Timing Edge',
                   value: `${stats.timing.clvUnits >= 0 ? '+' : ''}${stats.timing.clvUnits.toFixed(2)}`,
-                  sub: 'total edge earned',
+                  sub: 'points or price edge',
                   color: stats.timing.clvUnits >= 0 ? '#22c55e' : '#ef4444',
                 },
                 {
-                  label: 'Vs Opener',
-                  value: stats.timing.avgOpenerEdge != null ? `${stats.timing.avgOpenerEdge >= 0 ? '+' : ''}${stats.timing.avgOpenerEdge.toFixed(2)}%` : '—',
-                  sub: stats.timing.openerRecorded > 0 ? `${stats.timing.openerRecorded} opener(s)` : 'none tracked',
-                  color: stats.timing.avgOpenerEdge == null ? '#64748b' : stats.timing.avgOpenerEdge >= 0 ? '#22c55e' : '#f97316',
+                  label: 'Price CLV',
+                  value: stats.timing.avgCLV != null ? `${stats.timing.avgCLV >= 0 ? '+' : ''}${stats.timing.avgCLV.toFixed(2)}%` : '—',
+                  sub: `${stats.timing.priceRecorded} odds close(s)`,
+                  color: stats.timing.avgCLV == null ? '#64748b' : stats.timing.avgCLV >= 0 ? '#22c55e' : '#ef4444',
                 },
               ].map((m, i) => (
                 <div key={i} style={{
@@ -765,18 +983,45 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
                 </div>
               ))}
             </div>
+            {(stats.timing.bestTiming || stats.timing.worstTiming) && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '8px',
+                marginBottom: '10px',
+              }}>
+                {stats.timing.bestTiming && (
+                  <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.22)' }}>
+                    <div style={{ fontSize: '10px', color: '#22c55e', fontWeight: 800, marginBottom: '5px' }}>BEST NUMBER BEAT</div>
+                    <div style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 700 }}>{stats.timing.bestTiming.bet.game}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                      {stats.timing.bestTiming.bet.pick} · {formatTimingValue(stats.timing.bestTiming.timing)}
+                    </div>
+                  </div>
+                )}
+                {stats.timing.worstTiming && stats.timing.worstTiming !== stats.timing.bestTiming && (
+                  <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.20)' }}>
+                    <div style={{ fontSize: '10px', color: '#ef4444', fontWeight: 800, marginBottom: '5px' }}>WORST CHASE</div>
+                    <div style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 700 }}>{stats.timing.worstTiming.bet.game}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
+                      {stats.timing.worstTiming.bet.pick} · {formatTimingValue(stats.timing.worstTiming.timing)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{
               display: 'flex', flexWrap: 'wrap', gap: '6px',
               fontSize: '9px', color: '#64748b',
               paddingTop: '8px', borderTop: '1px solid rgba(71, 85, 105, 0.2)',
             }}>
-              <span>Timing grade:</span>
+              <span>Line grade:</span>
               {[
-                { label: 'Sharp', color: '#22c55e', range: '≥ +3%' },
-                { label: 'Good', color: '#84cc16', range: '+1 to +3%' },
-                { label: 'Neutral', color: '#eab308', range: '±1%' },
-                { label: 'Late', color: '#f97316', range: '-1 to -3%' },
-                { label: 'Chased', color: '#ef4444', range: '< -3%' },
+                { label: 'Sharp', color: '#22c55e', range: '≥ +1.5 pts' },
+                { label: 'Good', color: '#84cc16', range: '+0.5 to +1.5' },
+                { label: 'Neutral', color: '#eab308', range: '±0.5' },
+                { label: 'Late', color: '#f97316', range: '-0.5 to -1.5' },
+                { label: 'Chased', color: '#ef4444', range: '< -1.5' },
               ].map(g => (
                 <span key={g.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: g.color }} />
@@ -1096,7 +1341,13 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
             </div>
             {/* Optional timing fields power the EV Timing Analytics panel.
                 Users can leave them blank at entry and fill in the close later. */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={11} /> Bet Line <span style={{ color: '#475569' }}>(auto)</span>
+                </label>
+                <input type="number" value={openingPoint} onChange={(e) => setOpeningPoint(e.target.value)} placeholder="-3.5" style={inputStyle} />
+              </div>
               <div>
                 <label style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Clock size={11} /> Opening Odds <span style={{ color: '#475569' }}>(optional)</span>
@@ -1108,6 +1359,12 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
                   <Clock size={11} /> Closing Odds <span style={{ color: '#475569' }}>(optional)</span>
                 </label>
                 <input type="number" value={closingOdds} onChange={(e) => setClosingOdds(e.target.value)} placeholder="-115" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={11} /> Closing Line <span style={{ color: '#475569' }}>(optional)</span>
+                </label>
+                <input type="number" value={closingPoint} onChange={(e) => setClosingPoint(e.target.value)} placeholder="-5" style={inputStyle} />
               </div>
             </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
@@ -1184,15 +1441,20 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
   const [editingTiming, setEditingTiming] = useState(false);
   const [openDraft, setOpenDraft] = useState(bet.openingOdds ?? '');
   const [closeDraft, setCloseDraft] = useState(bet.closingOdds ?? '');
+  const [openPointDraft, setOpenPointDraft] = useState(bet.openingPoint ?? getBetPoint(bet) ?? '');
+  const [closePointDraft, setClosePointDraft] = useState(bet.closingPoint ?? '');
 
   const clv = calculateCLV(bet.odds, bet.closingOdds);
-  const grade = gradeTiming(clv);
-  const hasTiming = bet.openingOdds != null || bet.closingOdds != null;
+  const pointClv = getPointCLV(bet);
+  const grade = pointClv != null ? gradeLineTiming(pointClv) : gradeTiming(clv);
+  const hasTiming = bet.openingOdds != null || bet.closingOdds != null || bet.openingPoint != null || bet.closingPoint != null || getBetPoint(bet) != null;
 
   function saveTiming() {
     onSetTimingOdds?.(bet.id, {
       openingOdds: openDraft === '' ? null : openDraft,
       closingOdds: closeDraft === '' ? null : closeDraft,
+      openingPoint: openPointDraft === '' ? null : openPointDraft,
+      closingPoint: closePointDraft === '' ? null : closePointDraft,
     });
     setEditingTiming(false);
   }
@@ -1207,14 +1469,16 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
               fontSize: '10px', padding: '2px 6px',
               background: 'rgba(99, 102, 241, 0.15)', borderRadius: '4px', color: '#818cf8',
             }}>{bet.type}</span>
-            {clv != null && (
+            {(pointClv != null || clv != null) && (
               <span style={{
                 fontSize: '10px', padding: '2px 6px', borderRadius: '4px',
                 background: grade.bg, color: grade.color, fontWeight: 700,
                 display: 'inline-flex', alignItems: 'center', gap: '3px',
               }}>
                 <Clock size={9} />
-                {grade.label} {clv >= 0 ? '+' : ''}{clv.toFixed(2)}%
+                {pointClv != null
+                  ? `${grade.label} ${pointClv >= 0 ? '+' : ''}${pointClv.toFixed(2)} pts`
+                  : `${grade.label} ${clv >= 0 ? '+' : ''}${clv.toFixed(2)}%`}
               </span>
             )}
           </div>
@@ -1222,9 +1486,12 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
             {bet.pick} @ {formatOdds(bet.odds)} • ${bet.wager}
           </div>
           {hasTiming && !editingTiming && (
-            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '8px' }}>
+            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {getBetPoint(bet) != null && <span>Bet line: {formatPoint(getBetPoint(bet))}</span>}
+              {bet.closingPoint != null && <span>Close line: {formatPoint(bet.closingPoint)}</span>}
               {bet.openingOdds != null && <span>Open: {formatOdds(bet.openingOdds)}</span>}
               {bet.closingOdds != null && <span>Close: {formatOdds(bet.closingOdds)}</span>}
+              {clv != null && pointClv != null && <span>Price CLV: {clv >= 0 ? '+' : ''}{clv.toFixed(2)}%</span>}
             </div>
           )}
         </div>
@@ -1297,7 +1564,23 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
           flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Open</label>
+            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Bet Line</label>
+            <input
+              type="number" value={openPointDraft} onChange={(e) => setOpenPointDraft(e.target.value)}
+              placeholder="-3.5"
+              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Close Line</label>
+            <input
+              type="number" value={closePointDraft} onChange={(e) => setClosePointDraft(e.target.value)}
+              placeholder="-5"
+              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Open Odds</label>
             <input
               type="number" value={openDraft} onChange={(e) => setOpenDraft(e.target.value)}
               placeholder="-105"
@@ -1305,7 +1588,7 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Close</label>
+            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Close Odds</label>
             <input
               type="number" value={closeDraft} onChange={(e) => setCloseDraft(e.target.value)}
               placeholder="-115"
@@ -1321,7 +1604,13 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
           }}>
             <Check size={12} /> Save
           </button>
-          <button onClick={() => { setEditingTiming(false); setOpenDraft(bet.openingOdds ?? ''); setCloseDraft(bet.closingOdds ?? ''); }} style={{
+          <button onClick={() => {
+            setEditingTiming(false);
+            setOpenDraft(bet.openingOdds ?? '');
+            setCloseDraft(bet.closingOdds ?? '');
+            setOpenPointDraft(bet.openingPoint ?? getBetPoint(bet) ?? '');
+            setClosePointDraft(bet.closingPoint ?? '');
+          }} style={{
             padding: '6px 10px', background: 'transparent',
             border: '1px solid rgba(71, 85, 105, 0.3)', borderRadius: '6px',
             color: '#94a3b8', fontSize: '11px', cursor: 'pointer',

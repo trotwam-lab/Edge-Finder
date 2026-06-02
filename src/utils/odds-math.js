@@ -129,6 +129,206 @@ export function findBestOdds(bookmakers, marketKey, outcomeName) {
     return best > -Infinity ? { price: best, book: bestBook } : null;
 }
 
+function americanOddsCost(odds) {
+    if (odds === undefined || odds === null || Number.isNaN(Number(odds))) return null;
+    const price = Number(odds);
+    return price < 0 ? Math.abs(price) - 100 : 100 - price;
+}
+
+function marketLabel(marketKey) {
+    if (marketKey === 'h2h') return 'Moneyline';
+    if (marketKey === 'spreads') return 'Spread';
+    if (marketKey === 'totals') return 'Total';
+    return marketKey;
+}
+
+function formatOutcomeLabel({ marketKey, outcomeName, point }) {
+    if (marketKey === 'h2h') return `${outcomeName} ML`;
+    if (marketKey === 'spreads') return `${outcomeName} ${point > 0 ? '+' : ''}${point}`;
+    if (marketKey === 'totals') return `${outcomeName} ${point}`;
+    return point !== undefined && point !== null ? `${outcomeName} ${point}` : outcomeName;
+}
+
+// ============================================================
+// Line Shopping Score
+// Measures how much price a bettor saves by taking the best book
+// instead of the worst available book for the same side/number.
+// ============================================================
+export function buildLineShoppingOpportunities(bookmakers, marketKeys = ['h2h', 'spreads', 'totals']) {
+    const grouped = new Map();
+
+    bookmakers?.forEach(book => {
+        book.markets?.forEach(market => {
+            if (!marketKeys.includes(market.key)) return;
+            market.outcomes?.forEach(outcome => {
+                if (outcome?.price === undefined || outcome?.price === null || !outcome?.name) return;
+                const pointKey = outcome.point === undefined || outcome.point === null ? 'na' : String(outcome.point);
+                const key = `${market.key}::${outcome.name}::${pointKey}`;
+                if (!grouped.has(key)) {
+                    grouped.set(key, {
+                        marketKey: market.key,
+                        marketLabel: marketLabel(market.key),
+                        outcomeName: outcome.name,
+                        point: outcome.point ?? null,
+                        prices: [],
+                    });
+                }
+                grouped.get(key).prices.push({
+                    book: book.key,
+                    bookTitle: book.title || book.key,
+                    price: Number(outcome.price),
+                    cost: americanOddsCost(outcome.price),
+                });
+            });
+        });
+    });
+
+    return Array.from(grouped.values())
+        .filter(item => item.prices.length >= 2)
+        .map(item => {
+            const prices = item.prices.filter(price => price.cost !== null);
+            const best = prices.reduce((winner, price) => price.cost < winner.cost ? price : winner, prices[0]);
+            const worst = prices.reduce((loser, price) => price.cost > loser.cost ? price : loser, prices[0]);
+            const centsSaved = Math.max(0, Math.round((worst.cost - best.cost) * 10) / 10);
+            return {
+                ...item,
+                label: formatOutcomeLabel(item),
+                best,
+                worst,
+                centsSaved,
+                bookCount: prices.length,
+            };
+        })
+        .filter(item => item.centsSaved > 0)
+        .sort((a, b) => b.centsSaved - a.centsSaved);
+}
+
+export function getLineShoppingScore(bookmakers, marketKeys) {
+    const opportunities = buildLineShoppingOpportunities(bookmakers, marketKeys);
+    const top = opportunities[0] || null;
+    const score = top ? Math.min(100, Math.round(top.centsSaved * 4 + Math.min(top.bookCount, 8) * 5)) : 0;
+    const label = score >= 80 ? 'HIGH' : score >= 45 ? 'GOOD' : score > 0 ? 'SMALL' : 'NONE';
+    return {
+        score,
+        label,
+        top,
+        opportunities,
+    };
+}
+
+function formatLineValue(value) {
+    if (value === undefined || value === null || Number.isNaN(Number(value))) return '-';
+    return `${Number(value) > 0 ? '+' : ''}${value}`;
+}
+
+export function getSpreadMoveSignal(game, history = [], openerOverride = null, currentOverride = null) {
+    const opener = openerOverride ?? history?.[0]?.spread;
+    const current = currentOverride ?? history?.[history.length - 1]?.spread;
+    if (opener === undefined || opener === null || current === undefined || current === null) return null;
+    const move = Number(current) - Number(opener);
+    if (!move) return null;
+    const moveAbs = Math.abs(move);
+    const team = move < 0 ? game?.home_team : game?.away_team;
+    const strength = moveAbs >= 2 ? 'HIGH' : moveAbs >= 1 ? 'MEDIUM' : 'LOW';
+    return {
+        team,
+        move,
+        moveAbs,
+        strength,
+        label: `Market toward ${team}`,
+        detail: `${formatLineValue(opener)} → ${formatLineValue(current)}`,
+    };
+}
+
+function rangeFor(values = []) {
+    const nums = values.map(v => Number(v)).filter(v => !Number.isNaN(v));
+    if (nums.length < 2) return null;
+    return Math.max(...nums) - Math.min(...nums);
+}
+
+export function buildMarketDisagreement(game) {
+    const opportunities = [];
+    const homeSpreads = [];
+    const totals = [];
+    const moneylines = new Map();
+
+    game?.bookmakers?.forEach(book => {
+        const spreadMarket = book.markets?.find(m => m.key === 'spreads');
+        const homeSpread = spreadMarket?.outcomes?.find(o => o.name === game.home_team);
+        if (homeSpread?.point !== undefined && homeSpread?.point !== null) {
+            homeSpreads.push({ book: book.key, bookTitle: book.title || book.key, value: Number(homeSpread.point) });
+        }
+
+        const totalMarket = book.markets?.find(m => m.key === 'totals');
+        const total = totalMarket?.outcomes?.find(o => o.name === 'Over');
+        if (total?.point !== undefined && total?.point !== null) {
+            totals.push({ book: book.key, bookTitle: book.title || book.key, value: Number(total.point) });
+        }
+
+        const h2hMarket = book.markets?.find(m => m.key === 'h2h');
+        h2hMarket?.outcomes?.forEach(outcome => {
+            if (outcome?.price === undefined || outcome?.price === null) return;
+            if (!moneylines.has(outcome.name)) moneylines.set(outcome.name, []);
+            moneylines.get(outcome.name).push({ book: book.key, bookTitle: book.title || book.key, value: Number(outcome.price) });
+        });
+    });
+
+    const addRangeOpportunity = ({ type, label, unit, rows, mediumAt, highAt }) => {
+        const range = rangeFor(rows.map(row => row.value));
+        if (!range) return;
+        const low = rows.reduce((min, row) => row.value < min.value ? row : min, rows[0]);
+        const high = rows.reduce((max, row) => row.value > max.value ? row : max, rows[0]);
+        const strength = range >= highAt ? 'HIGH' : range >= mediumAt ? 'MEDIUM' : 'LOW';
+        opportunities.push({
+            type,
+            label,
+            unit,
+            range: Math.round(range * 10) / 10,
+            low,
+            high,
+            bookCount: rows.length,
+            strength,
+        });
+    };
+
+    addRangeOpportunity({
+        type: 'spreads',
+        label: `${game?.home_team || 'Home'} spread`,
+        unit: 'pts',
+        rows: homeSpreads,
+        mediumAt: 1,
+        highAt: 2,
+    });
+    addRangeOpportunity({
+        type: 'totals',
+        label: 'Game total',
+        unit: 'pts',
+        rows: totals,
+        mediumAt: 1.5,
+        highAt: 3,
+    });
+    moneylines.forEach((rows, name) => {
+        addRangeOpportunity({
+            type: 'h2h',
+            label: `${name} moneyline`,
+            unit: 'c',
+            rows,
+            mediumAt: 15,
+            highAt: 30,
+        });
+    });
+
+    opportunities.sort((a, b) => {
+        const strengthScore = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+        return strengthScore[b.strength] - strengthScore[a.strength] || b.range - a.range;
+    });
+
+    return {
+        top: opportunities[0] || null,
+        opportunities,
+    };
+}
+
 // ============================================================
 // Consensus fair odds across all bookmakers for a market
 // Removes vig from each book, then averages the fair probabilities.

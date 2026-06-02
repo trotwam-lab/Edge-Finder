@@ -1,26 +1,123 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Loader, X } from 'lucide-react';
-import { SPORTS, BOOKMAKERS } from './constants.js';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useDeferredValue } from 'react';
+import { Activity, AlertTriangle, BarChart3, Loader, X } from 'lucide-react';
+import { SPORTS, BOOKMAKERS, FREE_BOOKS } from './constants.js';
 import { useAuth } from './AuthGate.jsx';
 import ProBanner from './components/ProBanner.jsx';
 import { useOdds, usePersistentState } from './hooks/useOdds.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
-import GameDetails from './components/GameDetails.jsx';
-import PropsView from './components/PropsView.jsx';
-import EVCalculator from './components/EVCalculator.jsx';
-import BetTracker from './components/BetTracker.jsx';
-import EdgesLines from './components/EdgesLines.jsx';
-import KellyCriterion from './components/KellyCriterion.jsx';
 import MobileNav from './components/MobileNav.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 
+const tabLoaders = {
+  PropsView: () => import('./components/PropsView.jsx'),
+  ProTools: () => import('./components/ProTools.jsx'),
+  GameDetails: () => import('./components/GameDetails.jsx'),
+  DailyProReport: () => import('./components/DailyProReport.jsx'),
+  BetTracker: () => import('./components/BetTracker.jsx'),
+};
+
+const PropsView = lazy(tabLoaders.PropsView);
+const ProTools = lazy(tabLoaders.ProTools);
+const GameDetails = lazy(tabLoaders.GameDetails);
+const DailyProReport = lazy(tabLoaders.DailyProReport);
+const BetTracker = lazy(tabLoaders.BetTracker);
+
+function TabFallback({ label = 'Loading...' }) {
+  return (
+    <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
+      <Loader size={28} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
+      <div style={{ marginTop: '12px', fontSize: '12px' }}>{label}</div>
+    </div>
+  );
+}
+
+function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
+  const liveGames = games.filter(g => g.scores).length;
+  const injuryCount = Object.values(injuries || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
+  const bookCount = games.reduce((max, game) => Math.max(max, game.bookmakers?.length || 0), 0);
+  const trackedMarkets = games.reduce((sum, game) => {
+    const markets = game.bookmakers?.reduce((bookSum, book) => bookSum + (book.markets?.length || 0), 0) || 0;
+    return sum + markets;
+  }, 0);
+  const watchCandidates = Math.min(games.length, Math.max(0, Math.round((games.length || 0) * 0.28) + liveGames));
+  const updated = lastUpdate
+    ? lastUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    : 'Waiting';
+  const stats = [
+    { label: 'Games', value: games.length || '--', tone: '#38bdf8' },
+    { label: 'Books', value: bookCount || '--', tone: '#2dd4bf' },
+    { label: 'Markets', value: trackedMarkets || '--', tone: '#a3e635' },
+    { label: 'Alerts', value: injuryCount + liveGames, tone: injuryCount || liveGames ? '#f59e0b' : '#64748b' },
+  ];
+  const intelligenceCards = [
+    {
+      icon: Activity,
+      label: 'Market Pulse',
+      title: liveGames ? `${liveGames} live board${liveGames === 1 ? '' : 's'} moving` : 'Pregame board building',
+      note: isConnected ? 'Live odds, scores, and book coverage are connected.' : 'Using cached odds until the feed reconnects.',
+      tone: '#38bdf8',
+    },
+    {
+      icon: BarChart3,
+      label: 'Line Shopping',
+      title: `${bookCount || '--'} books scanned per matchup`,
+      note: 'Best numbers and book disagreement are surfaced inside each game card.',
+      tone: '#2dd4bf',
+    },
+    {
+      icon: AlertTriangle,
+      label: 'Watchlist',
+      title: `${watchCandidates || '--'} games worth checking first`,
+      note: 'Start with injury flags, live games, and mismatched book prices before browsing the full slate.',
+      tone: '#f59e0b',
+    },
+  ];
+
+  return (
+    <section className="market-summary">
+      <div className="market-summary-copy">
+        <div className="market-kicker">{isConnected ? 'Live Market Intelligence' : 'Offline Cache'} · {loading ? 'Updating' : `Updated ${updated}`}</div>
+        <h1>Find the best betting number before the market closes.</h1>
+        <p>
+          Scan today&apos;s slate by market pressure, book disagreement, live movement, and injury risk.
+          The board is built to show what deserves attention first.
+        </p>
+      </div>
+      <div className="market-stats">
+        {stats.map(stat => (
+          <div className="market-stat" key={stat.label}>
+            <span>{stat.label}</span>
+            <strong style={{ color: stat.tone }}>{stat.value}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="market-intel-grid">
+        {intelligenceCards.map(card => {
+          const Icon = card.icon;
+          return (
+            <article className="market-intel-card" key={card.label} style={{ '--intel-color': card.tone }}>
+              <div className="market-intel-icon"><Icon size={15} /></div>
+              <div>
+                <span>{card.label}</span>
+                <strong>{card.title}</strong>
+                <p>{card.note}</p>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function BettingApp() {
-  const { tier, refreshTier } = useAuth();
+  const { user, tier, refreshTier } = useAuth();
   const [activeTab, setActiveTab] = useState('GAMES');
   const [showCheckoutToast, setShowCheckoutToast] = useState(false);
   const [showCancelToast, setShowCancelToast] = useState(false);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -38,6 +135,7 @@ export default function BettingApp() {
 
   const [filter, setFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [expandedGame, setExpandedGame] = useState(null);
   const [pendingBet, setPendingBet] = useState(null);
   // Enrich incoming bet with the historic opener price (if one was captured
@@ -69,7 +167,40 @@ export default function BettingApp() {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const filteredGames = games
+  const handleManageSubscription = async () => {
+    if (!user) {
+      alert('Please log in first to manage your subscription.');
+      return;
+    }
+
+    setIsOpeningPortal(true);
+    try {
+      const response = await fetch('/api/create-portal-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          email: user.email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error('Billing portal error:', data.error);
+        alert('Failed to open billing portal: ' + (data.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Billing portal error:', error);
+      alert('Failed to open billing portal. Please try again.');
+    } finally {
+      setIsOpeningPortal(false);
+    }
+  };
+
+  const filteredGames = useMemo(() => games
     .filter(g =>
       filter === 'ALL' ||
       g.sport_key === SPORTS[filter] ||
@@ -77,10 +208,10 @@ export default function BettingApp() {
       g.sport_key?.includes(filter.toLowerCase())
     )
     .filter(g => {
-      if (!searchTerm) return true;
-      const s = searchTerm.toLowerCase();
+      if (!deferredSearchTerm) return true;
+      const s = deferredSearchTerm.toLowerCase();
       return g.home_team?.toLowerCase().includes(s) || g.away_team?.toLowerCase().includes(s);
-    });
+    }), [games, filter, deferredSearchTerm]);
 
   // Group filtered games by sport so each sport gets its own header + accent.
   // When the user filters to a specific sport the grouping still works but
@@ -99,21 +230,41 @@ export default function BettingApp() {
 
   const teamLogoMap = useTeamLogos(games);
 
+  useEffect(() => {
+    if (activeTab === 'EV_CALC' || activeTab === 'KELLY' || activeTab === 'EDGES_LINES') {
+      setActiveTab('PRO_TOOLS');
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const warmTabs = () => {
+      tabLoaders.PropsView();
+      tabLoaders.BetTracker();
+      tabLoaders.ProTools();
+    };
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(warmTabs, { timeout: 2500 });
+      return () => window.cancelIdleCallback?.(idleId);
+    }
+    const timer = window.setTimeout(warmTabs, 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const toastBase = {
-    position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+    position: 'fixed', top: 'calc(14px + env(safe-area-inset-top, 0px))', left: '50%', transform: 'translateX(-50%)',
     padding: '14px 24px', borderRadius: '10px', zIndex: 9999,
     display: 'flex', alignItems: 'center', gap: '10px',
     fontFamily: "'JetBrains Mono', monospace", fontSize: '14px', fontWeight: 600,
   };
 
   return (
-    <div style={{
+    <div className="edge-app-shell" style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0a0f1a 0%, #0f172a 50%, #1e1b4b 100%)',
+      background: 'linear-gradient(145deg, #07111f 0%, #0f172a 48%, #111827 100%)',
       backgroundAttachment: 'fixed',
       fontFamily: "'JetBrains Mono', monospace",
       color: '#e2e8f0',
-      paddingBottom: '70px',
+      paddingBottom: 'calc(82px + env(safe-area-inset-bottom, 0px))',
     }}>
       {showCheckoutToast && (
         <div style={{ ...toastBase, background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', boxShadow: '0 4px 20px rgba(34,197,94,0.4)', fontWeight: 700 }}>
@@ -145,7 +296,14 @@ export default function BettingApp() {
         sportLastUpdated={sportLastUpdated}
       />
       {activeTab === 'GAMES' && (
-        <div style={{ padding: '20px 24px' }}>
+        <main className="edge-app-main">
+          <MarketSummary
+            games={games}
+            injuries={injuries}
+            lastUpdate={lastUpdate}
+            isConnected={isConnected}
+            loading={loading}
+          />
           <SportFilter
             filter={filter}
             setFilter={setFilter}
@@ -167,16 +325,16 @@ export default function BettingApp() {
                   <div key={sportKey}>
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: '10px',
-                      marginBottom: '10px', paddingLeft: '4px',
+                      marginBottom: '10px', paddingLeft: '2px',
                     }}>
                       <div style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '6px 12px', borderRadius: '999px',
-                        background: `${visual.color}18`,
-                        border: `1px solid ${visual.color}55`,
+                        padding: '6px 10px', borderRadius: '6px',
+                        background: 'rgba(15,23,42,0.7)',
+                        border: `1px solid ${visual.color}40`,
                       }}>
                         <span style={{ fontSize: '16px' }}>{visual.icon}</span>
-                        <span style={{ fontSize: '12px', fontWeight: 800, color: visual.color, letterSpacing: '0.5px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: visual.color, letterSpacing: 0 }}>
                           {visual.short}
                         </span>
                         <span style={{ fontSize: '10px', color: '#94a3b8' }}>
@@ -206,16 +364,18 @@ export default function BettingApp() {
                             logoMap={teamLogoMap}
                           />
                           {expandedGame === game.id && (
-                            <GameDetails
-                              game={game}
-                              injuries={injuries}
-                              gameLineHistory={gameLineHistory}
-                              manualOpeners={manualOpeners}
-                              setManualOpeners={setManualOpeners}
-                              historicOdds={historicOdds}
-                              enabledBooks={enabledBooks}
-                              setPendingBet={handleSetPendingBet}
-                            />
+                            <Suspense fallback={<TabFallback label="Loading game details..." />}>
+                              <GameDetails
+                                game={game}
+                                injuries={injuries}
+                                gameLineHistory={gameLineHistory}
+                                manualOpeners={manualOpeners}
+                                setManualOpeners={setManualOpeners}
+                                historicOdds={historicOdds}
+                                enabledBooks={enabledBooks}
+                                setPendingBet={handleSetPendingBet}
+                              />
+                            </Suspense>
                           )}
                         </div>
                       ))}
@@ -228,31 +388,27 @@ export default function BettingApp() {
               )}
             </div>
           )}
-        </div>
+        </main>
       )}
-      {activeTab === 'EDGES_LINES' && <EdgesLines />}
-      {activeTab === 'PROPS' && <PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} />}
-      {activeTab === 'EV_CALC' && (
-        tier === 'pro' ? <EVCalculator /> : (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>EV Calculator - Pro Feature</div>
-            <ProBanner />
-          </div>
+      {activeTab === 'PROPS' && <Suspense fallback={<TabFallback label="Loading props view..." />}><PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} /></Suspense>}
+      {activeTab === 'PRO_TOOLS' && (
+        <Suspense fallback={<TabFallback label="Loading pro tools..." />}>
+          <ProTools
+            games={games}
+            injuries={injuries}
+            watchlist={watchlist}
+            onToggleWatchlist={toggleWatchlist}
+          />
+        </Suspense>
+      )}
+      {activeTab === 'REPORT' && (
+        tier === 'pro' ? <Suspense fallback={<TabFallback label="Building daily report..." />}><DailyProReport games={games} playerProps={playerProps} /></Suspense> : (
+          <Suspense fallback={<TabFallback label="Loading report..." />}><DailyProReport games={games} playerProps={playerProps} /></Suspense>
         )
       )}
-      {activeTab === 'KELLY' && (
-        tier === 'pro' ? <KellyCriterion /> : (
-          <div style={{ padding: '40px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px' }}>Kelly Criterion - Pro Feature</div>
-            <ProBanner />
-          </div>
-        )
-      )}
-      {activeTab === 'TRACKER' && <BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} games={games} historicOdds={historicOdds} />}
+      {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} games={games} historicOdds={historicOdds} /></Suspense>}
       {activeTab === 'SETTINGS' && (
-        <div style={{ padding: '20px 24px', maxWidth: '600px' }}>
+        <main className="edge-app-main" style={{ maxWidth: '640px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>Settings</h2>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>Subscription</div>
@@ -260,7 +416,13 @@ export default function BettingApp() {
               <div>
                 <div style={{ fontSize: '14px', color: '#c4b5fd', fontWeight: 700, marginBottom: '8px' }}>You are on Edge Finder Pro</div>
                 <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>All features unlocked. Thank you for supporting Edge Finder!</div>
-                <a href="https://billing.stripe.com/p/login/live" target="_blank" rel="noopener" style={{ padding: '8px 16px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '6px', color: '#818cf8', fontSize: '11px', textDecoration: 'none' }}>Manage Subscription</a>
+                <button
+                  onClick={handleManageSubscription}
+                  disabled={isOpeningPortal}
+                  style={{ padding: '8px 16px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '6px', color: '#818cf8', fontSize: '11px', cursor: isOpeningPortal ? 'not-allowed' : 'pointer', opacity: isOpeningPortal ? 0.7 : 1, fontFamily: '"JetBrains Mono", monospace' }}
+                >
+                  {isOpeningPortal ? 'Opening...' : 'Manage Subscription'}
+                </button>
               </div>
             ) : <ProBanner />}
           </div>
@@ -288,18 +450,31 @@ export default function BettingApp() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>Sportsbooks</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>{enabledBooks.length} of {Object.keys(BOOKMAKERS).length} active</div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                  {tier === 'pro' ? `${enabledBooks.length} of ${Object.keys(BOOKMAKERS).length} active` : `${FREE_BOOKS.length} free preview books active · Pro unlocks all books`}
+                </div>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => setEnabledBooks(Object.keys(BOOKMAKERS))} style={{ padding: '4px 10px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer' }}>All On</button>
+                <button onClick={() => setEnabledBooks(tier === 'pro' ? Object.keys(BOOKMAKERS) : FREE_BOOKS)} style={{ padding: '4px 10px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer' }}>{tier === 'pro' ? 'All On' : 'Free Books'}</button>
                 <button onClick={() => setEnabledBooks([])} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '4px', color: '#f87171', fontSize: '10px', cursor: 'pointer' }}>All Off</button>
               </div>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {Object.entries(BOOKMAKERS).map(([key, name]) => {
-                const on = enabledBooks.includes(key);
+                const freeAllowed = FREE_BOOKS.includes(key);
+                const lockedForFree = tier !== 'pro' && !freeAllowed;
+                const on = tier === 'pro' ? enabledBooks.includes(key) : freeAllowed;
                 return (
-                  <button key={key} onClick={() => setEnabledBooks(prev => on ? prev.filter(b => b !== key) : [...prev, key])} style={{ padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: on ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.4)', border: on ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.3)', color: on ? '#22c55e' : '#475569' }}>{name}</button>
+                  <button
+                    key={key}
+                    disabled={lockedForFree}
+                    onClick={() => {
+                      if (lockedForFree) return;
+                      setEnabledBooks(prev => on ? prev.filter(b => b !== key) : [...prev, key]);
+                    }}
+                    title={lockedForFree ? 'Pro unlocks this sportsbook' : name}
+                    style={{ padding: '8px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: lockedForFree ? 'not-allowed' : 'pointer', background: on ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.4)', border: on ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.3)', color: lockedForFree ? '#475569' : on ? '#22c55e' : '#475569', opacity: lockedForFree ? 0.55 : 1 }}
+                  >{lockedForFree ? `🔒 ${name}` : name}</button>
                 );
               })}
             </div>
@@ -339,7 +514,7 @@ export default function BettingApp() {
           <div style={{ textAlign: 'center', padding: '16px', fontSize: '10px', color: '#475569' }}>
             Edge Finder v2.4
           </div>
-        </div>
+        </main>
       )}
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
       <style>{`

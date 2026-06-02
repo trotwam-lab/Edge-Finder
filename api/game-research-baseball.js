@@ -21,6 +21,20 @@ export const MLB_IDS = {
   'Texas Rangers': 13, 'Toronto Blue Jays': 14, 'Washington Nationals': 20,
 };
 
+const MLB_ALIASES = {
+  ARI: 'Arizona Diamondbacks', ATL: 'Atlanta Braves', BAL: 'Baltimore Orioles',
+  BOS: 'Boston Red Sox', CHC: 'Chicago Cubs', CWS: 'Chicago White Sox',
+  CIN: 'Cincinnati Reds', CLE: 'Cleveland Guardians', COL: 'Colorado Rockies',
+  DET: 'Detroit Tigers', HOU: 'Houston Astros', KC: 'Kansas City Royals', KCR: 'Kansas City Royals',
+  LAA: 'Los Angeles Angels', LAD: 'Los Angeles Dodgers', MIA: 'Miami Marlins',
+  MIL: 'Milwaukee Brewers', MIN: 'Minnesota Twins', NYM: 'New York Mets',
+  NYY: 'New York Yankees', ATH: 'Oakland Athletics', OAK: 'Oakland Athletics',
+  PHI: 'Philadelphia Phillies', PIT: 'Pittsburgh Pirates', SD: 'San Diego Padres', SDP: 'San Diego Padres',
+  SF: 'San Francisco Giants', SFG: 'San Francisco Giants', SEA: 'Seattle Mariners',
+  STL: 'St. Louis Cardinals', TB: 'Tampa Bay Rays', TBR: 'Tampa Bay Rays',
+  TEX: 'Texas Rangers', TOR: 'Toronto Blue Jays', WSH: 'Washington Nationals', WAS: 'Washington Nationals',
+};
+
 // Park factors (simplified — 100 = neutral, >100 favors hitters, <100 favors pitchers)
 // Source: 3-year rolling park factors from FanGraphs/Statcast approximations
 const PARK_FACTORS = {
@@ -76,16 +90,35 @@ const TEAM_CITIES = {
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+function normalizeTeamKey(teamName) {
+  return String(teamName || '').trim().replace(/\s+/g, ' ');
+}
+
+function canonicalTeamName(teamName) {
+  const normalized = normalizeTeamKey(teamName);
+  if (MLB_IDS[normalized]) return normalized;
+  const upper = normalized.toUpperCase().replace(/\./g, '');
+  return MLB_ALIASES[upper] || normalized;
+}
+
+function rosterAthletes(roster) {
+  return (roster?.athletes || []).flatMap((entry) => entry?.items || entry || []).filter(Boolean);
+}
+
+function playerHeadshot(player) {
+  return player?.headshot?.href || (player?.id ? `https://a.espncdn.com/i/headshots/mlb/players/full/${player.id}.png` : null);
+}
+
 function getTeamId(teamName) {
-  return MLB_IDS[teamName] || null;
+  return MLB_IDS[canonicalTeamName(teamName)] || null;
 }
 
 function getParkFactor(teamName) {
-  return PARK_FACTORS[teamName] || { name: 'Unknown', factor: 100, type: 'neutral', notes: 'No data available' };
+  return PARK_FACTORS[canonicalTeamName(teamName)] || { name: 'Unknown', factor: 100, type: 'neutral', notes: 'No data available' };
 }
 
 function getCity(teamName) {
-  return TEAM_CITIES[teamName] || null;
+  return TEAM_CITIES[canonicalTeamName(teamName)] || null;
 }
 
 // Generic fetch with timeout and error handling
@@ -169,9 +202,10 @@ function extractProbablePitcher(gameEvent, roster) {
   const notes = gameEvent.competitions[0].notes.map(n => n.headline || n.text || '').join(' ');
   const pitcherMatch = notes.match(/([A-Z][a-z]+\s[A-Z][a-z]+)\s*\(/);
   
-  if (pitcherMatch && roster?.athletes) {
+  const athletes = rosterAthletes(roster);
+  if (pitcherMatch && athletes.length) {
     const name = pitcherMatch[1];
-    const player = roster.athletes.find(a => 
+    const player = athletes.find(a => 
       a.fullName?.includes(name) || name.includes(a.fullName?.split(' ').pop() || '')
     );
     if (player) return formatPitcherFromRoster(player);
@@ -185,8 +219,9 @@ function formatPitcherFromRoster(player) {
   const pitching = seasonStats.pitching || {};
   
   return {
-    name: player.fullName || 'Unknown',
+    name: player.fullName || player.displayName || 'Unknown',
     id: player.id,
+    headshot: playerHeadshot(player),
     position: player.position?.abbreviation || 'P',
     era: parseFloat(pitching.earnedRunAverage) || null,
     whip: parseFloat(pitching.walksHitsPerInningPitched) || null,
@@ -206,7 +241,8 @@ function formatPitcherFromRoster(player) {
  * Uses a simple rotation estimate — in a real app you'd track rotations more carefully
  */
 async function estimateNextStarter(teamId, roster, schedule, targetDate) {
-  if (!schedule?.events || !roster?.athletes) return null;
+  const athletes = rosterAthletes(roster);
+  if (!schedule?.events || !athletes.length) return null;
 
   // Get completed games, most recent first
   const completedGames = schedule.events
@@ -227,7 +263,7 @@ async function estimateNextStarter(teamId, roster, schedule, targetDate) {
 
   if (starters.length === 0) {
     // Fallback: return best pitcher by games started from roster stats
-    const pitchers = roster.athletes.filter(a => a.position?.abbreviation === 'P');
+    const pitchers = athletes.filter(a => a.position?.abbreviation === 'P');
     const withStats = pitchers
       .map(p => formatPitcherFromRoster(p))
       .filter(p => p.gamesStarted > 0)
@@ -237,7 +273,7 @@ async function estimateNextStarter(teamId, roster, schedule, targetDate) {
 
   // Get the most recent starter and their stats
   const mostRecent = starters[0];
-  const player = roster.athletes.find(a => a.id === mostRecent.id);
+  const player = athletes.find(a => String(a.id) === String(mostRecent.id));
   if (player) {
     const formatted = formatPitcherFromRoster(player);
     formatted.lastStart = {
@@ -259,7 +295,7 @@ function extractStarterFromBoxScore(boxScore, teamId) {
     if (!teamBox.team?.id || teamBox.team.id != teamId) continue;
     
     // Find the pitching section
-    const pitchingStats = teamBox.statistics?.find(s => s.name === 'pitching');
+    const pitchingStats = teamBox.statistics?.find(s => s.name === 'pitching' || s.labels?.[0] === 'IP');
     if (!pitchingStats?.athletes) continue;
     
     // The starter is usually the first pitcher listed with the most innings
@@ -268,8 +304,9 @@ function extractStarterFromBoxScore(boxScore, teamId) {
       .map(a => ({
         id: a.athlete?.id,
         name: a.athlete?.displayName,
+        headshot: a.athlete?.headshot?.href || (a.athlete?.id ? `https://a.espncdn.com/i/headshots/mlb/players/full/${a.athlete.id}.png` : null),
         innings: a.stats[0] || '', // IP is usually first stat
-        earnedRuns: extractEarnedRuns(a.stats),
+        earnedRuns: Number.isNaN(parseInt(a.stats[3], 10)) ? extractEarnedRuns(a.stats) : parseInt(a.stats[3], 10),
         opponent: boxScore.header?.competitions?.[0]?.competitors?.find(c => c.team?.id != teamId)?.team?.displayName,
       }))
       .filter(p => p.id && p.innings)
@@ -363,7 +400,7 @@ function extractPitcherStartFromBoxScore(boxScore, pitcherId, teamId) {
   for (const teamBox of boxScore.boxscore.players) {
     if (!teamBox.team?.id || teamBox.team.id != teamId) continue;
     
-    const pitchingStats = teamBox.statistics?.find(s => s.name === 'pitching');
+    const pitchingStats = teamBox.statistics?.find(s => s.name === 'pitching' || s.labels?.[0] === 'IP');
     if (!pitchingStats?.athletes) continue;
     
     const pitcher = pitchingStats.athletes.find(a => a.athlete?.id == pitcherId);
@@ -382,7 +419,7 @@ function extractPitcherStartFromBoxScore(boxScore, pitcherId, teamId) {
       earnedRuns: parseInt(stats[3]) || 0,
       walks: parseInt(stats[4]) || 0,
       strikeouts: parseInt(stats[5]) || 0,
-      decision: stats[6] || '', // W/L/ND
+      homeRuns: parseInt(stats[6], 10) || 0,
     };
   }
   return null;
@@ -605,7 +642,7 @@ function extractBullpenFromBoxScore(boxScore, teamId) {
   for (const teamBox of boxScore.boxscore.players) {
     if (teamBox.team?.id != teamId) continue;
     
-    const pitchingStats = teamBox.statistics?.find(s => s.name === 'pitching');
+    const pitchingStats = teamBox.statistics?.find(s => s.name === 'pitching' || s.labels?.[0] === 'IP');
     if (!pitchingStats?.athletes) continue;
     
     let earnedRuns = 0;
@@ -829,6 +866,9 @@ async function fetchH2H(homeTeam, awayTeam, homeId, awayId) {
  * @returns {Object} Structured research data
  */
 export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
+  homeTeam = canonicalTeamName(homeTeam);
+  awayTeam = canonicalTeamName(awayTeam);
+
   const homeId = getTeamId(homeTeam);
   const awayId = getTeamId(awayTeam);
 

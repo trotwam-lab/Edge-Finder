@@ -2,7 +2,7 @@ import React from 'react';
 import { TrendingUp } from 'lucide-react';
 import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
-import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds } from '../utils/odds-math.js';
+import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { buildPremiumGameSummary } from '../utils/game-summary.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
@@ -70,6 +70,11 @@ export default function GameDetails({
   const bestSpreadCandidate = spreadCandidates.find(c => c.name === game.home_team) || spreadCandidates[0] || null;
   const bestTotalCandidate = totalCandidates[0] || null;
   const bestMoneylineCandidate = moneylineCandidates.find(c => c.name === game.home_team) || moneylineCandidates[0] || null;
+  const lineShopping = getLineShoppingScore(game.bookmakers);
+  const topShoppingRows = lineShopping.opportunities.slice(0, 4);
+  const spreadMoveSignal = getSpreadMoveSignal(game, history, opener, current);
+  const disagreement = buildMarketDisagreement(game);
+  const topDisagreements = disagreement.opportunities.filter(item => item.strength !== 'LOW').slice(0, 4);
 
   // Injury data - try new prefixed format first, then fall back to old format
   // This prevents cross-league collisions (e.g., Philadelphia Eagles vs Winthrop Eagles)
@@ -104,15 +109,14 @@ export default function GameDetails({
 
   // Trend
   let trendText = '', trendColor = '', trendIcon = '';
-  const spreadMoveAbs = Math.abs(spreadMove);
-  if (spreadMoveAbs >= 2) {
-    trendText = spreadMove > 0 ? `HEAVY PUBLIC ACTION on ${game.home_team}` : `SHARP MONEY on ${game.away_team}`;
-    trendColor = spreadMove > 0 ? '#f97316' : '#3b82f6';
-    trendIcon = spreadMove > 0 ? '🏆¥' : '🏆°';
-  } else if (spreadMoveAbs >= 1) {
-    trendText = spreadMove > 0 ? `Steam move toward ${game.home_team}` : `Line fading ${game.home_team}`;
-    trendColor = spreadMove > 0 ? '#f97316' : '#64748b';
-    trendIcon = spreadMove > 0 ? '🏆' : '🏆';
+  if (spreadMoveSignal?.moveAbs >= 2) {
+    trendText = `Steam move toward ${spreadMoveSignal.team}`;
+    trendColor = '#f97316';
+    trendIcon = '🔥';
+  } else if (spreadMoveSignal?.moveAbs >= 1) {
+    trendText = `Market moving toward ${spreadMoveSignal.team}`;
+    trendColor = '#f97316';
+    trendIcon = '↗';
   }
 
   return (
@@ -176,6 +180,190 @@ export default function GameDetails({
             Unlock a sharper game read: market snapshot, what stands out, sport-specific context, and the best current angle.
           </div>
           <ProBanner compact />
+        </div>
+      )}
+
+      {/* Phase 2: Steam + Market Disagreement */}
+      {tier === 'pro' ? (
+        <div style={{
+          marginBottom: '16px',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+          gap: '12px'
+        }}>
+          <div style={{
+            padding: '14px',
+            background: 'rgba(249, 115, 22, 0.10)',
+            border: '1px solid rgba(249, 115, 22, 0.25)',
+            borderRadius: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <h4 style={{ fontSize: '12px', color: '#fdba74', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Steam Move Tracker</h4>
+              {spreadMoveSignal && (
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  padding: '4px 8px',
+                  borderRadius: '999px',
+                  background: spreadMoveSignal.strength === 'HIGH' ? 'rgba(34,197,94,0.18)' : 'rgba(234,179,8,0.18)',
+                  color: spreadMoveSignal.strength === 'HIGH' ? '#22c55e' : '#eab308'
+                }}>{spreadMoveSignal.strength}</span>
+              )}
+            </div>
+            {spreadMoveSignal ? (
+              <>
+                <div style={{ fontSize: '14px', color: '#f8fafc', fontWeight: 800, marginBottom: '4px' }}>
+                  {spreadMoveSignal.label}
+                </div>
+                <div style={{ fontSize: '12px', color: '#cbd5e1', marginBottom: '8px' }}>
+                  Home spread moved {spreadMoveSignal.detail}.
+                </div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  Negative movement means the market is pushing toward the home team. Positive movement means it is pushing toward the away team.
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                No meaningful spread steam detected from the stored opener yet.
+              </div>
+            )}
+          </div>
+
+          <div style={{
+            padding: '14px',
+            background: 'rgba(234, 179, 8, 0.10)',
+            border: '1px solid rgba(234, 179, 8, 0.24)',
+            borderRadius: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <h4 style={{ fontSize: '12px', color: '#fde68a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Market Disagreement Radar</h4>
+              {disagreement.top && (
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  padding: '4px 8px',
+                  borderRadius: '999px',
+                  background: disagreement.top.strength === 'HIGH' ? 'rgba(34,197,94,0.18)' : disagreement.top.strength === 'MEDIUM' ? 'rgba(234,179,8,0.18)' : 'rgba(100,116,139,0.18)',
+                  color: disagreement.top.strength === 'HIGH' ? '#22c55e' : disagreement.top.strength === 'MEDIUM' ? '#eab308' : '#94a3b8'
+                }}>{disagreement.top.strength}</span>
+              )}
+            </div>
+            {topDisagreements.length > 0 ? (
+              <div style={{ display: 'grid', gap: '7px' }}>
+                {topDisagreements.map(item => (
+                  <div key={`${item.type}-${item.label}`} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 64px',
+                    gap: '8px',
+                    padding: '8px 9px',
+                    borderRadius: '8px',
+                    background: 'rgba(15,23,42,0.45)',
+                    border: '1px solid rgba(250,204,21,0.12)'
+                  }}>
+                    <div>
+                      <div style={{ color: '#f8fafc', fontSize: '12px', fontWeight: 700 }}>{item.label}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '2px' }}>
+                        {BOOKMAKERS[item.low.book] || item.low.bookTitle}: {item.low.value > 0 ? '+' : ''}{item.low.value} · {BOOKMAKERS[item.high.book] || item.high.bookTitle}: {item.high.value > 0 ? '+' : ''}{item.high.value}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', color: '#fbbf24', fontSize: '13px', fontWeight: 900 }}>
+                      {item.range}{item.unit}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                Books are mostly aligned right now. No major shop-this-game disagreement.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          marginBottom: '16px',
+          padding: '14px',
+          background: 'rgba(234, 179, 8, 0.08)',
+          border: '1px solid rgba(234, 179, 8, 0.18)',
+          borderRadius: '12px'
+        }}>
+          <div style={{ fontSize: '12px', color: '#fde68a', textTransform: 'uppercase', marginBottom: '8px' }}>Steam + Disagreement</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6 }}>
+            Pro shows where the market is moving and where books disagree enough to shop the game.
+          </div>
+        </div>
+      )}
+
+      {/* Line Shopping Score */}
+      {tier === 'pro' ? (
+        <div style={{
+          marginBottom: '16px',
+          padding: '14px',
+          background: 'rgba(20, 184, 166, 0.10)',
+          border: '1px solid rgba(20, 184, 166, 0.28)',
+          borderRadius: '12px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            <h4 style={{ fontSize: '12px', color: '#5eead4', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Line Shopping Score</h4>
+            <span style={{
+              fontSize: '10px', fontWeight: 800, padding: '4px 8px', borderRadius: '999px',
+              background: lineShopping.score >= 80 ? 'rgba(34,197,94,0.18)' : lineShopping.score >= 45 ? 'rgba(234,179,8,0.18)' : 'rgba(100,116,139,0.18)',
+              color: lineShopping.score >= 80 ? '#22c55e' : lineShopping.score >= 45 ? '#eab308' : '#94a3b8'
+            }}>{lineShopping.label} {lineShopping.score}</span>
+          </div>
+
+          {topShoppingRows.length > 0 ? (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              {topShoppingRows.map(item => (
+                <div key={`${item.marketKey}-${item.outcomeName}-${item.point}`} style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.2fr 1fr 1fr 70px',
+                  gap: '10px',
+                  alignItems: 'center',
+                  padding: '9px 10px',
+                  background: 'rgba(15,23,42,0.55)',
+                  border: '1px solid rgba(45,212,191,0.14)',
+                  borderRadius: '8px',
+                  fontSize: '11px'
+                }}>
+                  <div>
+                    <div style={{ color: '#f8fafc', fontWeight: 700 }}>{item.label}</div>
+                    <div style={{ color: '#64748b', marginTop: '2px' }}>{item.marketLabel} across {item.bookCount} books</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '10px', marginBottom: '2px' }}>Best price</div>
+                    <div style={{ color: '#2dd4bf', fontWeight: 800 }}>
+                      {BOOKMAKERS[item.best.book] || item.best.bookTitle} {formatOdds(item.best.price)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#64748b', fontSize: '10px', marginBottom: '2px' }}>Worst price</div>
+                    <div style={{ color: '#94a3b8', fontWeight: 700 }}>
+                      {BOOKMAKERS[item.worst.book] || item.worst.bookTitle} {formatOdds(item.worst.price)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', color: '#22c55e', fontWeight: 900, fontSize: '13px' }}>
+                    {item.centsSaved}c
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#94a3b8', fontSize: '12px' }}>No meaningful price gap across the visible books yet.</div>
+          )}
+        </div>
+      ) : (
+        <div style={{
+          marginBottom: '16px',
+          padding: '14px',
+          background: 'rgba(20, 184, 166, 0.08)',
+          border: '1px solid rgba(20, 184, 166, 0.18)',
+          borderRadius: '12px'
+        }}>
+          <div style={{ fontSize: '12px', color: '#5eead4', textTransform: 'uppercase', marginBottom: '8px' }}>Line Shopping Score</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6 }}>
+            Pro compares every visible book and shows where the best price is before you place the bet.
+          </div>
         </div>
       )}
 

@@ -17,7 +17,7 @@ import {
   buildPropAlerts,
   getPropTimingState,
 } from '../utils/props.js';
-import { getSportVisual } from '../utils/team-logos.js';
+import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
 
 const FREE_PLAYERS_LIMIT = 3;
 const SORT_OPTIONS = [
@@ -101,12 +101,36 @@ function PlayerBadge({ name, photo }) {
     <div style={{ width: 36, height: 36, borderRadius: '999px', background: 'linear-gradient(135deg, rgba(99,102,241,0.35), rgba(14,165,233,0.25))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f8fafc', fontWeight: 800, fontSize: '12px', flexShrink: 0, overflow: 'hidden', border: '1px solid rgba(148,163,184,0.15)' }}>
       {fallback || !photo
         ? getPlayerInitials(name)
-        : <img src={photo} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setFallback(true)} />}
+        : <img src={photo} alt={name} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setFallback(true)} />}
     </div>
   );
 }
 
-function OddsCell({ price, isBest, side, player, marketKey, line, book, game, onQuickAdd }) {
+function getGameTeamNames(game) {
+  return String(game || '')
+    .split(/\s+(?:@|vs\.?|v\.)\s+/i)
+    .map(name => name.trim())
+    .filter(Boolean);
+}
+
+function findTeamIndexEntry(sportTeams, teamName) {
+  const key = normalizeTeamKey(teamName);
+  if (sportTeams[key]) return sportTeams[key];
+
+  return Object.entries(sportTeams).find(([teamKey]) => (
+    teamKey.includes(key) || key.includes(teamKey)
+  ))?.[1] || null;
+}
+
+function collectRosterAthletes(data) {
+  return (data?.athletes || []).flatMap(group => {
+    if (Array.isArray(group?.items)) return group.items;
+    if (group?.athlete) return [group.athlete];
+    return group ? [group] : [];
+  });
+}
+
+function OddsCell({ price, isBest, side, player, marketKey, line, book, game, gameId, sportKey, commenceTime, onQuickAdd }) {
   const [hovered, setHovered] = useState(false);
   const hasPrice = price != null;
   const isOver = side === 'over';
@@ -114,7 +138,21 @@ function OddsCell({ price, isBest, side, player, marketKey, line, book, game, on
   const bestBg = isOver ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
   const hoverBg = isOver ? 'rgba(34,197,94,0.22)' : 'rgba(239,68,68,0.22)';
   if (!hasPrice) return <td style={{ padding: '6px 8px', textAlign: 'center', color: '#334155', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}>—</td>;
-  const handleClick = () => onQuickAdd({ player, game, book, odds: price, pick: `${player} ${getMarketDisplayName(marketKey)} ${isOver ? `Over ${line}` : `Under ${line}`}`, type: 'Player Prop', date: new Date().toISOString() });
+  const handleClick = () => onQuickAdd({
+    player,
+    game,
+    book,
+    odds: price,
+    pick: `${player} ${getMarketDisplayName(marketKey)} ${isOver ? `Over ${line}` : `Under ${line}`}`,
+    type: 'Player Prop',
+    date: new Date().toISOString(),
+    gameId,
+    sportKey,
+    marketKey,
+    outcomeName: isOver ? 'Over' : 'Under',
+    outcomePoint: line,
+    commenceTime,
+  });
   return (
     <td onClick={handleClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} title={`Click to add: ${isOver ? 'Over' : 'Under'} ${line} @ ${formatOdds(price)} (${book})`} style={{ padding: '6px 8px', textAlign: 'center', cursor: 'pointer', borderRadius: '5px', background: hovered ? hoverBg : isBest ? bestBg : 'transparent', transition: 'background 0.12s', fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', position: 'relative' }}>
       <span style={{ color: isBest || hovered ? baseColor : '#e2e8f0', fontWeight: isBest || hovered ? 700 : 400 }}>{formatOdds(price)}</span>
@@ -145,7 +183,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
       const meta = getSportMeta(sport);
       if (!meta.espnPath || (logoMap[sport] && teamIndexMap[sport])) return;
       try {
-        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${meta.espnPath}/teams`);
+        const res = await fetch(`/api/espn-assets?type=teams&path=${encodeURIComponent(meta.espnPath)}`);
         if (!res.ok) return;
         const data = await res.json();
         const teams = data?.sports?.[0]?.leagues?.[0]?.teams || [];
@@ -172,9 +210,9 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
     const seen = new Set();
     playerProps.forEach(prop => {
       const sportTeams = teamIndexMap[prop.sport] || {};
-      const teams = String(prop.game || '').split(' @ ').map(name => name.trim()).filter(Boolean);
+      const teams = getGameTeamNames(prop.game);
       teams.forEach(teamName => {
-        const match = sportTeams[normalizeTeamKey(teamName)];
+        const match = findTeamIndexEntry(sportTeams, teamName);
         if (!match) return;
         const key = `${prop.sport}::${match.id}`;
         if (seen.has(key)) return;
@@ -185,20 +223,17 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
 
     rosterTargets.forEach(async ({ sport, teamId, espnPath }) => {
       try {
-        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${espnPath}/teams/${teamId}/roster`);
+        const res = await fetch(`/api/espn-assets?type=roster&path=${encodeURIComponent(espnPath)}&teamId=${encodeURIComponent(teamId)}`);
         if (!res.ok) return;
         const data = await res.json();
-        const athletes = [
-          ...(data?.athletes || []),
-          ...((data?.athletes || []).flatMap(group => group?.items || [])),
-        ];
+        const athletes = collectRosterAthletes(data);
         if (!athletes.length) return;
         setPlayerHeadshots(prev => {
           const next = { ...prev };
           athletes.forEach(athlete => {
             const person = athlete?.athlete || athlete;
             const displayName = person?.displayName || person?.fullName;
-            const headshot = person?.headshot?.href || person?.image?.href || null;
+            const headshot = person?.headshot?.href || person?.image?.href || person?.photoUrl || null;
             if (!displayName || !headshot) return;
             next[`${sport}::${normalizeTeamKey(displayName)}`] = headshot;
           });
@@ -282,6 +317,12 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
       const topMarket = marketEntries.sort((a, b) => (b.insights.sortEdge - a.insights.sortEdge) || (b.insights.sortBooks - a.insights.sortBooks))[0];
       player.timing = getPropTimingState({ gameStatus: gameStatusMap[player.gameId], commenceTime: player.commenceTime });
       player.visuals = buildTeamVisuals(player.game, player.sport, logoMap);
+      if (player.visuals.away && !player.visuals.away.logo) {
+        player.visuals.away.logo = resolveTeamLogo(logoMap, player.sport, player.visuals.away.name);
+      }
+      if (player.visuals.home && !player.visuals.home.logo) {
+        player.visuals.home.logo = resolveTeamLogo(logoMap, player.sport, player.visuals.home.name);
+      }
       player.playerBadge = getPlayerInitials(player.name);
       player.photo = playerHeadshots[`${player.sport}::${normalizeTeamKey(player.name)}`] || null;
       player.topInsight = topMarket?.insights || null;
@@ -333,7 +374,16 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
   const playersBySport = useMemo(() => filteredPlayers.reduce((acc, player) => { if (!acc[player.sport]) acc[player.sport] = []; acc[player.sport].push(player); return acc; }, {}), [filteredPlayers]);
   const toggleExpand = key => setExpandedPlayers(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
   const stats = useMemo(() => ({ totalPlayers: players.length, totalProps: playerProps.length, totalSports: Object.keys(playersBySport).length, topMarketLabel: marketFilterOptions[1] && marketFilterOptions[1] !== 'ALL' ? getMarketDisplayName(marketFilterOptions[1]) : '—', hockeyProps: playerProps.filter(p => p.sport === 'icehockey_nhl').length }), [players, playerProps, playersBySport, marketFilterOptions]);
-  const handleConfirm = (betWithWager) => { if (setPendingBet) setPendingBet({ game: betWithWager.game || betWithWager.player, type: 'Player Prop', pick: betWithWager.pick, odds: betWithWager.odds, wager: betWithWager.wager, date: betWithWager.date || new Date().toISOString() }); setPendingModal(null); };
+  const handleConfirm = (betWithWager) => {
+    if (setPendingBet) setPendingBet({
+      ...betWithWager,
+      game: betWithWager.game || betWithWager.player,
+      type: 'Player Prop',
+      date: betWithWager.date || new Date().toISOString(),
+      autoSave: true,
+    });
+    setPendingModal(null);
+  };
 
   if (loading) return <div style={{ padding: '20px 24px', textAlign: 'center', paddingTop: '60px' }}><Loader size={36} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} /><p style={{ marginTop: '16px', color: '#94a3b8' }}>Loading player props...</p></div>;
 
@@ -435,7 +485,7 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
                     <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(30,41,59,0.65)', border: '1px solid rgba(71,85,105,0.25)' }}><div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>Best numbers</div><div style={{ fontSize: '11px', color: '#22c55e' }}>Over: {mkt.insights.bestOverBook ? `${getBookAbbreviation(mkt.insights.bestOverBook)} ${formatOdds(mkt.insights.bestOver)}` : '—'}</div><div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>Under: {mkt.insights.bestUnderBook ? `${getBookAbbreviation(mkt.insights.bestUnderBook)} ${formatOdds(mkt.insights.bestUnder)}` : '—'}</div><div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '6px' }}>Disagreement: {mkt.insights.lineRange ? `${mkt.insights.lineRange.toFixed(1)} pts` : 'same number market-wide'}</div></div>
                     <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(30,41,59,0.65)', border: '1px solid rgba(71,85,105,0.25)' }}><div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px' }}>Trade desk</div><div style={{ fontSize: '11px', color: '#e2e8f0' }}>Status: <span style={{ color: mkt.insights.recommendation === 'Playable' ? '#22c55e' : mkt.insights.recommendation === 'Monitor' ? '#f59e0b' : '#94a3b8' }}>{mkt.insights.recommendation}</span></div><div style={{ fontSize: '11px', color: '#e2e8f0', marginTop: '4px' }}>Fair: O {mkt.insights.fairOverPrice != null ? formatOdds(mkt.insights.fairOverPrice) : '—'} / U {mkt.insights.fairUnderPrice != null ? formatOdds(mkt.insights.fairUnderPrice) : '—'}</div>{mkt.insights.strongestMove && <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '6px' }}>Movement: {getBookAbbreviation(mkt.insights.strongestMove.book)} {mkt.insights.strongestMove.side} {mkt.insights.strongestMove.lineChange > 0 ? '+' : ''}{mkt.insights.strongestMove.lineChange}</div>}</div>
                   </div>
-                  <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}><thead><tr><td style={{ padding: '4px 8px', color: '#64748b', fontWeight: 600, width: '56px' }}>Side</td>{books.map(book => <td key={book} style={{ padding: '4px 8px', color: '#64748b', textAlign: 'center', minWidth: '52px' }}>{getBookAbbreviation(book)}</td>)}</tr></thead><tbody><tr><td style={{ padding: '6px 8px', color: '#22c55e', fontWeight: 700 }}>Over</td>{books.map(book => <OddsCell key={book} price={mkt.over[book]} isBest={mkt.over[book] != null && mkt.over[book] === bestOver} side="over" player={player.name} marketKey={marketKey} line={mkt.line} book={book} game={player.game} onQuickAdd={setPendingModal} />)}</tr><tr><td style={{ padding: '6px 8px', color: '#ef4444', fontWeight: 700 }}>Under</td>{books.map(book => <OddsCell key={book} price={mkt.under[book]} isBest={mkt.under[book] != null && mkt.under[book] === bestUnder} side="under" player={player.name} marketKey={marketKey} line={mkt.line} book={book} game={player.game} onQuickAdd={setPendingModal} />)}</tr></tbody></table></div>
+                  <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace' }}><thead><tr><td style={{ padding: '4px 8px', color: '#64748b', fontWeight: 600, width: '56px' }}>Side</td>{books.map(book => <td key={book} style={{ padding: '4px 8px', color: '#64748b', textAlign: 'center', minWidth: '52px' }}>{getBookAbbreviation(book)}</td>)}</tr></thead><tbody><tr><td style={{ padding: '6px 8px', color: '#22c55e', fontWeight: 700 }}>Over</td>{books.map(book => <OddsCell key={book} price={mkt.over[book]} isBest={mkt.over[book] != null && mkt.over[book] === bestOver} side="over" player={player.name} marketKey={marketKey} line={mkt.line} book={book} game={player.game} gameId={player.gameId} sportKey={player.sport} commenceTime={player.commenceTime} onQuickAdd={setPendingModal} />)}</tr><tr><td style={{ padding: '6px 8px', color: '#ef4444', fontWeight: 700 }}>Under</td>{books.map(book => <OddsCell key={book} price={mkt.under[book]} isBest={mkt.under[book] != null && mkt.under[book] === bestUnder} side="under" player={player.name} marketKey={marketKey} line={mkt.line} book={book} game={player.game} gameId={player.gameId} sportKey={player.sport} commenceTime={player.commenceTime} onQuickAdd={setPendingModal} />)}</tr></tbody></table></div>
                 </div>; })}</div>}
             </div>; })}
             {tier === 'free' && sportPlayers.length > FREE_PLAYERS_LIMIT && <><div style={{ position: 'relative', marginTop: '8px' }}><div style={{ display: 'flex', flexDirection: 'column', gap: '12px', filter: 'blur(6px)', opacity: 0.4, pointerEvents: 'none' }}>{sportPlayers.slice(FREE_PLAYERS_LIMIT, FREE_PLAYERS_LIMIT + 2).map(p => <div key={p.key} style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: '12px' }}><div style={{ fontSize: '14px', fontWeight: 600, color: '#e2e8f0' }}>{p.name}</div><div style={{ fontSize: '11px', color: '#64748b' }}>{Object.keys(p.markets).length} markets</div></div>)}</div><div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.6)', borderRadius: '12px' }}><Lock size={28} color="#818cf8" style={{ marginBottom: '12px' }} /><div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>+{sportPlayers.length - FREE_PLAYERS_LIMIT} more players locked</div><div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '16px' }}>Upgrade to Pro for all player props</div></div></div><div style={{ marginTop: '8px' }}><ProBanner /></div></>}

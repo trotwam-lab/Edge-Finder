@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SPORTS, BOOKMAKERS, SPORT_ESPN_MAP } from '../constants.js';
+import { auth } from '../firebase.js';
 
 // ============================================================
 // Persistent state — survives page refreshes via localStorage
@@ -25,6 +26,62 @@ function usePersistentState(key, defaultValue) {
 
 export { usePersistentState };
 
+function normalizeName(name = '') {
+  return String(name)
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function scoreMatchesGame(score, game) {
+  if (!score || !game) return false;
+  if (score.id && game.id && score.id === game.id) return true;
+
+  const scoreHome = normalizeName(score.home_team);
+  const scoreAway = normalizeName(score.away_team);
+  const gameHome = normalizeName(game.home_team);
+  const gameAway = normalizeName(game.away_team);
+  if (!scoreHome || !scoreAway || !gameHome || !gameAway) return false;
+
+  const sameTeams = scoreHome === gameHome && scoreAway === gameAway;
+  const reversedTeams = scoreHome === gameAway && scoreAway === gameHome;
+  if (!sameTeams && !reversedTeams) return false;
+
+  const scoreTime = Date.parse(score.commence_time || score.start_time || score.date || '');
+  const gameTime = Date.parse(game.commence_time || '');
+  if (Number.isFinite(scoreTime) && Number.isFinite(gameTime)) {
+    // Keep the fallback tight so doubleheaders/soccer cups do not cross-match.
+    return Math.abs(scoreTime - gameTime) <= 12 * 60 * 60 * 1000;
+  }
+  return true;
+}
+
+async function getAuthHeaders() {
+  const user = auth.currentUser;
+  if (!user) return {};
+  try {
+    const token = await user.getIdToken();
+    return {
+      Authorization: `Bearer ${token}`,
+      'X-EdgeFinder-Email': user.email || '',
+    };
+  } catch {
+    return user?.email ? { 'X-EdgeFinder-Email': user.email } : {};
+  }
+}
+
+function findScoreForGame(scoresData = [], game) {
+  return scoresData.find(score => score?.id === game?.id) || scoresData.find(score => scoreMatchesGame(score, game));
+}
+
+function getTeamScore(scoreData, teamName) {
+  if (!scoreData?.scores?.length || !teamName) return null;
+  const target = normalizeName(teamName);
+  const row = scoreData.scores.find(score => normalizeName(score.name) === target);
+  return row?.score ?? null;
+}
+
 export function useOdds({ filter, enabledSports = null, refreshInterval: defaultInterval = 120 }) {
     const [games, setGames] = useState([]);
     const [playerProps, setPlayerProps] = useState([]);
@@ -39,6 +96,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [propHistory, setPropHistory] = usePersistentState('edgefinder_prop_history', {});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
+    const hasCompletedInitialLoadRef = useRef(false);
 
   // Determine refresh interval: 60s if any game is live, 120s otherwise
   const hasLiveGame = games.some(g =>
@@ -51,7 +109,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   // ============================================================
 
   const fetchOdds = useCallback(async (sport) => {
-        const res = await fetch(`/api/odds?sport=${sport}&markets=h2h,spreads,totals`);
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/odds?sport=${sport}&markets=h2h,spreads,totals`, { headers });
         if (!res.ok) throw new Error(`Odds API Error: ${res.status}`);
         return res.json();
   }, []);
@@ -60,7 +119,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         try {
                 const res = await fetch(`/api/scores?sport=${sport}`);
                 if (!res.ok) return [];
-                return res.json();
+                const data = await res.json();
+                return Array.isArray(data) ? data : [];
         } catch {
                 return [];
         }
@@ -97,10 +157,11 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
   const fetchPlayerProps = useCallback(async (sport) => {
         try {
-                const res = await fetch(`/api/props?sport=${sport}`);
+                const headers = await getAuthHeaders();
+                const res = await fetch(`/api/props?sport=${sport}`, { headers });
                 if (!res.ok) return [];
                 const allProps = await res.json();
-                return allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey }));
+                return Array.isArray(allProps) ? allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey })) : [];
         } catch {
                 return [];
         }
@@ -141,15 +202,22 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         setError(null);
 
                                    try {
-                                           const sportsToFetch = isInitial
-                                             ? Object.entries(SPORTS).filter(([name]) => !enabledSports || enabledSports.includes(name))
-                                                     : getSportsToFetch();
+                                           const allSports = Object.entries(SPORTS).filter(([name]) => !enabledSports || enabledSports.includes(name));
+                                           // Initial ALL view used to only fetch the four major US leagues,
+                                           // which made available combat/tennis markets look missing until
+                                           // the slow rotation eventually reached them. Keep the first paint
+                                           // useful without fetching every configured sport at once.
+                                           const priorityNames = ['NBA', 'NFL', 'NHL', 'MLB', 'MMA', 'Boxing', 'ATP Italian', 'WTA Italian'];
+                                           const sportsToFetch = isInitial && (!filter || filter === 'ALL')
+                                             ? allSports.filter(([name]) => priorityNames.includes(name))
+                                             : isInitial
+                                               ? allSports
+                                               : getSportsToFetch();
+                                           if (isInitial && (!filter || filter === 'ALL')) {
+                                             rotationIndexRef.current = sportsToFetch.length;
+                                           }
 
-          const newGames = [];
-                                           // Collect all injuries with sport prefix to avoid cross-league team name collisions
-          const injuriesByTeam = {};
-
-          for (const [sportName, sportKey] of sportsToFetch) {
+          const sportResults = await Promise.all(sportsToFetch.map(async ([sportName, sportKey]) => {
                     try {
                                 const [oddsData, scoresData, injuryList] = await Promise.all([
                                               fetchOdds(sportKey),
@@ -157,21 +225,18 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                               fetchInjuries(sportKey),
                                             ]);
 
-                      // Merge scores into games
                       const gamesWithScores = oddsData.map(game => {
-                                    const scoreData = scoresData.find(s => s.id === game.id);
+                                    const scoreData = findScoreForGame(scoresData, game);
                                     return {
                                                     ...game,
-                                                    scores: scoreData?.scores || null,
+                                                    scores: scoreData?.scores?.length ? scoreData.scores : null,
                                                     completed: scoreData?.completed || false,
-                                                    homeScore: scoreData?.scores?.find(s => s.name === game.home_team)?.score || null,
-                                                    awayScore: scoreData?.scores?.find(s => s.name === game.away_team)?.score || null,
+                                                    homeScore: getTeamScore(scoreData, game.home_team),
+                                                    awayScore: getTeamScore(scoreData, game.away_team),
                                     };
                       });
-                                newGames.push(...gamesWithScores);
 
-          // Build injury lookup — keyed by sport prefix + team name to avoid cross-league collisions
-          const injuriesByTeam = {};
+          const sportInjuriesByTeam = {};
           injuryList.forEach(inj => {
             const sportPrefix = sportKey.split('_')[0]; // 'basketball', 'americanfootball', etc.
             const fullKey = `${sportPrefix}:${inj.team}`;
@@ -179,33 +244,38 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
             [fullKey, fullKey.toLowerCase(), shortKey, shortKey.toLowerCase(), inj.team, inj.team?.toLowerCase()]
               .filter(Boolean)
               .forEach(key => {
-                if (!injuriesByTeam[key]) injuriesByTeam[key] = [];
-                injuriesByTeam[key].push(inj);
+                if (!sportInjuriesByTeam[key]) sportInjuriesByTeam[key] = [];
+                sportInjuriesByTeam[key].push(inj);
               });
           });
-          setInjuries(prev => isInitial ? injuriesByTeam : { ...prev, ...injuriesByTeam });
                       setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
+                      return { games: gamesWithScores, injuriesByTeam: sportInjuriesByTeam };
                     } catch (e) {
                                 console.warn(`Failed to load ${sportName}:`, e.message);
+                                return { games: [], injuriesByTeam: {} };
                     }
-          }
+          }));
 
-          // Fetch player props — all major sports every cycle, decoupled from odds rotation
-          const PROPS_SPORTS = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
-          const PROPS_NAME_MAP = { basketball_nba: 'NBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
-          const propsToFetch = PROPS_SPORTS.filter(s =>
-            !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
-          );
-          if (propsToFetch.length > 0) {
-            const allProps = [];
-            for (const sportKey of propsToFetch) {
+          const newGames = sportResults.flatMap(result => result.games);
+          const injuriesByTeam = sportResults.reduce((acc, result) => ({ ...acc, ...result.injuriesByTeam }), {});
+
+          // Fetch player props in the background so the Games tab can render as soon as game odds are ready.
+          const refreshProps = async () => {
+            const PROPS_SPORTS = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
+            const PROPS_NAME_MAP = { basketball_nba: 'NBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
+            const propsToFetch = PROPS_SPORTS.filter(s =>
+              !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
+            );
+            if (propsToFetch.length === 0) return;
+            const propsBySport = await Promise.all(propsToFetch.map(async (sportKey) => {
               try {
-                const props = await fetchPlayerProps(sportKey);
-                allProps.push(...props);
+                return await fetchPlayerProps(sportKey);
               } catch (e) {
                 console.warn('Props fetch failed for ' + sportKey + ':', e.message);
+                return [];
               }
-            }
+            }));
+            const allProps = propsBySport.flat();
             setPlayerProps(prev =>
               isInitial
                 ? allProps
@@ -214,7 +284,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                     ...allProps,
                   ]
             );
-          }
+          };
+          refreshProps();
 
           // Merge new games with existing (replace by id, keep others)
           setGames(prev => {
@@ -280,12 +351,23 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                    } finally {
                                            setLoading(false);
                                    }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
   // Initial load
   useEffect(() => {
-        loadData(true);
+        loadData(true).finally(() => {
+                hasCompletedInitialLoadRef.current = true;
+        });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch immediately when the user changes sport filters/settings. Previously
+  // the page waited for the 60-120s countdown, so clicking MMA/Boxing/Tennis
+  // could show an empty state even while the API had games.
+  useEffect(() => {
+        if (!hasCompletedInitialLoadRef.current) return;
+        loadData(false);
+        setCountdown(refreshInterval);
+  }, [filter, enabledSports]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Countdown + auto-refresh
   useEffect(() => {

@@ -163,38 +163,35 @@ function extractStartingGoalieFromBox(box, teamId) {
   if (!teamBlock || !Array.isArray(teamBlock.statistics)) return null;
 
   const goalieStats = teamBlock.statistics.find((s) =>
-    (s.name || '').toLowerCase().includes('goaltending')
+    (s.name || '').toLowerCase().includes('goal') || s.labels?.includes('SV%')
   );
   if (!goalieStats || !Array.isArray(goalieStats.athletes)) return null;
 
+  const statByLabel = (athlete, label) => {
+    const idx = goalieStats.labels?.indexOf(label);
+    return idx >= 0 ? athlete.stats?.[idx] : null;
+  };
+
   // Usually the starter has more minutes / shots faced
   const sorted = [...goalieStats.athletes].sort((a, b) => {
-    const aMins = parseFloat(a.stats?.find((s) => s.name === 'min')?.displayValue || 0);
-    const bMins = parseFloat(b.stats?.find((s) => s.name === 'min')?.displayValue || 0);
+    const aMins = parseFloat(statByLabel(a, 'TOI') || 0);
+    const bMins = parseFloat(statByLabel(b, 'TOI') || 0);
     return bMins - aMins;
   });
 
   const starter = sorted[0];
   if (!starter) return null;
 
-  const stats = {};
-  if (Array.isArray(starter.stats)) {
-    for (const s of starter.stats) {
-      stats[s.name] = s.displayValue;
-    }
-  }
-
   return {
     id: starter.athlete?.id,
     name: starter.athlete?.displayName || starter.athlete?.fullName,
     position: starter.athlete?.position?.abbreviation,
-    saves: stats.saves,
-    shotsFaced: stats.shotsFaced || stats.shotsAgainst,
-    goalsAgainst: stats.goalsAgainst,
-    savePercentage: stats.savePercentage,
-    goalsAgainstAverage: stats.goalsAgainstAverage,
-    minutes: stats.min,
-    decision: stats.decision, // W / L / O
+    headshot: starter.athlete?.headshot?.href || (starter.athlete?.id ? `https://a.espncdn.com/i/headshots/nhl/players/full/${starter.athlete.id}.png` : null),
+    saves: statByLabel(starter, 'SV'),
+    shotsFaced: statByLabel(starter, 'SA'),
+    goalsAgainst: statByLabel(starter, 'GA'),
+    savePercentage: statByLabel(starter, 'SV%'),
+    minutes: statByLabel(starter, 'TOI'),
   };
 }
 
@@ -312,6 +309,7 @@ async function buildGoalieProfile(teamId, rosterData, recentGames) {
       name:
         goalies.find((g) => String(g.id) === String(likelyStarter))?.name ||
         'Unknown',
+      headshot: likelyStarter ? `https://a.espncdn.com/i/headshots/nhl/players/full/${likelyStarter}.png` : null,
     },
     record: { wins, losses },
     savePercentage: svPct,

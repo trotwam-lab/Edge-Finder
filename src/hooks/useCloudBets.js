@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, getDoc, getDocs, setDoc, onSnapshot, collection } from 'firebase/firestore';
-import { db } from '../firebase.js';
+import { db } from '../firestore.js';
 import { useAuth } from '../AuthGate.jsx';
 
 /**
@@ -254,7 +254,6 @@ export function useCloudBets(key, defaultValue = []) {
             return defaultValue;
           }
         })();
-
         // Also pull the local archive so any bet ever seen on this device
         // survives the initial cloud merge, even if it isn't in the live
         // localStorage list yet.
@@ -266,23 +265,23 @@ export function useCloudBets(key, defaultValue = []) {
 
         const cloudBets = docSnap.exists() ? (docSnap.data().bets || defaultValue) : [];
 
-        // CRITICAL race fix: use the functional setState form so any bet the
-        // user added DURING the cloud load is preserved. Previously we
-        // unconditionally replaced state — a bet placed before getDoc
-        // resolved lives only in React state (the localStorage write is
-        // debounced via Effect 2), so it would be wiped by the merge.
-        // Including `prev` and the local archive prevents that.
+// Merge the latest in-memory state too. This prevents a race where a
+        // user adds a bet immediately after opening the tracker, but before
+        // the first Firestore read finishes; without `prev`, that fresh bet
+        // can be overwritten by an older local/cloud snapshot. Including the
+        // archive and snapshots also protects against old truncation bugs.
         let mergedBets = [];
         setState(prev => {
-          mergedBets = unionBets(prev, archiveBets, localBets, cloudBets, snapshotBets);
+          mergedBets = unionBets(prev, localBets, archiveBets, cloudBets, snapshotBets);
           return mergedBets;
         });
 
         // If the merge produced bets the cloud doesn't have yet, write back
-        // so other devices and future loads see the union.
+        // so other devices and future loads see the union. Also seed Firestore
+        // when no live doc exists yet.
         const cloudIds = new Set(cloudBets.map(b => b.id));
-        const hasNewBets = mergedBets.some(b => !cloudIds.has(b.id));
-        if ((hasNewBets || !docSnap.exists()) && mergedBets.length > 0) {
+        const hasClientOnlyBets = mergedBets.some(b => !cloudIds.has(b.id));
+        if ((hasClientOnlyBets || !docSnap.exists()) && mergedBets.length > 0) {
           setDoc(betsDocRef, {
             bets: mergedBets,
             updatedAt: new Date().toISOString()
@@ -320,9 +319,24 @@ export function useCloudBets(key, defaultValue = []) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, key, mergeBets]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
 
-  // Effect 2: Save to localStorage on every change (fast), and mirror every
-  // bet we've ever seen into the local archive so it can be restored if the
-  // live list ever gets truncated.
+  // Durable setter: persist to localStorage/archive in the same turn as the
+  // state update. This prevents the "bet shows, then disappears when I switch
+  // tabs" bug, which can happen if the component unmounts before React has a
+  // chance to run the post-render persistence effect.
+  const setDurableState = useCallback((valueOrUpdater) => {
+    setState(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch (err) {
+        console.error('Error saving to localStorage:', err);
+      }
+      writeArchive(key, next);
+      return next;
+    });
+  }, [key]);
+
+  // Effect 2: Mirror current state to localStorage as a safety net too.
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(state));
@@ -397,7 +411,7 @@ export function useCloudBets(key, defaultValue = []) {
     };
   }, [flushToFirestore]);
 
-  return [state, setState];
+  return [state, setDurableState];
 }
 
 export default useCloudBets;

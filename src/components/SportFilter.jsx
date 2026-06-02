@@ -15,8 +15,8 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '8px 14px',
-          background: 'rgba(30, 41, 59, 0.6)',
-          border: '1px solid rgba(56, 189, 248, 0.1)',
+          background: 'rgba(15, 23, 42, 0.72)',
+          border: '1px solid rgba(100, 116, 139, 0.24)',
           borderRadius: '8px', flex: '1', minWidth: '200px'
         }}>
           <Search size={14} color="#64748b" />
@@ -33,7 +33,7 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '8px 14px',
-          background: 'rgba(30, 41, 59, 0.3)',
+          background: 'rgba(15, 23, 42, 0.42)',
           border: '1px solid rgba(71, 85, 105, 0.3)',
           borderRadius: '8px', flex: '1', minWidth: '200px',
           opacity: 0.6, cursor: 'not-allowed'
@@ -50,10 +50,10 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
         {sports.map(sport => (
           <button key={sport} onClick={() => setFilter(sport)} style={{
             padding: '8px 14px',
-            background: filter === sport ? 'rgba(99, 102, 241, 0.3)' : 'rgba(30, 41, 59, 0.4)',
-            border: filter === sport ? '1px solid rgba(99, 102, 241, 0.5)' : '1px solid rgba(71, 85, 105, 0.3)',
+            background: filter === sport ? 'rgba(20, 184, 166, 0.18)' : 'rgba(15, 23, 42, 0.55)',
+            border: filter === sport ? '1px solid rgba(45, 212, 191, 0.42)' : '1px solid rgba(100, 116, 139, 0.24)',
             borderRadius: '6px',
-            color: filter === sport ? '#f8fafc' : '#94a3b8',
+            color: filter === sport ? '#ccfbf1' : '#94a3b8',
             fontSize: '12px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
           }}>{sport}</button>
         ))}

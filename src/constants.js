@@ -16,8 +16,8 @@ export const SPORTS = {
   UCL: 'soccer_uefa_champs_league',
   MLS: 'soccer_usa_mls',
   'Liga MX': 'soccer_mexico_ligamx',
-  'ATP Qatar': 'tennis_atp_qatar_open',
-  'WTA Dubai': 'tennis_wta_dubai',
+  'ATP Italian': 'tennis_atp_italian_open',
+  'WTA Italian': 'tennis_wta_italian_open',
   Golf: 'golf_masters_tournament_winner',
   AFL: 'aussierules_afl',
   NRL: 'rugbyleague_nrl',
@@ -30,7 +30,14 @@ export const BOOKMAKERS = {
   'caesars': 'Caesars',
   'betonlineag': 'BetOnline',
   'bovada': 'Bovada',
-  'betrivers': 'BetRivers'
+  'betrivers': 'BetRivers',
+  'fanatics': 'Fanatics',
+  'lowvig': 'LowVig',
+  'mybookieag': 'MyBookie',
+  'williamhill_us': 'William Hill',
+  'betus': 'BetUS',
+  'espnbet': 'ESPN BET',
+  'hardrockbet': 'Hard Rock Bet'
 };
 
 export const AFFILIATE_LINKS = {
@@ -41,25 +48,34 @@ export const AFFILIATE_LINKS = {
   'betonlineag': 'https://www.betonline.ag',
   'bovada': 'https://www.bovada.lv',
   'betrivers': 'https://www.betrivers.com',
+  'fanatics': 'https://sportsbook.fanatics.com',
+  'lowvig': 'https://www.lowvig.ag',
+  'mybookieag': 'https://www.mybookie.ag',
+  'williamhill_us': 'https://www.caesars.com/sportsbook',
+  'betus': 'https://www.betus.com.pa',
+  'espnbet': 'https://espnbet.com',
+  'hardrockbet': 'https://app.hardrock.bet',
   'default': 'https://www.fanduel.com/sportsbook'
 };
 
 // FREE_BOOKS ★ Free users only see these 3 sportsbooks
-// Pro users see ALL books (FanDuel, DraftKings, BetMGM, Caesars, BetOnline, Bovada, BetRivers)
+// Pro users see all supported sportsbook keys returned by The Odds API.
 export const FREE_BOOKS = ['fanduel', 'draftkings', 'betmgm'];
 
 // PRO_FEATURES ★ What you get with Edge Finder Pro ($12.99/mo)
 export const PRO_FEATURES = {
   price: '$12.99/mo',
+  headline: 'Know where to look before you bet.',
+  subheadline: 'Pro turns the live odds board into a daily betting workflow: edges, props, timing, sizing, and tracking.',
   features: [
-    { icon: '🏆', text: 'All 7 sportsbooks (not just 3)' },
-    { icon: '🏆', text: 'Unlimited player props' },
-    { icon: '🏆', text: 'EV indicators on every line' },
-    { icon: '⭐', text: 'Implied probability overlays' },
-    { icon: '⚡', text: 'Real-time edge alerts across all books' },
-    { icon: '⭐', text: 'Pick tracker with W/L, ROI & streaks' },
-    { icon: '🏆', text: 'Line movement alerts (coming soon)' },
-    { icon: '💰', text: 'Kelly Criterion bet sizing (coming soon)' },
+    { icon: '🎯', text: 'Full edge board with exact book, line, EV, and fair probability' },
+    { icon: '📊', text: 'All sportsbooks unlocked — not just the 3-book free preview' },
+    { icon: '🏀', text: 'Unlimited player prop board with best-price comparison' },
+    { icon: '⚡', text: 'Line movement and market disagreement alerts' },
+    { icon: '🧮', text: 'EV calculator plus implied probability/fair line tools' },
+    { icon: '💰', text: 'Kelly Criterion bet sizing so stakes match the edge' },
+    { icon: '📈', text: 'Bet tracker with W/L, ROI, units, streaks, and CLV' },
+    { icon: '📝', text: 'Daily Top Edges workflow foundation — built for the $12.99 plan' },
   ],
 };
 

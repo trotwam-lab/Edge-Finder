@@ -75,9 +75,23 @@ export const SPORT_META = {
   icehockey_nhl: { label: 'NHL', icon: '🏒', family: 'hockey', espnPath: 'hockey/nhl', logoSport: 'nhl' },
   baseball_mlb: { label: 'MLB', icon: '⚾', family: 'baseball', espnPath: 'baseball/mlb', logoSport: 'mlb' },
   soccer_epl: { label: 'EPL', icon: '⚽', family: 'soccer', espnPath: 'soccer/eng.1', logoSport: 'soccer' },
+  soccer_spain_la_liga: { label: 'La Liga', icon: '⚽', family: 'soccer', espnPath: 'soccer/esp.1', logoSport: 'soccer' },
+  soccer_italy_serie_a: { label: 'Serie A', icon: '⚽', family: 'soccer', espnPath: 'soccer/ita.1', logoSport: 'soccer' },
+  soccer_germany_bundesliga: { label: 'Bundesliga', icon: '⚽', family: 'soccer', espnPath: 'soccer/ger.1', logoSport: 'soccer' },
+  soccer_france_ligue_one: { label: 'Ligue 1', icon: '⚽', family: 'soccer', espnPath: 'soccer/fra.1', logoSport: 'soccer' },
+  soccer_uefa_champs_league: { label: 'UCL', icon: '⚽', family: 'soccer', espnPath: 'soccer/uefa.champions', logoSport: 'soccer' },
+  soccer_usa_mls: { label: 'MLS', icon: '⚽', family: 'soccer', espnPath: 'soccer/usa.1', logoSport: 'soccer' },
+  soccer_mexico_ligamx: { label: 'Liga MX', icon: '⚽', family: 'soccer', espnPath: 'soccer/mex.1', logoSport: 'soccer' },
+  tennis_atp_italian_open: { label: 'ATP Italian', icon: '🎾', family: 'tennis' },
+  tennis_wta_italian_open: { label: 'WTA Italian', icon: '🎾', family: 'tennis' },
+  mma_mixed_martial_arts: { label: 'MMA', icon: '🥊', family: 'combat' },
+  boxing_boxing: { label: 'Boxing', icon: '🥊', family: 'combat' },
+  golf_masters_tournament_winner: { label: 'Golf', icon: '⛳', family: 'golf' },
+  aussierules_afl: { label: 'AFL', icon: '🏉', family: 'football' },
+  rugbyleague_nrl: { label: 'NRL', icon: '🏉', family: 'rugby' },
 };
 
-export const SPORT_SORT_ORDER = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb', 'basketball_ncaab', 'americanfootball_ncaaf', 'basketball_wncaab', 'soccer_epl'];
+export const SPORT_SORT_ORDER = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb', 'basketball_ncaab', 'americanfootball_ncaaf', 'basketball_wncaab', 'soccer_epl', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_champs_league', 'soccer_usa_mls', 'soccer_mexico_ligamx', 'tennis_atp_italian_open', 'tennis_wta_italian_open', 'mma_mixed_martial_arts', 'boxing_boxing', 'golf_masters_tournament_winner', 'aussierules_afl', 'rugbyleague_nrl'];
 
 export function getSportMeta(sport) {
   return SPORT_META[sport] || { label: sport?.split('_').slice(-1)[0]?.toUpperCase() || 'Other', icon: '🎯', family: 'other' };

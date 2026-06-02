@@ -14,7 +14,7 @@ import {
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase.js';
+import { db } from '../firestore.js';
 
 // ── Styles ─────────────────────────────────────────────────────────────────
 

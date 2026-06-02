@@ -3,7 +3,7 @@ const TTL = 2 * 60 * 1000;
 
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', daysFrom = '1' } = req.query;
-  const cacheKey = `scores-${sport}`;
+  const cacheKey = `scores-${sport}-${daysFrom}`;
 
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');

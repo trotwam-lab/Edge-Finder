@@ -21,8 +21,8 @@ export const SPORT_VISUALS = {
   soccer_uefa_champs_league: { short: 'UCL', icon: '⚽', color: '#7c3aed', gradient: 'linear-gradient(135deg, #7c3aed, #4c1d95)' },
   soccer_usa_mls:       { short: 'MLS',   icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },
   soccer_mexico_ligamx: { short: 'LIGAMX', icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },
-  tennis_atp_qatar_open: { short: 'ATP', icon: '🎾', color: '#eab308', gradient: 'linear-gradient(135deg, #eab308, #a16207)' },
-  tennis_wta_dubai:     { short: 'WTA',   icon: '🎾', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  tennis_atp_italian_open: { short: 'ATP', icon: '🎾', color: '#eab308', gradient: 'linear-gradient(135deg, #eab308, #a16207)' },
+  tennis_wta_italian_open: { short: 'WTA', icon: '🎾', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
   golf_masters_tournament_winner: { short: 'GOLF', icon: '⛳', color: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #065f46)' },
   aussierules_afl:      { short: 'AFL',   icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
   rugbyleague_nrl:      { short: 'NRL',   icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
@@ -32,6 +32,57 @@ const DEFAULT_VISUAL = {
   short: 'SPORT', icon: '🎯', color: '#6366f1',
   gradient: 'linear-gradient(135deg, #6366f1, #4338ca)',
 };
+
+const ESPN_ABBR_FALLBACKS = {
+  basketball_nba: {
+    'atlanta hawks': 'atl', 'boston celtics': 'bos', 'brooklyn nets': 'bkn', 'charlotte hornets': 'cha',
+    'chicago bulls': 'chi', 'cleveland cavaliers': 'cle', 'dallas mavericks': 'dal', 'denver nuggets': 'den',
+    'detroit pistons': 'det', 'golden state warriors': 'gs', 'houston rockets': 'hou', 'indiana pacers': 'ind',
+    'la clippers': 'lac', 'los angeles clippers': 'lac', 'los angeles lakers': 'lal', 'lakers': 'lal',
+    'memphis grizzlies': 'mem', 'miami heat': 'mia', 'milwaukee bucks': 'mil', 'minnesota timberwolves': 'min',
+    'new orleans pelicans': 'no', 'new york knicks': 'ny', 'oklahoma city thunder': 'okc', 'orlando magic': 'orl',
+    'philadelphia 76ers': 'phi', 'phoenix suns': 'phx', 'portland trail blazers': 'por', 'sacramento kings': 'sac',
+    'san antonio spurs': 'sa', 'toronto raptors': 'tor', 'utah jazz': 'utah', 'washington wizards': 'wsh',
+  },
+  americanfootball_nfl: {
+    'arizona cardinals': 'ari', 'atlanta falcons': 'atl', 'baltimore ravens': 'bal', 'buffalo bills': 'buf',
+    'carolina panthers': 'car', 'chicago bears': 'chi', 'cincinnati bengals': 'cin', 'cleveland browns': 'cle',
+    'dallas cowboys': 'dal', 'denver broncos': 'den', 'detroit lions': 'det', 'green bay packers': 'gb',
+    'houston texans': 'hou', 'indianapolis colts': 'ind', 'jacksonville jaguars': 'jax', 'kansas city chiefs': 'kc',
+    'las vegas raiders': 'lv', 'los angeles chargers': 'lac', 'los angeles rams': 'lar', 'miami dolphins': 'mia',
+    'minnesota vikings': 'min', 'new england patriots': 'ne', 'new orleans saints': 'no', 'new york giants': 'nyg',
+    'new york jets': 'nyj', 'philadelphia eagles': 'phi', 'pittsburgh steelers': 'pit', 'san francisco 49ers': 'sf',
+    'seattle seahawks': 'sea', 'tampa bay buccaneers': 'tb', 'tennessee titans': 'ten', 'washington commanders': 'wsh',
+  },
+  baseball_mlb: {
+    'arizona diamondbacks': 'ari', 'atlanta braves': 'atl', 'baltimore orioles': 'bal', 'boston red sox': 'bos',
+    'chicago cubs': 'chc', 'chicago white sox': 'chw', 'cincinnati reds': 'cin', 'cleveland guardians': 'cle',
+    'colorado rockies': 'col', 'detroit tigers': 'det', 'houston astros': 'hou', 'kansas city royals': 'kc',
+    'los angeles angels': 'laa', 'los angeles dodgers': 'lad', 'miami marlins': 'mia', 'milwaukee brewers': 'mil',
+    'minnesota twins': 'min', 'new york mets': 'nym', 'new york yankees': 'nyy', 'athletics': 'ath',
+    'philadelphia phillies': 'phi', 'pittsburgh pirates': 'pit', 'san diego padres': 'sd', 'san francisco giants': 'sf',
+    'seattle mariners': 'sea', 'st louis cardinals': 'stl', 'tampa bay rays': 'tb', 'texas rangers': 'tex',
+    'toronto blue jays': 'tor', 'washington nationals': 'wsh',
+  },
+  icehockey_nhl: {
+    'anaheim ducks': 'ana', 'boston bruins': 'bos', 'buffalo sabres': 'buf', 'calgary flames': 'cgy',
+    'carolina hurricanes': 'car', 'chicago blackhawks': 'chi', 'colorado avalanche': 'col', 'columbus blue jackets': 'cbj',
+    'dallas stars': 'dal', 'detroit red wings': 'det', 'edmonton oilers': 'edm', 'florida panthers': 'fla',
+    'los angeles kings': 'la', 'minnesota wild': 'min', 'montreal canadiens': 'mtl', 'nashville predators': 'nsh',
+    'new jersey devils': 'nj', 'new york islanders': 'nyi', 'new york rangers': 'nyr', 'ottawa senators': 'ott',
+    'philadelphia flyers': 'phi', 'pittsburgh penguins': 'pit', 'san jose sharks': 'sj', 'seattle kraken': 'sea',
+    'st louis blues': 'stl', 'tampa bay lightning': 'tb', 'toronto maple leafs': 'tor', 'utah mammoth': 'utah',
+    'vancouver canucks': 'van', 'vegas golden knights': 'vgk', 'washington capitals': 'wsh', 'winnipeg jets': 'wpg',
+  },
+};
+
+function fallbackTeamLogo(sportKey, teamName) {
+  const meta = getSportMeta(sportKey);
+  const abbr = ESPN_ABBR_FALLBACKS[sportKey]?.[normalizeTeamKey(teamName)];
+  return abbr && meta.logoSport
+    ? `https://a.espncdn.com/i/teamlogos/${meta.logoSport}/500/${abbr}.png`
+    : null;
+}
 
 export function getSportVisual(sportKey) {
   return SPORT_VISUALS[sportKey] || DEFAULT_VISUAL;
@@ -49,7 +100,7 @@ export function useTeamLogos(games = []) {
       const meta = getSportMeta(sportKey);
       if (!meta.espnPath) return;
       try {
-        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${meta.espnPath}/teams`);
+        const res = await fetch(`/api/espn-assets?type=teams&path=${encodeURIComponent(meta.espnPath)}`);
         if (!res.ok) return;
         const data = await res.json();
         const teams = data?.sports?.[0]?.leagues?.[0]?.teams || [];
@@ -81,6 +132,5 @@ export function useTeamLogos(games = []) {
 export function resolveTeamLogo(logoMap, sportKey, teamName) {
   if (!teamName) return null;
   const sportMap = logoMap?.[sportKey];
-  if (!sportMap) return null;
-  return sportMap[normalizeTeamKey(teamName)] || null;
+  return sportMap?.[normalizeTeamKey(teamName)] || fallbackTeamLogo(sportKey, teamName);
 }

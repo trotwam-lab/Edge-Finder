@@ -6,6 +6,7 @@ import {
   getMarketDisplayName,
   formatOdds,
   getBookAbbreviation,
+  getPlayerInitials,
   scorePropCandidate,
 } from '../utils/props.js';
 
@@ -51,6 +52,22 @@ function RankBadge({ rank }) {
   );
 }
 
+function PlayerPhoto({ player }) {
+  const [failed, setFailed] = React.useState(!player?.photo);
+
+  React.useEffect(() => {
+    setFailed(!player?.photo);
+  }, [player?.photo]);
+
+  return (
+    <div style={{ width: 34, height: 34, borderRadius: '999px', overflow: 'hidden', flexShrink: 0, background: 'linear-gradient(135deg, rgba(251,191,36,0.25), rgba(99,102,241,0.25))', border: '1px solid rgba(148,163,184,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f8fafc', fontSize: '11px', fontWeight: 800 }}>
+      {failed || !player?.photo
+        ? getPlayerInitials(player?.name)
+        : <img src={player.photo} alt={player.name} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setFailed(true)} />}
+    </div>
+  );
+}
+
 function PropCard({ candidate, rank, onQuickAdd }) {
   const { player, marketKey, side, score, bestPrice, bestBook, reasons, timing } = candidate;
   const mkt = candidate.mkt;
@@ -88,6 +105,7 @@ function PropCard({ candidate, rank, onQuickAdd }) {
         {/* Row 1: rank + player name + score */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
           <RankBadge rank={rank} />
+          <PlayerPhoto player={player} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace' }}>
               {player.name}
