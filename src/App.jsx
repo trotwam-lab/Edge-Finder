@@ -8,6 +8,7 @@ import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
 import MobileNav from './components/MobileNav.jsx';
+import OnboardingCoach from './components/OnboardingCoach.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 
 const tabLoaders = {
@@ -304,6 +305,7 @@ export default function BettingApp() {
             isConnected={isConnected}
             loading={loading}
           />
+          <OnboardingCoach onNavigate={setActiveTab} />
           <SportFilter
             filter={filter}
             setFilter={setFilter}
