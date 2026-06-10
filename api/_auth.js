@@ -1,5 +1,6 @@
 import { getAuth } from 'firebase-admin/auth';
 import { getAdminApp, getAdminDb } from './_firebaseAdmin.js';
+import Stripe from 'stripe';
 
 const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com'];
 const FRIEND_EMAILS = [
@@ -67,6 +68,35 @@ async function getTierFromFirestore(uid) {
   return null;
 }
 
+async function getTierFromStripe(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !process.env.STRIPE_SECRET_KEY) return null;
+
+  try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const customers = await stripe.customers.list({ email: normalizedEmail, limit: 1 });
+    const customer = customers.data[0];
+    if (!customer) return null;
+
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: 'all',
+      limit: 10,
+    });
+
+    const activeSubscription = subscriptions.data.find(subscription =>
+      ['active', 'trialing'].includes(subscription.status)
+    );
+
+    return activeSubscription
+      ? { tier: 'pro', source: 'stripe', subscriptionId: activeSubscription.id }
+      : null;
+  } catch (error) {
+    console.warn('Stripe tier fallback failed:', error.message);
+    return null;
+  }
+}
+
 export async function getRequestTier(req) {
   try {
     const token = getBearerToken(req);
@@ -106,6 +136,9 @@ export async function getRequestTier(req) {
 
     const firestoreTier = await getTierFromFirestore(decoded.uid);
     if (firestoreTier) return { ...firestoreTier, email };
+
+    const stripeTier = await getTierFromStripe(email);
+    if (stripeTier) return { ...stripeTier, uid: decoded.uid, email };
 
     return { tier: 'free', source: 'verified-free', uid: decoded.uid, email };
   } catch (error) {
