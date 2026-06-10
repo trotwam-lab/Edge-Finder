@@ -51,12 +51,12 @@ export default function MobileNav({ activeTab, setActiveTab }) {
               }}
               title={isLocked ? `${label} — Pro only` : label}
               style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px',
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: isLocked ? 'rgba(100, 116, 139, 0.5)' : isActive ? '#5eead4' : '#64748b',
-                fontSize: '10px', fontWeight: isActive ? 700 : 400,
-                padding: '4px 14px', flexShrink: 0,
-                scrollSnapAlign: 'start', minWidth: '60px', position: 'relative',
+                fontSize: '11px', fontWeight: isActive ? 700 : 400,
+                padding: '8px 14px', flexShrink: 0, minHeight: '52px',
+                scrollSnapAlign: 'start', minWidth: '64px', position: 'relative',
               }}
             >
               <Icon size={20} />

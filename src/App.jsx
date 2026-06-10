@@ -4,6 +4,7 @@ import { SPORTS, BOOKMAKERS, FREE_BOOKS } from './constants.js';
 import { useAuth } from './AuthGate.jsx';
 import ProBanner from './components/ProBanner.jsx';
 import { useOdds, usePersistentState } from './hooks/useOdds.js';
+import { useAlerts } from './hooks/useAlerts.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
@@ -183,6 +184,8 @@ export default function BettingApp() {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  const alertsApi = useAlerts({ games, watchlist, gameLineHistory, historicOdds, tier });
+
   const handleManageSubscription = async () => {
     if (!user) {
       alert('Please log in first to manage your subscription.');
@@ -311,6 +314,7 @@ export default function BettingApp() {
         onRefresh={manualRefresh}
         lastUpdate={lastUpdate}
         sportLastUpdated={sportLastUpdated}
+        alertsApi={alertsApi}
       />
       {activeTab === 'HOME' && (
         <HomeDashboard

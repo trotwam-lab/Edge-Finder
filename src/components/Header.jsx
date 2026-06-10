@@ -1,11 +1,12 @@
 import React from 'react';
 import { Home, Target, Wifi, WifiOff, RefreshCw, LogOut, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
+import AlertsBell from './AlertsBell.jsx';
 
 export default function Header({
   activeTab, setActiveTab, games, playerProps,
   isConnected, injuries, loading, countdown,
-  onRefresh, lastUpdate, sportLastUpdated
+  onRefresh, lastUpdate, sportLastUpdated, alertsApi
 }) {
   const { user, tier, logout } = useAuth();
   const isPro = tier === 'pro';
@@ -27,7 +28,7 @@ export default function Header({
   ];
 
   return (
-    <header style={{
+    <header className="edge-header" style={{
       padding: '12px 24px',
       borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
       background: 'rgba(7, 17, 31, 0.88)',
@@ -151,6 +152,8 @@ export default function Header({
           >
             <RefreshCw size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           </button>
+
+          {alertsApi && <AlertsBell {...alertsApi} onNavigate={setActiveTab} />}
 
           {/* Pro badge or Upgrade link */}
           {tier === 'pro' ? (

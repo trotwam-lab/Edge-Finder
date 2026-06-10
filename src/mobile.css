@@ -555,6 +555,25 @@ input {
     background-attachment: scroll !important;
   }
 
+  /* On phones the header gives up its sticky slot so the sport filter can
+     own the top of the screen — switching sports mid-scroll matters more
+     than keeping the logo visible. */
+  .edge-header {
+    position: static !important;
+  }
+
+  .sport-filter-bar {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    background: rgba(7, 17, 31, 0.96);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    margin: 0 -12px 14px !important;
+    padding: 10px 12px 6px !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  }
+
   .mobile-nav {
     display: flex !important;
   }
