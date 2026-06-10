@@ -3,6 +3,7 @@ export const SPORTS = {
   NFL: 'americanfootball_nfl',
   NHL: 'icehockey_nhl',
   MLB: 'baseball_mlb',
+  WNBA: 'basketball_wnba',
   NCAAB: 'basketball_ncaab',
   NCAAF: 'americanfootball_ncaaf',
   WNCAAB: 'basketball_wncaab',
@@ -81,6 +82,7 @@ export const PRO_FEATURES = {
 
 export const SPORT_ESPN_MAP = {
   'basketball_nba': 'basketball/nba',
+  'basketball_wnba': 'basketball/wnba',
   'americanfootball_nfl': 'football/nfl',
   'icehockey_nhl': 'hockey/nhl',
   'baseball_mlb': 'baseball/mlb'

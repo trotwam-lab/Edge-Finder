@@ -8,6 +8,7 @@ const cache = new Map();
 
 const ALLOWED_PATHS = new Set([
   'basketball/nba',
+  'basketball/wnba',
   'basketball/mens-college-basketball',
   'basketball/womens-college-basketball',
   'football/nfl',

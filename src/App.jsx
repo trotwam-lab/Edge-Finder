@@ -180,6 +180,18 @@ export default function BettingApp() {
     if (sameSet(enabledBooks, FREE_BOOKS)) {
       setEnabledBooks(Object.keys(BOOKMAKERS));
     }
+    // One-time migration: sports added to the app after a user saved their
+    // preferences (e.g. WNBA) would otherwise stay invisible forever. The
+    // flag keeps us from re-adding a sport the user deliberately turns off.
+    const NEW_SPORTS = ['WNBA'];
+    NEW_SPORTS.forEach(sport => {
+      const migrationKey = `edgefinder_sport_added_${sport}`;
+      try {
+        if (localStorage.getItem(migrationKey)) return;
+        localStorage.setItem(migrationKey, 'true');
+        setEnabledSports(prev => prev.includes(sport) ? prev : [...prev, sport]);
+      } catch {}
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFirstRunComplete = ({ sports, books, bankroll, unitSize }) => {

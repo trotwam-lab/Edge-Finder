@@ -1,8 +1,8 @@
 import { getAuth } from 'firebase-admin/auth';
-import { getAdminApp, getAdminDb } from './_firebaseAdmin.js';
+import { getAdminDb, getTokenVerifierApp } from './_firebaseAdmin.js';
 import Stripe from 'stripe';
 
-const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com'];
+const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
 const FRIEND_EMAILS = [
   'mrxprofit@gmail.com',
   'diajdaley@gmail.com',
@@ -115,24 +115,10 @@ export async function getRequestTier(req) {
       return { tier: 'free', source: 'anonymous' };
     }
 
-    const app = getAdminApp();
-    if (!app) {
-      const headerStripeTier = await getTierFromStripe(getClientEmailHeader(req));
-      if (headerStripeTier) {
-        return { ...headerStripeTier, source: 'stripe-email-header-admin-unavailable' };
-      }
-
-      const fallbackEmail = getUnverifiedFallbackEmail(req);
-      if (fallbackEmail && ADMIN_EMAILS.includes(fallbackEmail)) {
-        return { tier: 'pro', source: 'admin-email-fallback', email: fallbackEmail };
-      }
-      if (fallbackEmail && FRIEND_EMAILS.includes(fallbackEmail)) {
-        return { tier: 'pro', source: 'complimentary-email-fallback', email: fallbackEmail };
-      }
-      return { tier: 'free', source: 'admin-not-configured' };
-    }
-
-    const decoded = await getAuth(app).verifyIdToken(token);
+    // Verify against the client app's Firebase project, never the service
+    // account's project — those can differ, and a mismatch used to demote
+    // every signed-in user (including Pro) to the free tier.
+    const decoded = await getAuth(getTokenVerifierApp()).verifyIdToken(token);
     const email = normalizeEmail(decoded.email);
 
     if (email && ADMIN_EMAILS.includes(email)) {
@@ -143,8 +129,14 @@ export async function getRequestTier(req) {
       return { tier: 'pro', source: 'complimentary', uid: decoded.uid, email };
     }
 
-    const firestoreTier = await getTierFromFirestore(decoded.uid);
-    if (firestoreTier) return { ...firestoreTier, email };
+    // Firestore needs real service-account credentials; if those are broken
+    // we still want the verified Stripe lookup below to run.
+    try {
+      const firestoreTier = await getTierFromFirestore(decoded.uid);
+      if (firestoreTier) return { ...firestoreTier, email };
+    } catch (firestoreError) {
+      console.warn('Firestore tier lookup failed:', firestoreError.message);
+    }
 
     const stripeTier = await getTierFromStripe(email);
     if (stripeTier) return { ...stripeTier, uid: decoded.uid, email };

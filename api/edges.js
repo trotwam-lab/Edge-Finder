@@ -10,6 +10,7 @@ const TTL = 60 * 1000; // 60 seconds
 
 const TRACKED_SPORTS = [
     'basketball_nba',
+    'basketball_wnba',
     'americanfootball_nfl',
     'icehockey_nhl',
     'baseball_mlb',
@@ -18,6 +19,7 @@ const TRACKED_SPORTS = [
 
 const SPORT_LABELS = {
     basketball_nba: 'NBA',
+    basketball_wnba: 'WNBA',
     americanfootball_nfl: 'NFL',
     icehockey_nhl: 'NHL',
     baseball_mlb: 'MLB',
@@ -25,7 +27,7 @@ const SPORT_LABELS = {
 };
 
 const SPORT_EMOJI = {
-    NBA: '🏀', NFL: '🏈', NHL: '🏒', MLB: '⚾', UFC: '🥊',
+    NBA: '🏀', WNBA: '🏀', NFL: '🏈', NHL: '🏒', MLB: '⚾', UFC: '🥊',
 };
 
 // Minimum EV threshold — below this isn't worth flagging
