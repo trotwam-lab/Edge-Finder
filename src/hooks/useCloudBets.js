@@ -57,12 +57,23 @@ function mergePair(a, b) {
     // Otherwise the newer record wins.
     if (bIsNewer) out[k] = bv;
   });
-  // Deleted tombstones sync both ways — later deletedAt wins.
+  // Deleted tombstones sync both ways, but a later restore must beat an
+  // older delete tombstone or restored bets can disappear again on reload.
   const aDel = a.deletedAt || 0;
   const bDel = b.deletedAt || 0;
+  const aRestore = a.restoredAt || 0;
+  const bRestore = b.restoredAt || 0;
   if (aDel || bDel) {
-    out.deleted = (aDel >= bDel ? a.deleted : b.deleted) || false;
-    out.deletedAt = Math.max(aDel, bDel) || null;
+    const latestDelete = Math.max(aDel, bDel);
+    const latestRestore = Math.max(aRestore, bRestore);
+    if (latestRestore > latestDelete) {
+      out.deleted = false;
+      out.deletedAt = null;
+      out.restoredAt = latestRestore;
+    } else {
+      out.deleted = (aDel >= bDel ? a.deleted : b.deleted) || false;
+      out.deletedAt = latestDelete || null;
+    }
   }
   return out;
 }

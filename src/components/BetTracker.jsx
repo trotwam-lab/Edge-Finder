@@ -255,7 +255,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
+  const [dataPanelStatus, setDataPanelStatus] = useState('');
   const consumedAutoSaveRef = useRef(new Set());
+  const consumedPendingBetRef = useRef(null);
 
   function buildBetFromInput(source = pendingBet) {
     return {
@@ -284,9 +286,12 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
       player: source?.player ?? null,
     };
   }
-  
+
   useEffect(() => {
     if (pendingBet) {
+      if (!pendingBet.autoSave && consumedPendingBetRef.current === pendingBet) return;
+      consumedPendingBetRef.current = pendingBet;
+
       setGame(pendingBet.game || '');
       setBetType(pendingBet.type || 'Spread');
       setPick(pendingBet.pick || '');
@@ -632,8 +637,53 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: true, deletedAt: Date.now() } : b));
   }
 
-  function restoreBet(id) {
-    setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: false, deletedAt: null } : b));
+  function mergeBetLists(existingBets, incoming, { overwriteDeleted = false } = {}) {
+    let added = 0;
+    let merged = 0;
+    let restored = 0;
+    const map = new Map();
+    existingBets.forEach(b => { if (b?.id != null) map.set(b.id, b); });
+    incoming.forEach(b => {
+      if (!b || b.id == null) return;
+      const existing = map.get(b.id);
+      if (!existing) {
+        map.set(b.id, b);
+        added += 1;
+        return;
+      }
+
+      const filled = { ...existing };
+      let changed = false;
+      Object.keys(b).forEach(k => {
+        if (filled[k] == null && b[k] != null) {
+          filled[k] = b[k];
+          changed = true;
+        }
+      });
+      if (overwriteDeleted && existing.deleted && !b.deleted) {
+        filled.deleted = false;
+        filled.deletedAt = null;
+        filled.restoredAt = Date.now();
+        changed = true;
+        restored += 1;
+      }
+      if (changed) {
+        map.set(b.id, filled);
+        merged += 1;
+      }
+    });
+    return {
+      next: Array.from(map.values()).sort((a, c) => (c.id || 0) - (a.id || 0)),
+      added,
+      merged,
+      restored,
+    };
+  }
+
+  function mergeIncomingBets(incoming, { overwriteDeleted = false } = {}) {
+    const result = mergeBetLists(bets, incoming, { overwriteDeleted });
+    setBets(result.next);
+    return result;
   }
 
   // Export all bets (including soft-deleted tombstones) as a JSON file so
@@ -654,8 +704,11 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      setDataPanelStatus(`Export started: ${bets.length} bet record(s) in the JSON backup.`);
     } catch (err) {
-      alert('Export failed: ' + err.message);
+      const message = 'Export failed: ' + err.message;
+      setDataPanelStatus(message);
+      alert(message);
     }
   }
 
@@ -668,44 +721,38 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
         const parsed = JSON.parse(text);
         const incoming = Array.isArray(parsed) ? parsed : (parsed.bets || []);
         if (!Array.isArray(incoming) || incoming.length === 0) {
-          alert('No bets found in file.');
+          setDataPanelStatus('No bets found in that backup file.');
           return;
         }
-        let added = 0;
-        let merged = 0;
-        setBets(prev => {
-          const map = new Map();
-          prev.forEach(b => { if (b?.id != null) map.set(b.id, b); });
-          incoming.forEach(b => {
-            if (!b || b.id == null) return;
-            const existing = map.get(b.id);
-            if (!existing) {
-              map.set(b.id, b);
-              added += 1;
-            } else {
-              // Fill in any missing fields on the existing record; don't clobber.
-              const filled = { ...existing };
-              let changed = false;
-              Object.keys(b).forEach(k => {
-                if (filled[k] == null && b[k] != null) { filled[k] = b[k]; changed = true; }
-              });
-              if (changed) { map.set(b.id, filled); merged += 1; }
-            }
-          });
-          return Array.from(map.values()).sort((a, c) => (c.id || 0) - (a.id || 0));
-        });
-        alert(`Imported ${added} new bets, filled in ${merged} existing records.`);
+        const { added, merged, restored } = mergeIncomingBets(incoming, { overwriteDeleted: true });
+        const message = `Import complete: ${added} new, ${merged} updated, ${restored} restored.`;
+        setDataPanelStatus(message);
       } catch (err) {
-        alert('Could not parse backup file: ' + err.message);
+        const message = 'Could not parse backup file: ' + err.message;
+        setDataPanelStatus(message);
+        alert(message);
       }
     };
 
     if (typeof fileOrText === 'string') {
       handle(fileOrText);
+    } else if (fileOrText?.text) {
+      fileOrText.text().then(handle).catch(err => {
+        const message = 'Could not read backup file: ' + err.message;
+        setDataPanelStatus(message);
+        alert(message);
+      });
     } else if (fileOrText instanceof File) {
       const reader = new FileReader();
       reader.onload = e => handle(String(e.target.result || ''));
+      reader.onerror = () => {
+        const message = 'Could not read backup file.';
+        setDataPanelStatus(message);
+        alert(message);
+      };
       reader.readAsText(fileOrText);
+    } else {
+      setDataPanelStatus('No backup file selected.');
     }
   }
 
@@ -720,27 +767,15 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
       const incoming = [...local, ...cloud].filter(b => b && b.id != null);
       const newOnes = incoming.filter(b => !knownIds.has(b.id));
       if (newOnes.length === 0) {
-        alert('Scan complete. No additional bets found on this device or in cloud snapshots.');
+        setDataPanelStatus('Scan complete. No additional bets found on this device or in cloud snapshots.');
         return;
       }
-      setBets(prev => {
-        const map = new Map();
-        prev.forEach(b => { if (b?.id != null) map.set(b.id, b); });
-        incoming.forEach(b => {
-          const existing = map.get(b.id);
-          if (!existing) { map.set(b.id, b); return; }
-          const filled = { ...existing };
-          let changed = false;
-          Object.keys(b).forEach(k => {
-            if (filled[k] == null && b[k] != null) { filled[k] = b[k]; changed = true; }
-          });
-          if (changed) map.set(b.id, filled);
-        });
-        return Array.from(map.values()).sort((a, c) => (c.id || 0) - (a.id || 0));
-      });
-      alert(`Recovered ${newOnes.length} bet(s) from this device and cloud snapshots.`);
+      const { added, merged, restored } = mergeIncomingBets(incoming, { overwriteDeleted: true });
+      setDataPanelStatus(`Recovered ${added} missing bet(s), updated ${merged}, restored ${restored}.`);
     } catch (err) {
-      alert('Scan failed: ' + err.message);
+      const message = 'Scan failed: ' + err.message;
+      setDataPanelStatus(message);
+      alert(message);
     }
   }
 
@@ -1112,7 +1147,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
                   onClick={() => {
                     const ids = bets.filter(b => b.deleted).map(b => b.id);
                     if (!confirm(`Restore ${ids.length} deleted bet(s)?`)) return;
-                    ids.forEach(restoreBet);
+                    const now = Date.now();
+                    setBets(prev => prev.map(b => ids.includes(b.id) ? { ...b, deleted: false, deletedAt: null, restoredAt: now } : b));
+                    setDataPanelStatus(`Restored ${ids.length} deleted bet(s).`);
                   }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
@@ -1144,6 +1181,20 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
             <div style={{ fontSize: '10px', color: '#475569', marginTop: '8px', lineHeight: 1.5 }}>
               Scan &amp; recover pulls from every localStorage key on this device and every daily cloud snapshot. Only adds — never overwrites.
             </div>
+            {dataPanelStatus && (
+              <div style={{
+                marginTop: '8px',
+                padding: '8px 10px',
+                background: 'rgba(15, 23, 42, 0.7)',
+                border: '1px solid rgba(71, 85, 105, 0.35)',
+                borderRadius: '6px',
+                color: '#cbd5e1',
+                fontSize: '11px',
+                lineHeight: 1.4,
+              }}>
+                {dataPanelStatus}
+              </div>
+            )}
           </div>
         )}
       </div>
