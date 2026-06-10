@@ -12,6 +12,7 @@ const ODDS_REGIONS = 'us,us2';
 // Sport-specific prop markets supported by the Odds API
 const MARKETS_BY_SPORT = {
   basketball_nba:    ['player_points','player_rebounds','player_assists','player_threes','player_steals','player_blocks'],
+  basketball_wnba:   ['player_points','player_rebounds','player_assists','player_threes'],
   basketball_ncaab:  ['player_points','player_rebounds','player_assists','player_threes'],
   basketball_wncaab: ['player_points','player_rebounds','player_assists'],
   americanfootball_nfl:  ['player_pass_yds','player_rush_yds','player_reception_yds','player_anytime_td','player_pass_tds','player_pass_completions','player_receptions'],

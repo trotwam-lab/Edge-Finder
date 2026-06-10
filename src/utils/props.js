@@ -68,6 +68,7 @@ export const MARKET_DISPLAY_NAMES = {
 
 export const SPORT_META = {
   basketball_nba: { label: 'NBA', icon: '🏀', family: 'basketball', espnPath: 'basketball/nba', logoSport: 'nba' },
+  basketball_wnba: { label: 'WNBA', icon: '🏀', family: 'basketball', espnPath: 'basketball/wnba', logoSport: 'wnba' },
   basketball_ncaab: { label: 'NCAAB', icon: '🏀', family: 'basketball', espnPath: 'basketball/mens-college-basketball', logoSport: 'ncb' },
   basketball_wncaab: { label: 'WNCAAB', icon: '🏀', family: 'basketball', espnPath: 'basketball/womens-college-basketball', logoSport: 'ncb' },
   americanfootball_nfl: { label: 'NFL', icon: '🏈', family: 'football', espnPath: 'football/nfl', logoSport: 'nfl' },
@@ -91,7 +92,7 @@ export const SPORT_META = {
   rugbyleague_nrl: { label: 'NRL', icon: '🏉', family: 'rugby' },
 };
 
-export const SPORT_SORT_ORDER = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb', 'basketball_ncaab', 'americanfootball_ncaaf', 'basketball_wncaab', 'soccer_epl', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_champs_league', 'soccer_usa_mls', 'soccer_mexico_ligamx', 'tennis_atp_italian_open', 'tennis_wta_italian_open', 'mma_mixed_martial_arts', 'boxing_boxing', 'golf_masters_tournament_winner', 'aussierules_afl', 'rugbyleague_nrl'];
+export const SPORT_SORT_ORDER = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb', 'basketball_wnba', 'basketball_ncaab', 'americanfootball_ncaaf', 'basketball_wncaab', 'soccer_epl', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_champs_league', 'soccer_usa_mls', 'soccer_mexico_ligamx', 'tennis_atp_italian_open', 'tennis_wta_italian_open', 'mma_mixed_martial_arts', 'boxing_boxing', 'golf_masters_tournament_winner', 'aussierules_afl', 'rugbyleague_nrl'];
 
 export function getSportMeta(sport) {
   return SPORT_META[sport] || { label: sport?.split('_').slice(-1)[0]?.toUpperCase() || 'Other', icon: '🎯', family: 'other' };

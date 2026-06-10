@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { getAdminDb } from './_firebaseAdmin.js';
 
-const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com'];
+const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
 const FRIEND_EMAILS = [
   'mrxprofit@gmail.com',
   'diajdaley@gmail.com',
@@ -47,7 +47,7 @@ async function getTierFromFirestore(uid) {
 }
 
 async function getTierFromStripe(email) {
-  if (!email) return { tier: 'free', source: 'stripe-fallback' };
+  if (!email || !process.env.STRIPE_SECRET_KEY) return { tier: 'free', source: 'stripe-fallback' };
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const customers = await stripe.customers.list({ email, limit: 1 });
@@ -103,9 +103,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ tier: 'pro', complimentary: true });
     }
 
-    const firestoreTier = await getTierFromFirestore(uid);
-    if (firestoreTier) {
-      return res.status(200).json(firestoreTier);
+    // Firestore requires valid service-account credentials; fall through to
+    // Stripe rather than failing the whole tier check if they're broken.
+    try {
+      const firestoreTier = await getTierFromFirestore(uid);
+      if (firestoreTier) {
+        return res.status(200).json(firestoreTier);
+      }
+    } catch (firestoreError) {
+      console.warn('Firestore tier lookup failed:', firestoreError.message);
     }
 
     const stripeTier = await getTierFromStripe(normalizedEmail);

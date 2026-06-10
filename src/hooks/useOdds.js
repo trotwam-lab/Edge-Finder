@@ -259,8 +259,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           // Fetch player props in the background so the Games tab can render as soon as game odds are ready.
           const refreshProps = async () => {
-            const PROPS_SPORTS = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
-            const PROPS_NAME_MAP = { basketball_nba: 'NBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
+            const PROPS_SPORTS = ['basketball_nba', 'basketball_wnba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
+            const PROPS_NAME_MAP = { basketball_nba: 'NBA', basketball_wnba: 'WNBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
             const propsToFetch = PROPS_SPORTS.filter(s =>
               !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
             );
