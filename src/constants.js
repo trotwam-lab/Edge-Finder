@@ -65,17 +65,17 @@ export const FREE_BOOKS = ['fanduel', 'draftkings', 'betmgm'];
 // PRO_FEATURES ★ What you get with Edge Finder Pro ($12.99/mo)
 export const PRO_FEATURES = {
   price: '$12.99/mo',
-  headline: 'Know where to look before you bet.',
-  subheadline: 'Pro turns the live odds board into a daily betting workflow: edges, props, timing, sizing, and tracking.',
+  headline: 'Tell me where to look today.',
+  subheadline: 'Pro opens with a Daily Report that does the scanning for you: best prices, biggest moves, props worth researching, and the games to skip.',
   features: [
+    { icon: '📝', text: 'Daily Pro Report — top edges, steam moves, best books, and games to avoid in one morning screen' },
     { icon: '🎯', text: 'Full edge board with exact book, line, EV, and fair probability' },
+    { icon: '🔥', text: 'Steam Move Tracker — see which lines moved most since open' },
+    { icon: '🛒', text: 'Line Shopping Score + Best Books leaderboard across every game' },
     { icon: '📊', text: 'All sportsbooks unlocked — not just the 3-book free preview' },
     { icon: '🏀', text: 'Unlimited player prop board with best-price comparison' },
-    { icon: '⚡', text: 'Line movement and market disagreement alerts' },
-    { icon: '🧮', text: 'EV calculator plus implied probability/fair line tools' },
-    { icon: '💰', text: 'Kelly Criterion bet sizing so stakes match the edge' },
-    { icon: '📈', text: 'Bet tracker with W/L, ROI, units, streaks, and CLV' },
-    { icon: '📝', text: 'Daily Top Edges workflow foundation — built for the $12.99 plan' },
+    { icon: '🧮', text: 'EV calculator and Kelly Criterion sizing so stakes match the edge' },
+    { icon: '📈', text: 'Bet tracker with W/L, ROI, units, streaks, and CLV grading' },
   ],
 };
 
