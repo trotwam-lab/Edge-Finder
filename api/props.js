@@ -7,6 +7,7 @@ const cache = {};
 const TTL = 60 * 1000; // 1 minute
 const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
 const FREE_PLAYER_LIMIT = 3;
+const ODDS_REGIONS = 'us,us2';
 
 // Sport-specific prop markets supported by the Odds API
 const MARKETS_BY_SPORT = {
@@ -79,7 +80,7 @@ export default async function handler(req, res) {
     for (const event of events.slice(0, 8)) {
       try {
         const oddsRes = await fetch(
-          `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=us&markets=${markets.join(',')}&oddsFormat=american`,
+          `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=${ODDS_REGIONS}&markets=${markets.join(',')}&oddsFormat=american`,
           { signal: AbortSignal.timeout(10000) }
         );
         if (!oddsRes.ok) { console.warn(`Props failed for ${event.id}: ${oddsRes.status}`); continue; }

@@ -22,6 +22,14 @@ const tabLoaders = {
   BetTracker: () => import('./components/BetTracker.jsx'),
 };
 
+const OLD_ONBOARDING_SPORT_DEFAULTS = ['NBA', 'NFL', 'MLB', 'NHL'];
+
+function sameSet(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  const values = new Set(a);
+  return b.every(item => values.has(item));
+}
+
 const PropsView = lazy(tabLoaders.PropsView);
 const ProTools = lazy(tabLoaders.ProTools);
 const GameDetails = lazy(tabLoaders.GameDetails);
@@ -164,6 +172,15 @@ export default function BettingApp() {
   const [shareActivity, setShareActivity] = usePersistentState('edgefinder_share_activity', false);
   const [communityHandle, setCommunityHandle] = usePersistentState('edgefinder_community_handle', '');
   const [firstRunComplete, setFirstRunComplete] = usePersistentState('edgefinder_first_run_complete', false);
+
+  useEffect(() => {
+    if (sameSet(enabledSports, OLD_ONBOARDING_SPORT_DEFAULTS)) {
+      setEnabledSports(Object.keys(SPORTS));
+    }
+    if (sameSet(enabledBooks, FREE_BOOKS)) {
+      setEnabledBooks(Object.keys(BOOKMAKERS));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFirstRunComplete = ({ sports, books, bankroll, unitSize }) => {
     if (sports?.length) setEnabledSports(sports);

@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Target, Wallet, Zap } from 'lucide-react';
 import { SPORTS, BOOKMAKERS, FREE_BOOKS, PRO_FEATURES } from '../constants.js';
 
-const DEFAULT_SPORTS = ['NBA', 'NFL', 'MLB', 'NHL'];
-
 const chipStyle = (on) => ({
   padding: '9px 14px',
   borderRadius: '8px',
@@ -32,8 +30,8 @@ function StepHeader({ icon, title, subtitle }) {
 // Everything is skippable; the goal is orientation, not a paywall.
 export default function FirstRunSetup({ onComplete, isPro = false }) {
   const [step, setStep] = useState(0);
-  const [sports, setSports] = useState(DEFAULT_SPORTS.filter(name => SPORTS[name]));
-  const [books, setBooks] = useState([...FREE_BOOKS]);
+  const [sports, setSports] = useState(Object.keys(SPORTS));
+  const [books, setBooks] = useState(Object.keys(BOOKMAKERS));
   const [bankroll, setBankroll] = useState('1000');
   const [unitSize, setUnitSize] = useState('25');
 
@@ -44,7 +42,7 @@ export default function FirstRunSetup({ onComplete, isPro = false }) {
   const finish = () => {
     onComplete({
       sports: sports.length ? sports : Object.keys(SPORTS),
-      books: books.length ? books : [...FREE_BOOKS],
+      books: books.length ? books : Object.keys(BOOKMAKERS),
       bankroll: parseFloat(bankroll) || null,
       unitSize: parseFloat(unitSize) || null,
     });

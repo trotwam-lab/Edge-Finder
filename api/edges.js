@@ -208,7 +208,7 @@ export default async function handler(req, res) {
 
       for (const sport of TRACKED_SPORTS) {
               try {
-                        const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+                        const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2&markets=h2h,spreads,totals&oddsFormat=american`;
                         const response = await fetch(url);
                         if (!response.ok) {
                                     console.warn(`Odds API error for ${sport}: ${response.status}`);

@@ -174,6 +174,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         const allSports = Object.entries(SPORTS).filter(([name]) =>
                 !enabledSports || enabledSports.includes(name)
                                                             );
+        if (allSports.length === 0) return [];
 
                                            if (filter && filter !== 'ALL') {
                                                    const sportKey = SPORTS[filter];
@@ -183,8 +184,10 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                                    return allSports.slice(0, 3);
                                            }
 
-                                           // ALL selected — rotate through sports in batches of 4
-                                           const batchSize = 4;
+                                           // ALL selected means all enabled sports should stay active.
+                                           // The dashboard depends on this to avoid looking like only a
+                                           // four-sport board after onboarding.
+                                           const batchSize = allSports.length;
         const start = rotationIndexRef.current % allSports.length;
         const batch = [];
         for (let i = 0; i < batchSize; i++) {
@@ -203,13 +206,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
                                    try {
                                            const allSports = Object.entries(SPORTS).filter(([name]) => !enabledSports || enabledSports.includes(name));
-                                           // Initial ALL view used to only fetch the four major US leagues,
-                                           // which made available combat/tennis markets look missing until
-                                           // the slow rotation eventually reached them. Keep the first paint
-                                           // useful without fetching every configured sport at once.
-                                           const priorityNames = ['NBA', 'NFL', 'NHL', 'MLB', 'MMA', 'Boxing', 'ATP Italian', 'WTA Italian'];
                                            const sportsToFetch = isInitial && (!filter || filter === 'ALL')
-                                             ? allSports.filter(([name]) => priorityNames.includes(name))
+                                             ? allSports
                                              : isInitial
                                                ? allSports
                                                : getSportsToFetch();
