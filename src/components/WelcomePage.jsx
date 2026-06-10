@@ -1580,6 +1580,237 @@ function TrackerView({ tab }) {
   );
 }
 
+// ─── COMMUNITY / SOCIAL PROOF ─────────────────────
+const AVATAR_COLORS = ["#00c8ff", "#7b5cff", "#5b8cff", "#22c55e", "#ffaa22", "#ff6b9d"];
+
+const avatarColor = (name) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+};
+
+const COMMUNITY_ACTIVITY = [
+  { user: "mikey_clv", action: "beat the close by 14¢ on Knicks +3.5", tag: "CLV", tagColor: "#22c55e", time: "just now" },
+  { user: "SharpSarah", action: "logged Over 228.5 (-105) at DraftKings", tag: "TRACKED", tagColor: "#00c8ff", time: "1m ago" },
+  { user: "props_paul", action: "found a +3.1% edge on Brunson O 24.5 PTS", tag: "EDGE", tagColor: "#7b5cff", time: "2m ago" },
+  { user: "BankrollBen", action: "is up +8.4u over his last 47 bets", tag: "STREAK", tagColor: "#ffaa22", time: "4m ago" },
+  { user: "underdog_amy", action: "grabbed Heat ML +240 before the move to +215", tag: "CLV", tagColor: "#22c55e", time: "6m ago" },
+  { user: "steamchaser", action: "caught steam on Chiefs -1.5 → -2.5", tag: "STEAM", tagColor: "#ff4466", time: "8m ago" },
+  { user: "TJ_fades", action: "faded the public on Celtics -6", tag: "TRACKED", tagColor: "#00c8ff", time: "11m ago" },
+  { user: "linewatcher", action: "flagged a reverse line move on Knicks +2 → +3", tag: "EDGE", tagColor: "#7b5cff", time: "13m ago" },
+  { user: "CLV_Carl", action: "closed the week +2.2¢ avg vs close", tag: "CLV", tagColor: "#22c55e", time: "15m ago" },
+  { user: "NightCapNick", action: "logged Maxey O 5.5 AST (-110) at BetMGM", tag: "TRACKED", tagColor: "#00c8ff", time: "18m ago" },
+];
+
+const COMMUNITY_STATS = [
+  ["Active members", "2,300+"],
+  ["Bets tracked / mo", "12,400+"],
+  ["Avg CLV beat", "+1.8¢"],
+  ["Edges flagged daily", "150+"],
+];
+
+const TESTIMONIALS = [
+  {
+    name: "Marcus T.",
+    handle: "@mikey_clv",
+    role: "NBA grinder · Member since 2024",
+    metric: "CLV +2.3¢ avg",
+    quote: "I stopped checking five apps before every bet. The board shows the best number instantly, and my closing line value went positive within a month.",
+  },
+  {
+    name: "Sarah K.",
+    handle: "@SharpSarah",
+    role: "Props specialist · Member since 2023",
+    metric: "+11.2% ROI",
+    quote: "The prop screen pays for itself. Same line, three different prices — EdgeFinder just shows me which book is soft before the market corrects.",
+  },
+  {
+    name: "Devon R.",
+    handle: "@BankrollBen",
+    role: "Multi-sport · Member since 2024",
+    metric: "+8.4u tracked",
+    quote: "The tracker forced me to be honest about my results. Turns out my NBA sides were carrying everything — now I size accordingly.",
+  },
+];
+
+function AvatarBadge({ user, size = 28 }) {
+  const color = avatarColor(user);
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: "50%", flexShrink: 0,
+      background: `${color}1f`, border: `1px solid ${color}55`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "'JetBrains Mono', monospace", fontSize: size * 0.36,
+      fontWeight: 700, color, textTransform: "uppercase", letterSpacing: 0.5,
+    }}>{user.replace(/[^a-zA-Z]/g, "").slice(0, 2)}</span>
+  );
+}
+
+function CommunityProof() {
+  const [visible, setVisible] = useState(false);
+  const [feedIndex, setFeedIndex] = useState(0);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.15 }
+    );
+    if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    const interval = setInterval(() => {
+      setFeedIndex((prev) => prev + 1);
+    }, 3200);
+    return () => clearInterval(interval);
+  }, [visible]);
+
+  const FEED_SIZE = 5;
+  const feedItems = Array.from({ length: FEED_SIZE }, (_, i) => {
+    const idx = feedIndex + i;
+    return { ...COMMUNITY_ACTIVITY[idx % COMMUNITY_ACTIVITY.length], key: idx };
+  });
+
+  return (
+    <section className="welcome-section" ref={ref} style={{ padding: "80px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: 4, textTransform: "uppercase",
+          background: COLORS.gradientText, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          display: "block", marginBottom: 16,
+        }}>The Community</span>
+        <h2 style={{
+          fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(28px, 4vw, 42px)",
+          fontWeight: 600, color: COLORS.text, margin: "0 0 8px 0", lineHeight: 1.2,
+        }}>
+          Sharp bettors don't bet alone.
+        </h2>
+        <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, color: COLORS.textMuted, margin: 0 }}>
+          See what members are tracking on the board right now.
+        </p>
+      </div>
+
+      {/* ── Community stats row ── */}
+      <div className="community-stats" style={{
+        display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10,
+        maxWidth: 920, margin: "0 auto 28px",
+        opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(24px)",
+        transition: "all 0.7s cubic-bezier(0.16, 1, 0.3, 1)",
+      }}>
+        {COMMUNITY_STATS.map(([label, value]) => (
+          <div key={label} style={{
+            minHeight: 74, padding: "12px 14px",
+            border: `1px solid ${COLORS.border}`, borderRadius: 8,
+            background: "rgba(21, 27, 37, 0.56)",
+          }}>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1.2 }}>{label}</div>
+            <div style={{ marginTop: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 18, color: COLORS.text, fontWeight: 800 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="community-grid" style={{
+        display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.1fr)", gap: 24,
+        maxWidth: 920, margin: "0 auto", alignItems: "start",
+      }}>
+        {/* ── Live member activity feed ── */}
+        <div style={{
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`,
+          borderRadius: 16, overflow: "hidden",
+          opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(24px)",
+          transition: "all 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.15s",
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 18px", borderBottom: `1px solid ${COLORS.border}`,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{
+                width: 7, height: 7, borderRadius: "50%", background: COLORS.accent,
+                boxShadow: `0 0 10px ${COLORS.accent}`, animation: "pulse 2s ease-in-out infinite",
+              }} />
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: COLORS.accent }}>
+                Member Activity
+              </span>
+            </div>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim, letterSpacing: 1, textTransform: "uppercase" }}>Live</span>
+          </div>
+          <div style={{ padding: "8px 0" }}>
+            {feedItems.map((item, i) => (
+              <div key={item.key} className="community-feed-row" style={{
+                display: "flex", alignItems: "center", gap: 12, minWidth: 0,
+                padding: "11px 18px",
+                borderBottom: i < feedItems.length - 1 ? `1px solid ${COLORS.border}55` : "none",
+                animation: i === 0 ? "feedIn 0.45s cubic-bezier(0.16, 1, 0.3, 1)" : "none",
+              }}>
+                <AvatarBadge user={item.user} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: COLORS.text, lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                    <span style={{ color: avatarColor(item.user), fontWeight: 700 }}>{item.user}</span>
+                    {" "}{item.action}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    <span style={{
+                      fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: 1, fontWeight: 700,
+                      textTransform: "uppercase", background: `${item.tagColor}15`, color: item.tagColor,
+                      padding: "2px 7px", borderRadius: 4,
+                    }}>{item.tag}</span>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim }}>{item.time}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{
+            padding: "12px 18px", borderTop: `1px solid ${COLORS.border}`,
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim,
+            letterSpacing: 1, textTransform: "uppercase",
+          }}>
+            Sample feed · live activity unlocks inside
+          </div>
+        </div>
+
+        {/* ── Member testimonials ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {TESTIMONIALS.map((t, i) => (
+            <div key={t.handle} style={{
+              background: COLORS.surface, border: `1px solid ${COLORS.border}`,
+              borderRadius: 16, padding: "20px 22px",
+              opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(24px)",
+              transition: `all 0.7s cubic-bezier(0.16, 1, 0.3, 1) ${0.25 + i * 0.12}s`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <AvatarBadge user={t.handle.slice(1)} size={36} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, fontWeight: 600, color: COLORS.text }}>{t.name}</span>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: avatarColor(t.handle.slice(1)) }}>{t.handle}</span>
+                  </div>
+                  <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim, marginTop: 3, letterSpacing: 0.5 }}>{t.role}</div>
+                </div>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700,
+                  background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                  padding: "4px 10px", borderRadius: 100, whiteSpace: "nowrap", flexShrink: 0,
+                }}>{t.metric}</span>
+              </div>
+              <p style={{
+                margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: 14,
+                color: COLORS.textMuted, lineHeight: 1.6,
+              }}>
+                “{t.quote}”
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────
 export default function EdgeFinderSections() {
   const [signInOpen, setSignInOpen] = useState(false);
@@ -1594,6 +1825,7 @@ export default function EdgeFinderSections() {
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideDown { from { opacity: 0; transform: translateY(-12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes feedIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
         html { scroll-behavior: smooth; }
         * { box-sizing: border-box; }
         body { margin: 0; background: ${COLORS.bg}; }
@@ -1678,6 +1910,19 @@ export default function EdgeFinderSections() {
             padding: 22px !important;
           }
 
+          .community-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .community-grid {
+            grid-template-columns: 1fr !important;
+            gap: 14px !important;
+          }
+
+          .community-feed-row {
+            padding: 10px 14px !important;
+          }
+
           .welcome-signin-popup {
             top: calc(58px + env(safe-area-inset-top, 0px)) !important;
             left: 14px !important;
@@ -1719,6 +1964,8 @@ export default function EdgeFinderSections() {
       <div id="preview">
         <FeaturePreview />
       </div>
+      <div style={{ height: 1, background: COLORS.border, margin: "0 -48px" }} />
+      <CommunityProof />
 
       <section style={{ textAlign: "center", padding: "80px 0 60px" }}>
         <h2 style={{
