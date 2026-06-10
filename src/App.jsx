@@ -9,6 +9,8 @@ import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
 import MobileNav from './components/MobileNav.jsx';
 import OnboardingCoach from './components/OnboardingCoach.jsx';
+import HomeDashboard from './components/HomeDashboard.jsx';
+import FirstRunSetup from './components/FirstRunSetup.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 
 const tabLoaders = {
@@ -115,7 +117,7 @@ function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
 
 export default function BettingApp() {
   const { user, tier, refreshTier } = useAuth();
-  const [activeTab, setActiveTab] = useState('GAMES');
+  const [activeTab, setActiveTab] = useState('HOME');
   const [showCheckoutToast, setShowCheckoutToast] = useState(false);
   const [showCancelToast, setShowCancelToast] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
@@ -158,6 +160,19 @@ export default function BettingApp() {
   const [manualOpeners, setManualOpeners] = usePersistentState('edgefinder_manual_openers', {});
   const [enabledSports, setEnabledSports] = usePersistentState('edgefinder_enabled_sports', Object.keys(SPORTS));
   const [enabledBooks, setEnabledBooks] = usePersistentState('edgefinder_enabled_books', Object.keys(BOOKMAKERS));
+  const [firstRunComplete, setFirstRunComplete] = usePersistentState('edgefinder_first_run_complete', false);
+
+  const handleFirstRunComplete = ({ sports, books, bankroll, unitSize }) => {
+    if (sports?.length) setEnabledSports(sports);
+    if (books?.length) setEnabledBooks(books);
+    if (bankroll || unitSize) {
+      try {
+        localStorage.setItem('edgefinder_bankroll_settings', JSON.stringify({ bankroll, unitSize }));
+      } catch {}
+    }
+    setFirstRunComplete(true);
+    setActiveTab('HOME');
+  };
 
   const {
     games, playerProps, injuries, historicOdds, loading, error, lastUpdate,
@@ -283,6 +298,7 @@ export default function BettingApp() {
           </button>
         </div>
       )}
+      {!firstRunComplete && <FirstRunSetup onComplete={handleFirstRunComplete} isPro={tier === 'pro'} />}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -296,6 +312,19 @@ export default function BettingApp() {
         lastUpdate={lastUpdate}
         sportLastUpdated={sportLastUpdated}
       />
+      {activeTab === 'HOME' && (
+        <HomeDashboard
+          games={games}
+          playerProps={playerProps}
+          loading={loading}
+          watchlist={watchlist}
+          onToggleWatchlist={toggleWatchlist}
+          gameLineHistory={gameLineHistory}
+          historicOdds={historicOdds}
+          onNavigate={setActiveTab}
+          onRefresh={manualRefresh}
+        />
+      )}
       {activeTab === 'GAMES' && (
         <main className="edge-app-main">
           <MarketSummary
@@ -392,7 +421,7 @@ export default function BettingApp() {
           )}
         </main>
       )}
-      {activeTab === 'PROPS' && <Suspense fallback={<TabFallback label="Loading props view..." />}><PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} /></Suspense>}
+      {activeTab === 'PROPS' && <Suspense fallback={<TabFallback label="Loading props view..." />}><PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} onRefresh={manualRefresh} onNavigate={setActiveTab} /></Suspense>}
       {activeTab === 'PRO_TOOLS' && (
         <Suspense fallback={<TabFallback label="Loading pro tools..." />}>
           <ProTools

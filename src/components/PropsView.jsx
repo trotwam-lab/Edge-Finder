@@ -162,7 +162,7 @@ function OddsCell({ price, isBest, side, player, marketKey, line, book, game, ga
   );
 }
 
-export default function PropsView({ playerProps, games = [], loading, propHistory, propClosingLines, setPendingBet }) {
+export default function PropsView({ playerProps, games = [], loading, propHistory, propClosingLines, setPendingBet, onRefresh, onNavigate }) {
   const { tier } = useAuth();
   const [propFilter, setPropFilter] = useState('ALL');
   const [sportFilter, setSportFilter] = useState('ALL');
@@ -438,7 +438,27 @@ export default function PropsView({ playerProps, games = [], loading, propHistor
       {viewMode === 'all' && <>
       {propAlerts.length > 0 && <div style={{ marginBottom: '16px', padding: '14px', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '10px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', color: '#facc15', fontSize: '12px', fontWeight: 700 }}><Zap size={14} />Prop alerts</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>{propAlerts.slice(0, 4).map(alert => <div key={alert.id} style={{ padding: '10px', background: 'rgba(15,23,42,0.45)', borderRadius: '8px', border: '1px solid rgba(71,85,105,0.25)' }}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}><div style={{ fontSize: '11px', color: '#e2e8f0', fontWeight: 700 }}>{alert.title}</div><div style={{ fontSize: '10px', color: '#facc15' }}>{alert.metricDisplay}</div></div><div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>{alert.edge}</div><div style={{ fontSize: '10px', color: '#64748b' }}>{alert.note}</div></div>)}</div></div>}
       {filteredPlayers.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 14px', marginBottom: '16px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '8px', fontSize: '11px', color: '#818cf8' }}><ShoppingCart size={13} />Click any odds cell to quick-add to your Bet Tracker</div>}
-      {filteredPlayers.length === 0 ? <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>No props available. Props load for upcoming games only.</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>{Object.entries(playersBySport).map(([sport, sportPlayers]) => {
+      {filteredPlayers.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: '#64748b' }}>
+          <div style={{ fontSize: '34px', marginBottom: '10px' }}>🏀</div>
+          <div style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 600, marginBottom: '6px' }}>No props available yet for this slate</div>
+          <div style={{ fontSize: '12px', lineHeight: 1.6, maxWidth: '380px', margin: '0 auto 16px' }}>
+            Books usually post player props closer to game time — often the morning of the game.
+          </div>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {onRefresh && (
+              <button onClick={onRefresh} style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.3)', color: '#5eead4', fontFamily: '"JetBrains Mono", monospace' }}>
+                Refresh odds
+              </button>
+            )}
+            {onNavigate && (
+              <button onClick={() => onNavigate('GAMES')} style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', color: '#a5b4fc', fontFamily: '"JetBrains Mono", monospace' }}>
+                Try another sport
+              </button>
+            )}
+          </div>
+        </div>
+      ) : <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>{Object.entries(playersBySport).map(([sport, sportPlayers]) => {
         const meta = getSportMeta(sport);
         const visual = getSportVisual(sport);
         const visiblePlayers = tier === 'pro' ? sportPlayers : sportPlayers.slice(0, FREE_PLAYERS_LIMIT);

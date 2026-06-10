@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Wifi, WifiOff, RefreshCw, LogOut, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
+import { Home, Target, Wifi, WifiOff, RefreshCw, LogOut, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 export default function Header({
@@ -17,6 +17,7 @@ export default function Header({
 
   // Tab definitions: { key, label, icon, proOnly }
   const TABS = [
+    { key: 'HOME',         label: 'Home',                         icon: Home,        proOnly: false },
     { key: 'GAMES',        label: 'Games',                        count: games.length, icon: Target,      proOnly: false },
     { key: 'PROPS',        label: 'Props',                        count: playerProps.length, icon: Users,       proOnly: false },
     { key: 'PRO_TOOLS',    label: 'Pro Tools',                    icon: Wrench,      proOnly: true  },
