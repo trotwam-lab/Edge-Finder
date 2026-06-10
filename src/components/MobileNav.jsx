@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
+import { Target, Users, TrendingUp, Settings, FileText, Wrench, Radio } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 
 // All tabs — Pro-only tabs are gated with proOnly: true
@@ -9,6 +9,7 @@ const ALL_TABS = [
   { key: 'PRO_TOOLS',   label: 'Tools',     icon: Wrench,      proOnly: true  },
   { key: 'REPORT',      label: 'Report',    icon: FileText,    proOnly: true  },
   { key: 'TRACKER',     label: 'Tracker',   icon: TrendingUp,  proOnly: false },
+  { key: 'COMMUNITY',   label: 'Community', icon: Radio,       proOnly: false },
   { key: 'SETTINGS',    label: 'Settings',  icon: Settings,    proOnly: false },
 ];
 

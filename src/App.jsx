@@ -17,6 +17,7 @@ const tabLoaders = {
   GameDetails: () => import('./components/GameDetails.jsx'),
   DailyProReport: () => import('./components/DailyProReport.jsx'),
   BetTracker: () => import('./components/BetTracker.jsx'),
+  CommunityBoard: () => import('./components/CommunityBoard.jsx'),
 };
 
 const PropsView = lazy(tabLoaders.PropsView);
@@ -24,6 +25,7 @@ const ProTools = lazy(tabLoaders.ProTools);
 const GameDetails = lazy(tabLoaders.GameDetails);
 const DailyProReport = lazy(tabLoaders.DailyProReport);
 const BetTracker = lazy(tabLoaders.BetTracker);
+const CommunityBoard = lazy(tabLoaders.CommunityBoard);
 
 function TabFallback({ label = 'Loading...' }) {
   return (
@@ -411,6 +413,16 @@ export default function BettingApp() {
         )
       )}
       {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} games={games} historicOdds={historicOdds} /></Suspense>}
+      {activeTab === 'COMMUNITY' && (
+        <Suspense fallback={<TabFallback label="Loading community board..." />}>
+          <CommunityBoard
+            shareActivity={shareActivity}
+            setShareActivity={setShareActivity}
+            communityHandle={communityHandle}
+            setCommunityHandle={setCommunityHandle}
+          />
+        </Suspense>
+      )}
       {activeTab === 'SETTINGS' && (
         <main className="edge-app-main" style={{ maxWidth: '640px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>Settings</h2>
@@ -542,6 +554,10 @@ export default function BettingApp() {
                 <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px', lineHeight: '1.6' }}>
                   Only your handle, the market, and the line are shared — never your stake size, bankroll, or email. Turn this off any time to stop sharing instantly.
                 </div>
+                <button
+                  onClick={() => setActiveTab('COMMUNITY')}
+                  style={{ marginTop: '10px', padding: '6px 14px', background: 'rgba(45,212,191,0.15)', border: '1px solid rgba(45,212,191,0.35)', borderRadius: '6px', color: '#5eead4', fontSize: '11px', cursor: 'pointer', fontFamily: '"JetBrains Mono", monospace' }}
+                >View The Board →</button>
               </div>
             )}
           </div>
