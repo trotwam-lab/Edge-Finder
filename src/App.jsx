@@ -404,9 +404,15 @@ export default function BettingApp() {
         </Suspense>
       )}
       {activeTab === 'REPORT' && (
-        tier === 'pro' ? <Suspense fallback={<TabFallback label="Building daily report..." />}><DailyProReport games={games} playerProps={playerProps} /></Suspense> : (
-          <Suspense fallback={<TabFallback label="Loading report..." />}><DailyProReport games={games} playerProps={playerProps} /></Suspense>
-        )
+        <Suspense fallback={<TabFallback label="Building daily report..." />}>
+          <DailyProReport
+            games={games}
+            playerProps={playerProps}
+            gameLineHistory={gameLineHistory}
+            historicOdds={historicOdds}
+            setPendingBet={handleSetPendingBet}
+          />
+        </Suspense>
       )}
       {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} games={games} historicOdds={historicOdds} /></Suspense>}
       {activeTab === 'SETTINGS' && (

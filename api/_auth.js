@@ -37,7 +37,13 @@ function getBearerToken(req) {
   return match?.[1]?.trim() || '';
 }
 
-function getTrustedPreviewEmail(req) {
+// SECURITY: the X-EdgeFinder-Email header is client-supplied and unverified —
+// anyone can send it. It must NEVER grant Pro in production, or the full
+// odds/edges/props payloads are one curl command away. It is only honored
+// when ALLOW_EMAIL_TIER_FALLBACK=true is set explicitly (local dev /
+// preview deployments without Firebase Admin credentials).
+function getUnverifiedFallbackEmail(req) {
+  if (process.env.ALLOW_EMAIL_TIER_FALLBACK !== 'true') return '';
   return normalizeEmail(req.headers['x-edgefinder-email'] || req.headers['X-EdgeFinder-Email']);
 }
 
@@ -65,7 +71,7 @@ export async function getRequestTier(req) {
   try {
     const token = getBearerToken(req);
     if (!token) {
-      const fallbackEmail = getTrustedPreviewEmail(req);
+      const fallbackEmail = getUnverifiedFallbackEmail(req);
       if (fallbackEmail && ADMIN_EMAILS.includes(fallbackEmail)) {
         return { tier: 'pro', source: 'admin-email-fallback', email: fallbackEmail };
       }
@@ -77,7 +83,7 @@ export async function getRequestTier(req) {
 
     const app = getAdminApp();
     if (!app) {
-      const fallbackEmail = getTrustedPreviewEmail(req);
+      const fallbackEmail = getUnverifiedFallbackEmail(req);
       if (fallbackEmail && ADMIN_EMAILS.includes(fallbackEmail)) {
         return { tier: 'pro', source: 'admin-email-fallback', email: fallbackEmail };
       }
@@ -103,14 +109,10 @@ export async function getRequestTier(req) {
 
     return { tier: 'free', source: 'verified-free', uid: decoded.uid, email };
   } catch (error) {
+    // A failed token verification must never fall back to the unverified
+    // email header — an attacker would just send a garbage token plus a
+    // known comp email. Failed verification is always free tier.
     console.warn('Auth tier check failed:', error.message);
-    const fallbackEmail = getTrustedPreviewEmail(req);
-    if (fallbackEmail && ADMIN_EMAILS.includes(fallbackEmail)) {
-      return { tier: 'pro', source: 'admin-email-fallback', email: fallbackEmail };
-    }
-    if (fallbackEmail && FRIEND_EMAILS.includes(fallbackEmail)) {
-      return { tier: 'pro', source: 'complimentary-email-fallback', email: fallbackEmail };
-    }
     return { tier: 'free', source: 'auth-error' };
   }
 }
