@@ -15,6 +15,7 @@ import { americanToDecimal, americanToImplied } from '../utils/odds-math.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { useCloudBets, scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
+import WeeklyRecap from './WeeklyRecap.jsx';
 
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
@@ -760,6 +761,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   
   return (
     <div style={{ padding: '20px 24px', maxWidth: '900px', margin: '0 auto' }}>
+      {/* WEEKLY RECAP */}
+      <WeeklyRecap bets={bets} getTimingValue={getTimingValue} />
+
       {/* STATS */}
       <div style={{
         display: 'grid',

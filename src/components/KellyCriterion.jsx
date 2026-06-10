@@ -10,7 +10,15 @@ export default function KellyCriterion() {
   // Input states
   const [odds, setOdds] = useState('-110');
   const [winProbability, setWinProbability] = useState(55);
-  const [bankroll, setBankroll] = useState('1000');
+  // Default bankroll comes from first-run setup if the user provided one
+  const [bankroll, setBankroll] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('edgefinder_bankroll_settings'));
+      return saved?.bankroll ? String(saved.bankroll) : '1000';
+    } catch {
+      return '1000';
+    }
+  });
   const [showExplainer, setShowExplainer] = useState(false);
 
   // If user is free tier, show the upgrade banner instead

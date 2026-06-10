@@ -448,6 +448,27 @@ export function calculateEdgeScore(game, gameLineHistory) {
   return Math.min(Math.max(Math.round(score), 0), 100);
 }
 
+// ============================================================
+// Market trust label — honest, plain-English signal quality.
+// Tells the user how to treat a row instead of faking certainty.
+// ============================================================
+export function getMarketTrustLabel(game, { signal = null, disagreement = null, shopping = null } = {}) {
+    const bookCount = game?.bookmakers?.length || 0;
+    if (game?.scores && !game?.completed) {
+        return { key: 'live', label: 'Live market unstable', color: '#f87171', note: 'Prices are moving with the game — numbers can be stale.' };
+    }
+    if (bookCount > 0 && bookCount < 3) {
+        return { key: 'thin', label: 'Low book count', color: '#94a3b8', note: `Only ${bookCount} book${bookCount === 1 ? '' : 's'} posting — the consensus is weak.` };
+    }
+    if (signal?.strength === 'HIGH' || disagreement?.strength === 'HIGH') {
+        return { key: 'strong', label: 'Strong market signal', color: '#22c55e', note: 'Books moved or disagree sharply — research this one first.' };
+    }
+    if ((shopping?.centsSaved ?? 0) >= 10) {
+        return { key: 'shop', label: 'Price shop only', color: '#2dd4bf', note: 'No directional signal, but the price gap between books is real money.' };
+    }
+    return { key: 'research', label: 'Needs research', color: '#fbbf24', note: 'No standout market signal — bring your own reason to bet this.' };
+}
+
 // Format American odds with + prefix for display
 export function formatOdds(odds) {
     if (odds === null || odds === undefined) return '-';
