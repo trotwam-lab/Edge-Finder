@@ -158,6 +158,8 @@ export default function BettingApp() {
   const [manualOpeners, setManualOpeners] = usePersistentState('edgefinder_manual_openers', {});
   const [enabledSports, setEnabledSports] = usePersistentState('edgefinder_enabled_sports', Object.keys(SPORTS));
   const [enabledBooks, setEnabledBooks] = usePersistentState('edgefinder_enabled_books', Object.keys(BOOKMAKERS));
+  const [shareActivity, setShareActivity] = usePersistentState('edgefinder_share_activity', false);
+  const [communityHandle, setCommunityHandle] = usePersistentState('edgefinder_community_handle', '');
 
   const {
     games, playerProps, injuries, historicOdds, loading, error, lastUpdate,
@@ -494,6 +496,53 @@ export default function BettingApp() {
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>{watchlist.length} game{watchlist.length !== 1 ? 's' : ''} saved</div>
             {watchlist.length > 0 && (
               <button onClick={() => { if (confirm('Clear entire watchlist?')) setWatchlist([]); }} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', fontSize: '11px', cursor: 'pointer' }}>Clear Watchlist</button>
+            )}
+          </div>
+          <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>Community Sharing</div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.6' }}>
+                  Show your tracked bets and CLV wins in the community feed under a handle you choose. Off by default — nothing is shared unless you turn this on.
+                </div>
+              </div>
+              <button
+                onClick={() => setShareActivity(v => !v)}
+                role="switch"
+                aria-checked={shareActivity}
+                aria-label="Share my activity with the community"
+                style={{
+                  width: '42px', height: '24px', borderRadius: '12px', flexShrink: 0, padding: '2px',
+                  border: shareActivity ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.4)',
+                  background: shareActivity ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.6)',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center',
+                  justifyContent: shareActivity ? 'flex-end' : 'flex-start', transition: 'all 0.2s ease',
+                }}
+              >
+                <span style={{
+                  width: '16px', height: '16px', borderRadius: '50%',
+                  background: shareActivity ? '#22c55e' : '#64748b', transition: 'all 0.2s ease',
+                }} />
+              </button>
+            </div>
+            {shareActivity && (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>Display handle</div>
+                <input
+                  type="text"
+                  value={communityHandle}
+                  onChange={(e) => setCommunityHandle(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20))}
+                  placeholder="e.g. mikey_clv"
+                  style={{
+                    width: '100%', maxWidth: '240px', padding: '8px 12px', borderRadius: '6px',
+                    border: '1px solid rgba(71,85,105,0.4)', background: 'rgba(15,23,42,0.7)',
+                    color: '#e2e8f0', fontSize: '12px', fontFamily: '"JetBrains Mono", monospace', outline: 'none',
+                  }}
+                />
+                <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px', lineHeight: '1.6' }}>
+                  Only your handle, the market, and the line are shared — never your stake size, bankroll, or email. Turn this off any time to stop sharing instantly.
+                </div>
+              </div>
             )}
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>

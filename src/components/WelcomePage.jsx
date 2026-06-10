@@ -1689,8 +1689,18 @@ function CommunityProof() {
           Sharp bettors don't bet alone.
         </h2>
         <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, color: COLORS.textMuted, margin: 0 }}>
-          See what members are tracking on the board right now.
+          See what members choose to share from the board.
         </p>
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14,
+          padding: "6px 14px", borderRadius: 100,
+          border: `1px solid ${COLORS.border}`, background: "rgba(21, 27, 37, 0.56)",
+        }}>
+          <span style={{ color: "#22c55e", fontSize: 11 }}>✓</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: 1.2, textTransform: "uppercase", color: COLORS.textMuted }}>
+            Opt-in only · Sharing is off by default
+          </span>
+        </div>
       </div>
 
       {/* ── Community stats row ── */}
@@ -1769,7 +1779,7 @@ function CommunityProof() {
             fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim,
             letterSpacing: 1, textTransform: "uppercase",
           }}>
-            Sample feed · live activity unlocks inside
+            Sample feed · members pick a handle and opt in to appear here
           </div>
         </div>
 
