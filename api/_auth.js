@@ -48,6 +48,10 @@ function getUnverifiedFallbackEmail(req) {
   return normalizeEmail(req.headers['x-edgefinder-email'] || req.headers['X-EdgeFinder-Email']);
 }
 
+function getClientEmailHeader(req) {
+  return normalizeEmail(req.headers['x-edgefinder-email'] || req.headers['X-EdgeFinder-Email']);
+}
+
 async function getTierFromFirestore(uid) {
   if (!uid) return null;
   const db = getAdminDb();
@@ -113,6 +117,11 @@ export async function getRequestTier(req) {
 
     const app = getAdminApp();
     if (!app) {
+      const headerStripeTier = await getTierFromStripe(getClientEmailHeader(req));
+      if (headerStripeTier) {
+        return { ...headerStripeTier, source: 'stripe-email-header-admin-unavailable' };
+      }
+
       const fallbackEmail = getUnverifiedFallbackEmail(req);
       if (fallbackEmail && ADMIN_EMAILS.includes(fallbackEmail)) {
         return { tier: 'pro', source: 'admin-email-fallback', email: fallbackEmail };
@@ -142,9 +151,14 @@ export async function getRequestTier(req) {
 
     return { tier: 'free', source: 'verified-free', uid: decoded.uid, email };
   } catch (error) {
-    // A failed token verification must never fall back to the unverified
-    // email header — an attacker would just send a garbage token plus a
-    // known comp email. Failed verification is always free tier.
+    // If token verification fails but the logged-in browser included an email,
+    // only Stripe can recover Pro access. Complimentary/admin email fallbacks
+    // stay gated behind ALLOW_EMAIL_TIER_FALLBACK.
+    const headerStripeTier = await getTierFromStripe(getClientEmailHeader(req));
+    if (headerStripeTier) {
+      return { ...headerStripeTier, source: 'stripe-email-header-auth-error' };
+    }
+
     console.warn('Auth tier check failed:', error.message);
     return { tier: 'free', source: 'auth-error' };
   }

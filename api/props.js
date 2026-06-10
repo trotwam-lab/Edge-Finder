@@ -43,6 +43,11 @@ function buildFreePropsPreview(props = []) {
   return preview;
 }
 
+function setTierHeaders(res, tierInfo) {
+  res.setHeader('X-EdgeFinder-Tier', isProTier(tierInfo) ? 'pro' : 'free');
+  res.setHeader('X-EdgeFinder-Tier-Source', tierInfo?.source || 'unknown');
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -58,7 +63,7 @@ export default async function handler(req, res) {
   const cacheKey = `props-${sport}`;
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
-    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    setTierHeaders(res, tierInfo);
     return res.json(isPro ? cache[cacheKey].data : buildFreePropsPreview(cache[cacheKey].data));
   }
 
@@ -72,7 +77,10 @@ export default async function handler(req, res) {
     );
     if (!eventsRes.ok) throw new Error(`Events fetch failed: ${eventsRes.status}`);
     const events = await eventsRes.json();
-    if (!events || events.length === 0) return res.json([]);
+    if (!events || events.length === 0) {
+      setTierHeaders(res, tierInfo);
+      return res.json([]);
+    }
 
     const allProps = [];
 
@@ -118,7 +126,7 @@ export default async function handler(req, res) {
 
     cache[cacheKey] = { data: allProps, ts: Date.now() };
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    setTierHeaders(res, tierInfo);
     return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
   } catch (err) {
     console.error('Props API error:', err);

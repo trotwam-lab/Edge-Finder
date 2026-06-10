@@ -12,6 +12,11 @@ function buildFreeOddsPreview(data = []) {
   }));
 }
 
+function setTierHeaders(res, tierInfo) {
+  res.setHeader('X-EdgeFinder-Tier', isProTier(tierInfo) ? 'pro' : 'free');
+  res.setHeader('X-EdgeFinder-Tier-Source', tierInfo?.source || 'unknown');
+}
+
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', markets = 'h2h,spreads,totals' } = req.query;
   const tierInfo = await getRequestTier(req);
@@ -20,7 +25,7 @@ export default async function handler(req, res) {
 
   if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
-    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    setTierHeaders(res, tierInfo);
     return res.status(200).json(isPro ? cache[cacheKey].data : buildFreeOddsPreview(cache[cacheKey].data));
   }
 
@@ -34,7 +39,7 @@ export default async function handler(req, res) {
     const data = await response.json();
     cache[cacheKey] = { data, ts: Date.now() };
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
+    setTierHeaders(res, tierInfo);
     return res.status(200).json(isPro ? data : buildFreeOddsPreview(data));
   } catch (e) {
     return res.status(500).json({ error: e.message });
