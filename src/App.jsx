@@ -218,9 +218,30 @@ export default function BettingApp() {
       return g.home_team?.toLowerCase().includes(s) || g.away_team?.toLowerCase().includes(s);
     }), [games, filter, deferredSearchTerm]);
 
+  // Timestamp of a game's most recent "event": a live game is happening right
+  // now, otherwise the last time its spread/total actually moved (from the
+  // captured line history). Games with no recorded activity fall back to 0 and
+  // are ordered by start time instead.
+  const recentEventAt = (game) => {
+    if (game.scores) return Number.MAX_SAFE_INTEGER;
+    const history = gameLineHistory?.[game.id];
+    if (history && history.length > 1) {
+      for (let i = history.length - 1; i > 0; i--) {
+        const cur = history[i];
+        const prev = history[i - 1];
+        if (cur.spread !== prev.spread || cur.total !== prev.total) {
+          return cur.timestamp || 0;
+        }
+      }
+    }
+    return 0;
+  };
+
   // Group filtered games by sport so each sport gets its own header + accent.
   // When the user filters to a specific sport the grouping still works but
-  // only that group will render, keeping the Games tab consistent.
+  // only that group will render, keeping the Games tab consistent. Within each
+  // sport, games are ordered by most recent event (live first, then freshest
+  // line move), with soonest start time as the tiebreaker.
   const gamesBySport = useMemo(() => {
     const buckets = new Map();
     filteredGames.forEach(g => {
@@ -228,10 +249,16 @@ export default function BettingApp() {
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(g);
     });
-    // Put live-games-first sports at the top by preserving insertion order,
-    // which mirrors the order returned by the odds API (hottest first).
+    buckets.forEach(bucket => {
+      bucket.sort((a, b) => {
+        const diff = recentEventAt(b) - recentEventAt(a);
+        if (diff !== 0) return diff;
+        return new Date(a.commence_time) - new Date(b.commence_time);
+      });
+    });
+    // Sport groups keep the odds API's insertion order (hottest sport first).
     return Array.from(buckets.entries());
-  }, [filteredGames]);
+  }, [filteredGames, gameLineHistory]);
 
   const teamLogoMap = useTeamLogos(games);
 
