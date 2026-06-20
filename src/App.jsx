@@ -14,7 +14,7 @@ import OnboardingCoach from './components/OnboardingCoach.jsx';
 import HomeDashboard from './components/HomeDashboard.jsx';
 import FirstRunSetup from './components/FirstRunSetup.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
-import { isGameLive } from './utils/live-status.js';
+import { isGameLive, getGameStatus } from './utils/live-status.js';
 
 const tabLoaders = {
   PropsView: () => import('./components/PropsView.jsx'),
@@ -279,15 +279,49 @@ export default function BettingApp() {
   // When the user filters to a specific sport the grouping still works but
   // only that group will render, keeping the Games tab consistent.
   const gamesBySport = useMemo(() => {
+    const now = Date.now();
+    // Precompute status once per game (used for both ordering passes).
+    const statusOf = new Map();
+    filteredGames.forEach(g => statusOf.set(g.id, getGameStatus(g)));
+
     const buckets = new Map();
     filteredGames.forEach(g => {
       const key = g.sport_key || 'other';
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(g);
     });
-    // Put live-games-first sports at the top by preserving insertion order,
-    // which mirrors the order returned by the odds API (hottest first).
-    return Array.from(buckets.entries());
+
+    // Order sports by what is actually happening soonest — NOT a fixed list.
+    // Live sports first, then by their soonest live/upcoming game. This keeps
+    // in-season leagues (MLB in summer) ahead of leagues whose games are months
+    // out (e.g. NFL Week 1 lines that books post back in the spring), and it
+    // self-corrects as seasons change instead of hardcoding any sport order.
+    const rankOf = (sportGames) => {
+      let hasLive = false;
+      let earliest = Infinity;
+      sportGames.forEach(g => {
+        const s = statusOf.get(g.id);
+        if (s?.isLive) { hasLive = true; earliest = Math.min(earliest, now); }
+        else if (s?.isUpcoming) {
+          const t = Date.parse(g.commence_time);
+          if (Number.isFinite(t)) earliest = Math.min(earliest, t);
+        }
+      });
+      return { hasLive, earliest };
+    };
+
+    // Within each sport: live games first, then soonest start time.
+    buckets.forEach(list => list.sort((a, b) => {
+      const sa = statusOf.get(a.id), sb = statusOf.get(b.id);
+      if (!!sa?.isLive !== !!sb?.isLive) return sa?.isLive ? -1 : 1;
+      return (Date.parse(a.commence_time) || Infinity) - (Date.parse(b.commence_time) || Infinity);
+    }));
+
+    return Array.from(buckets.entries()).sort(([, ga], [, gb]) => {
+      const ra = rankOf(ga), rb = rankOf(gb);
+      if (ra.hasLive !== rb.hasLive) return ra.hasLive ? -1 : 1;
+      return ra.earliest - rb.earliest;
+    });
   }, [filteredGames]);
 
   const teamLogoMap = useTeamLogos(games);
