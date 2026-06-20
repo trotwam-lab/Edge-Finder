@@ -3,6 +3,8 @@
 // Data sources: ESPN API (team stats, rosters, schedules, box scores), OpenWeatherMap
 
 // ─── Configuration ─────────────────────────────────────────────────────────
+import { getMlbProbablesAndLineups } from './mlb-statsapi.js';
+
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb';
 const ESPN_CORE = 'https://site.api.espn.com/apis/core/v2/sports/baseball/mlb';
 const ESPN_SCOREBOARD = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard';
@@ -283,7 +285,15 @@ async function fetchScoreboardProbables(homeId, awayId, gameDate) {
   if (!event) event = findEvent(await safeFetch(ESPN_SCOREBOARD));
   if (!event) return null;
 
-  const probables = event?.competitions?.[0]?.probables;
+  const competition = event?.competitions?.[0];
+  let probables = competition?.probables;
+  // ESPN sometimes attaches probables per-competitor rather than on the
+  // competition; check both shapes before giving up.
+  if (!Array.isArray(probables) || probables.length === 0) {
+    probables = (competition?.competitors || []).flatMap((c) =>
+      (c.probables || []).map((p) => ({ ...p, homeAway: p.homeAway || c.homeAway }))
+    );
+  }
   if (!Array.isArray(probables) || probables.length === 0) return null;
 
   const out = {};
@@ -1081,6 +1091,7 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
       weather,
       homeSeasonStats,
       awaySeasonStats,
+      mlbData,
     ] = await Promise.all([
       fetchPitchingMatchup(homeTeam, awayTeam, gameDate),
       fetchOffensiveForm(homeTeam, homeId),
@@ -1091,15 +1102,23 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
       fetchWeather(homeTeam, gameDate),
       fetchTeamBattingStats(homeId),
       fetchTeamBattingStats(awayId),
+      getMlbProbablesAndLineups(homeTeam, awayTeam, gameDate),
     ]);
 
-    // Enrich pitching data with last 3 starts + vs opponent history
-    if (pitchingMatchup.home?.id) {
+    // MLB Stats API is authoritative for probable starters — prefer it over the
+    // ESPN scoreboard/rotation fallback whenever it returned a starter.
+    if (mlbData?.home) { pitchingMatchup.home = mlbData.home; pitchingMatchup.confirmedHome = true; }
+    if (mlbData?.away) { pitchingMatchup.away = mlbData.away; pitchingMatchup.confirmedAway = true; }
+
+    // Last-3-starts enrichment. Stats API pitchers already carry their own
+    // last3Starts (with MLB ids ESPN box scores can't match), so only enrich
+    // pitchers that came from the ESPN fallback.
+    if (pitchingMatchup.home?.id && pitchingMatchup.home.source !== 'mlb-statsapi' && !pitchingMatchup.home.last3Starts?.length) {
       const homeStartsData = await fetchPitcherLastStarts(pitchingMatchup.home.id, homeId, awayTeam);
       pitchingMatchup.home.last3Starts = homeStartsData.starts;
       pitchingMatchup.home.vsOpponent = homeStartsData.vsOpponent;
     }
-    if (pitchingMatchup.away?.id) {
+    if (pitchingMatchup.away?.id && pitchingMatchup.away.source !== 'mlb-statsapi' && !pitchingMatchup.away.last3Starts?.length) {
       const awayStartsData = await fetchPitcherLastStarts(pitchingMatchup.away.id, awayId, homeTeam);
       pitchingMatchup.away.last3Starts = awayStartsData.starts;
       pitchingMatchup.away.vsOpponent = awayStartsData.vsOpponent;
@@ -1107,24 +1126,30 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
 
     const parkFactor = getParkFactorData(homeTeam);
 
-    // ── Roto: starting-pitcher confirmation status ──────────────────────────
-    // Drives the "Confirmed / Partial / Projected" badge in the UI so bettors
-    // know whether the pitching matchup is locked or still a rotation guess.
+    // ── Roto: starting-pitcher + lineup confirmation status ─────────────────
+    // Drives the "Confirmed / Partial / Projected" badge so bettors know whether
+    // the pitching matchup is locked (official) or still a rotation guess.
+    const usedStatsApi = !!(mlbData?.home || mlbData?.away);
     const confirmedCount = (pitchingMatchup.confirmedHome ? 1 : 0) + (pitchingMatchup.confirmedAway ? 1 : 0);
     const rotoStatus = confirmedCount === 2 ? 'Confirmed' : confirmedCount === 1 ? 'Partial' : 'Projected';
-    const probableSource = pitchingMatchup.source || 'Projection';
+    const lineupsPosted = !!mlbData?.lineupsPosted;
+    // MLB Stats API is authoritative when it supplied a starter; otherwise fall
+    // back to whatever fetchPitchingMatchup used (RotoWire > ESPN > projection).
+    const sourceLabel = usedStatsApi ? 'MLB Stats API' : (pitchingMatchup.source || 'Projection');
     const roto = {
       status: rotoStatus,
-      source: probableSource,
+      source: sourceLabel,
       home: { name: pitchingMatchup.home?.name || null, confirmed: !!pitchingMatchup.confirmedHome },
       away: { name: pitchingMatchup.away?.name || null, confirmed: !!pitchingMatchup.confirmedAway },
+      lineups: lineupsPosted ? 'Posted' : 'Not posted',
       note: rotoStatus === 'Confirmed'
-        ? `Both starters confirmed by ${probableSource}.`
+        ? `Both starters confirmed via ${sourceLabel}.${lineupsPosted ? ' Lineups posted.' : ' Lineups not posted yet.'}`
         : rotoStatus === 'Partial'
-          ? 'One starter confirmed; the other projected from the rotation.'
+          ? `One starter confirmed via ${sourceLabel}; the other projected from the rotation.`
           : 'Starters projected from recent rotation — not yet confirmed.',
       sourceCheck: pitchingMatchup.sourceCheck,
     };
+    const lineups = mlbData?.lineups || null;
 
     // Build betting trends
     const trends = buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen, pitchingMatchup, parkFactor, h2h, homeTeam, awayTeam);
@@ -1138,6 +1163,7 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
       dataSource: rotoStatus === 'Projected' ? 'MLB Research' : `Roto · ${rotoStatus}`,
       accurate: rotoStatus !== 'Projected',
       roto,
+      lineups,
       pitchingMatchup,
       offensiveForm: {
         home: { ...homeOffense, seasonStats: homeSeasonStats },

@@ -338,29 +338,69 @@ function rotoConfBadge(confirmed) {
   );
 }
 
+function LineupColumn({ title, players }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+      {players?.length ? players.map((p, i) => (
+        <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'baseline', fontSize: '10px', color: '#cbd5e1', padding: '2px 0' }}>
+          <span style={{ color: '#64748b', width: '10px', flexShrink: 0 }}>{i + 1}</span>
+          <span style={{ color: '#64748b', width: '22px', flexShrink: 0 }}>{p.pos || ''}</span>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+        </div>
+      )) : <div style={{ fontSize: '10px', color: '#64748b' }}>Not posted</div>}
+    </div>
+  );
+}
+
 function BaseballExtras({ data }) {
   if (data?.sport !== 'baseball_mlb') return null;
   const homePitcher = data.pitchingMatchup?.home;
   const awayPitcher = data.pitchingMatchup?.away;
   const weather = data.weather;
   const roto = data.roto;
+  const lineups = data.lineups;
+  const hasLineups = !!(lineups && (lineups.away?.length || lineups.home?.length));
   const rotoColor = roto?.status === 'Confirmed' ? '#22c55e' : roto?.status === 'Partial' ? '#eab308' : '#94a3b8';
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(71,85,105,0.15)', display: 'grid', gap: '10px' }}>
-      {/* Roto: starting-pitcher confirmation status */}
+      {/* Roto: starting-pitcher + lineup confirmation status */}
       {roto && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '8px', background: 'rgba(15,23,42,0.5)', border: `1px solid ${rotoColor}33` }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, color: rotoColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             ⚾ Roto: {roto.status}
           </span>
+          {roto.lineups && (
+            <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: roto.lineups === 'Posted' ? 'rgba(34,197,94,0.16)' : 'rgba(100,116,139,0.18)', color: roto.lineups === 'Posted' ? '#22c55e' : '#94a3b8' }}>
+              Lineups: {roto.lineups}
+            </span>
+          )}
           <span style={{ fontSize: '10px', color: '#94a3b8' }}>{roto.note}</span>
+          {roto.source && <span style={{ fontSize: '9px', color: '#475569', marginLeft: 'auto' }}>{roto.source}</span>}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         <PlayerCard title="Away starter" player={awayPitcher} emptyText="Not listed yet" badge={awayPitcher ? rotoConfBadge(!!awayPitcher.confirmed) : null} detail={awayPitcher?.confirmed ? 'Confirmed probable (Roto)' : awayPitcher?.last3Starts?.length ? 'Projected · recent starter form' : 'Projected from rotation'} stats={pitcherStats(awayPitcher)} />
         <PlayerCard title="Home starter" player={homePitcher} emptyText="Not listed yet" badge={homePitcher ? rotoConfBadge(!!homePitcher.confirmed) : null} detail={homePitcher?.confirmed ? 'Confirmed probable (Roto)' : homePitcher?.last3Starts?.length ? 'Projected · recent starter form' : 'Projected from rotation'} stats={pitcherStats(homePitcher)} />
       </div>
+
+      {/* Projected / confirmed batting lineups (MLB Stats API) */}
+      {hasLineups ? (
+        <div style={{ background: 'rgba(30,41,59,0.35)', borderRadius: '8px', padding: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: '#cbd5e1', fontSize: '11px', fontWeight: 700 }}>
+            <span aria-hidden="true">🧾</span> Projected Lineups
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <LineupColumn title={String(data.awayTeam || 'Away').split(' ').pop()} players={lineups.away} />
+            <LineupColumn title={String(data.homeTeam || 'Home').split(' ').pop()} players={lineups.home} />
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: '10px', color: '#64748b' }}>
+          🧾 Lineups not posted yet — they usually drop a few hours before first pitch.
+        </div>
+      )}
 
       <div style={{ background: 'rgba(30,41,59,0.35)', borderRadius: '8px', padding: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', color: '#cbd5e1', fontSize: '11px', fontWeight: 700 }}><CloudSun size={12} /> Weather</div>
