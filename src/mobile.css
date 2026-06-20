@@ -541,6 +541,35 @@ input {
   display: none;
 }
 
+/* Sport switcher chips. On wider screens they wrap so every league is visible
+   at once (no horizontal hunting); on phones they become a single scrolling
+   row (see the mobile override below). */
+.sport-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Keep the sport switcher reachable on desktop: pin it just under the sticky
+   header so you can change sports without scrolling back to the top. */
+@media (min-width: 769px) {
+  .sport-filter-bar {
+    position: sticky;
+    top: 56px;
+    z-index: 80;
+    padding: 10px 0 8px;
+    background: rgba(7, 17, 31, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -693,7 +722,13 @@ input {
 
   .sport-buttons {
     width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 8px !important;
+    /* Fade the right edge to hint there are more sports to scroll to. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
   }
 }
 

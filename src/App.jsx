@@ -424,6 +424,7 @@ export default function BettingApp() {
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
             enabledSports={enabledSports}
+            games={games}
           />
           {loading && games.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px' }}>
