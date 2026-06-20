@@ -156,16 +156,72 @@ function daysAgo(days) {
  * 3. Cross-reference with recent games to find who started last
  * 4. Use rotation logic to estimate next starter
  */
+/**
+ * "Roto"-style confirmed probable starters from ESPN's scoreboard feed.
+ * This is the most reliable source for who is actually starting — far better
+ * than scraping schedule notes or guessing from the rotation. Returns
+ * { home, away } where each side carries the pitcher identity + confirmed flag,
+ * or null when ESPN has not posted probables yet.
+ */
+async function fetchScoreboardProbables(homeId, awayId, gameDate) {
+  const findEvent = (data) => (data?.events || []).find((ev) => {
+    const ids = (ev.competitions?.[0]?.competitors || []).map((c) => String(c.team?.id));
+    return ids.includes(String(homeId)) && ids.includes(String(awayId));
+  });
+
+  const dateParam = String(gameDate || '').replace(/-/g, '').slice(0, 8);
+  // Try the explicit date, then fall back to the default board. A night game's
+  // UTC date can roll to the next day, so the default board (ESPN-local "today")
+  // is a useful second look.
+  let event = dateParam ? findEvent(await safeFetch(`${ESPN_SCOREBOARD}?dates=${dateParam}`)) : null;
+  if (!event) event = findEvent(await safeFetch(ESPN_SCOREBOARD));
+  if (!event) return null;
+
+  const probables = event?.competitions?.[0]?.probables;
+  if (!Array.isArray(probables) || probables.length === 0) return null;
+
+  const out = {};
+  probables.forEach((p) => {
+    const side = p?.homeAway;
+    if (side !== 'home' && side !== 'away') return;
+    const athlete = p?.athlete || null;
+    if (!athlete && !p?.name) return;
+    out[side] = {
+      name: athlete?.displayName || athlete?.fullName || p?.name || null,
+      id: athlete?.id || p?.playerId || null,
+      headshot: playerHeadshot(athlete || {}),
+      source: 'probable',
+      confirmed: true,
+    };
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+// Overlay a confirmed probable onto roster season stats (ERA/WHIP/record) when
+// we can find the same pitcher on the roster.
+function mergeProbableWithRoster(probable, roster) {
+  if (!probable) return null;
+  const athletes = rosterAthletes(roster);
+  const match = probable.id
+    ? athletes.find((a) => String(a.id) === String(probable.id))
+    : athletes.find((a) => a.fullName && probable.name && a.fullName === probable.name);
+  if (match) {
+    return { ...formatPitcherFromRoster(match), ...probable };
+  }
+  return probable;
+}
+
 async function fetchPitchingMatchup(homeTeam, awayTeam, gameDate) {
   const homeId = getTeamId(homeTeam);
   const awayId = getTeamId(awayTeam);
   if (!homeId || !awayId) return { error: 'Team ID not found' };
 
-  const [homeRoster, awayRoster, homeSchedule, awaySchedule] = await Promise.all([
+  const [homeRoster, awayRoster, homeSchedule, awaySchedule, scoreboardProbables] = await Promise.all([
     safeFetch(`${ESPN_BASE}/teams/${homeId}/roster`),
     safeFetch(`${ESPN_BASE}/teams/${awayId}/roster`),
     safeFetch(`${ESPN_BASE}/teams/${homeId}/schedule`),
     safeFetch(`${ESPN_BASE}/teams/${awayId}/schedule`),
+    fetchScoreboardProbables(homeId, awayId, gameDate),
   ]);
 
   // Find the specific game in schedule to get probable pitchers if available
@@ -173,18 +229,30 @@ async function fetchPitchingMatchup(homeTeam, awayTeam, gameDate) {
   const homeGame = findGameByDate(homeSchedule, targetDate);
   const awayGame = findGameByDate(awaySchedule, targetDate);
 
-  // Try to extract probable pitcher from schedule competition notes
-  const homeProbable = extractProbablePitcher(homeGame, homeRoster);
-  const awayProbable = extractProbablePitcher(awayGame, awayRoster);
+  // Preference order: confirmed scoreboard probable > schedule-note probable >
+  // rotation estimate (projected). confirmedHome/Away drive the Roto status.
+  const homeConfirmed = scoreboardProbables?.home ? mergeProbableWithRoster(scoreboardProbables.home, homeRoster) : null;
+  const awayConfirmed = scoreboardProbables?.away ? mergeProbableWithRoster(scoreboardProbables.away, awayRoster) : null;
 
-  // If no probable found in schedule, estimate from rotation
-  const homeStarter = homeProbable || await estimateNextStarter(homeId, homeRoster, homeSchedule, targetDate);
-  const awayStarter = awayProbable || await estimateNextStarter(awayId, awayRoster, awaySchedule, targetDate);
+  const homeProbable = homeConfirmed || extractProbablePitcher(homeGame, homeRoster);
+  const awayProbable = awayConfirmed || extractProbablePitcher(awayGame, awayRoster);
+
+  // If no probable found, estimate from rotation and flag it as projected.
+  const homeStarter = homeProbable || markProjected(await estimateNextStarter(homeId, homeRoster, homeSchedule, targetDate));
+  const awayStarter = awayProbable || markProjected(await estimateNextStarter(awayId, awayRoster, awaySchedule, targetDate));
 
   return {
     home: homeStarter,
     away: awayStarter,
+    confirmedHome: !!homeProbable?.confirmed,
+    confirmedAway: !!awayProbable?.confirmed,
   };
+}
+
+// Tag a rotation-estimated starter as projected (not confirmed).
+function markProjected(starter) {
+  if (!starter) return null;
+  return { ...starter, confirmed: false, source: starter.source === 'roster' ? 'projected' : (starter.source || 'projected') };
 }
 
 function findGameByDate(schedule, dateStr) {
@@ -205,10 +273,11 @@ function extractProbablePitcher(gameEvent, roster) {
   const athletes = rosterAthletes(roster);
   if (pitcherMatch && athletes.length) {
     const name = pitcherMatch[1];
-    const player = athletes.find(a => 
+    const player = athletes.find(a =>
       a.fullName?.includes(name) || name.includes(a.fullName?.split(' ').pop() || '')
     );
-    if (player) return formatPitcherFromRoster(player);
+    // Listed in ESPN's schedule notes — treat as a confirmed probable.
+    if (player) return { ...formatPitcherFromRoster(player), source: 'probable', confirmed: true };
   }
   return null;
 }
@@ -919,6 +988,23 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
 
     const parkFactor = getParkFactorData(homeTeam);
 
+    // ── Roto: starting-pitcher confirmation status ──────────────────────────
+    // Drives the "Confirmed / Partial / Projected" badge in the UI so bettors
+    // know whether the pitching matchup is locked or still a rotation guess.
+    const confirmedCount = (pitchingMatchup.confirmedHome ? 1 : 0) + (pitchingMatchup.confirmedAway ? 1 : 0);
+    const rotoStatus = confirmedCount === 2 ? 'Confirmed' : confirmedCount === 1 ? 'Partial' : 'Projected';
+    const roto = {
+      status: rotoStatus,
+      source: 'ESPN probables',
+      home: { name: pitchingMatchup.home?.name || null, confirmed: !!pitchingMatchup.confirmedHome },
+      away: { name: pitchingMatchup.away?.name || null, confirmed: !!pitchingMatchup.confirmedAway },
+      note: rotoStatus === 'Confirmed'
+        ? 'Both starters confirmed by ESPN probables.'
+        : rotoStatus === 'Partial'
+          ? 'One starter confirmed; the other projected from the rotation.'
+          : 'Starters projected from recent rotation — not yet confirmed.',
+    };
+
     // Build betting trends
     const trends = buildBaseballTrends(homeOffense, awayOffense, homeBullpen, awayBullpen, pitchingMatchup, parkFactor, h2h, homeTeam, awayTeam);
 
@@ -928,6 +1014,9 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
       awayTeam,
       gameDate,
       timestamp: new Date().toISOString(),
+      dataSource: rotoStatus === 'Projected' ? 'MLB Research' : `Roto · ${rotoStatus}`,
+      accurate: rotoStatus !== 'Projected',
+      roto,
       pitchingMatchup,
       offensiveForm: {
         home: { ...homeOffense, seasonStats: homeSeasonStats },

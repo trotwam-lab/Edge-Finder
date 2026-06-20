@@ -8,11 +8,13 @@ import { useAlerts } from './hooks/useAlerts.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
+import GameTicker from './components/GameTicker.jsx';
 import MobileNav from './components/MobileNav.jsx';
 import OnboardingCoach from './components/OnboardingCoach.jsx';
 import HomeDashboard from './components/HomeDashboard.jsx';
 import FirstRunSetup from './components/FirstRunSetup.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
+import { isGameLive } from './utils/live-status.js';
 
 const tabLoaders = {
   PropsView: () => import('./components/PropsView.jsx'),
@@ -46,7 +48,7 @@ function TabFallback({ label = 'Loading...' }) {
 }
 
 function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
-  const liveGames = games.filter(g => g.scores).length;
+  const liveGames = games.filter(isGameLive).length;
   const injuryCount = Object.values(injuries || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
   const bookCount = games.reduce((max, game) => Math.max(max, game.bookmakers?.length || 0), 0);
   const trackedMarkets = games.reduce((sum, game) => {
@@ -215,6 +217,16 @@ export default function BettingApp() {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  // Open a specific game (from the ticker / game-of-the-day) on the board,
+  // expanded. Reset filter+search so the game is guaranteed to be visible.
+  const handleSelectGame = (game) => {
+    if (!game?.id) return;
+    setFilter('ALL');
+    setSearchTerm('');
+    setExpandedGame(game.id);
+    setActiveTab('GAMES');
+  };
+
   const alertsApi = useAlerts({ games, watchlist, gameLineHistory, historicOdds, tier });
 
   const handleManageSubscription = async () => {
@@ -357,6 +369,7 @@ export default function BettingApp() {
           gameLineHistory={gameLineHistory}
           historicOdds={historicOdds}
           onNavigate={setActiveTab}
+          onSelectGame={handleSelectGame}
           onRefresh={manualRefresh}
         />
       )}
@@ -369,6 +382,7 @@ export default function BettingApp() {
             isConnected={isConnected}
             loading={loading}
           />
+          <GameTicker games={games} onSelect={handleSelectGame} />
           <OnboardingCoach onNavigate={setActiveTab} />
           <SportFilter
             filter={filter}
@@ -386,7 +400,7 @@ export default function BettingApp() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
               {gamesBySport.map(([sportKey, sportGames]) => {
                 const visual = getSportVisual(sportKey);
-                const liveCount = sportGames.filter(g => g.scores).length;
+                const liveCount = sportGames.filter(isGameLive).length;
                 return (
                   <div key={sportKey}>
                     <div style={{
@@ -638,6 +652,12 @@ export default function BettingApp() {
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes efPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        @keyframes efMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        .ef-ticker-track { display: inline-flex; }
+        .ef-ticker-scroll { animation: efMarquee 42s linear infinite; }
+        .ef-ticker-scroll:hover { animation-play-state: paused; }
+        @media (prefers-reduced-motion: reduce) { .ef-ticker-scroll { animation: none; } }
         @media (max-width: 768px) {
           .mobile-nav { display: flex !important; }
           .header-inner { flex-direction: column !important; align-items: flex-start !important; }

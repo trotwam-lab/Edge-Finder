@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SPORTS, BOOKMAKERS, SPORT_ESPN_MAP } from '../constants.js';
 import { auth } from '../firebase.js';
+import { isGameLive } from '../utils/live-status.js';
 
 // ============================================================
 // Persistent state — survives page refreshes via localStorage
@@ -75,6 +76,30 @@ function findScoreForGame(scoresData = [], game) {
   return scoresData.find(score => score?.id === game?.id) || scoresData.find(score => scoreMatchesGame(score, game));
 }
 
+// ESPN live-status events have no shared id with the odds feed, so match on
+// normalized team names within a tight time window (mirrors scoreMatchesGame).
+function liveStatusMatchesGame(evt, game) {
+  if (!evt || !game) return false;
+  const eHome = normalizeName(evt.home_team);
+  const eAway = normalizeName(evt.away_team);
+  const gHome = normalizeName(game.home_team);
+  const gAway = normalizeName(game.away_team);
+  if (!eHome || !eAway || !gHome || !gAway) return false;
+  const same = eHome === gHome && eAway === gAway;
+  const reversed = eHome === gAway && eAway === gHome;
+  if (!same && !reversed) return false;
+  const et = Date.parse(evt.commence_time || '');
+  const gt = Date.parse(game.commence_time || '');
+  if (Number.isFinite(et) && Number.isFinite(gt)) {
+    return Math.abs(et - gt) <= 12 * 60 * 60 * 1000;
+  }
+  return true;
+}
+
+function findLiveStatusForGame(events = [], game) {
+  return events.find(evt => liveStatusMatchesGame(evt, game)) || null;
+}
+
 function getTeamScore(scoreData, teamName) {
   if (!scoreData?.scores?.length || !teamName) return null;
   const target = normalizeName(teamName);
@@ -98,11 +123,11 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const rotationIndexRef = useRef(0);
     const hasCompletedInitialLoadRef = useRef(false);
 
-  // Determine refresh interval: 60s if any game is live, 120s otherwise
-  const hasLiveGame = games.some(g =>
-        new Date(g.commence_time) < new Date() && !g.completed
-                                   );
-    const refreshInterval = hasLiveGame ? 60 : defaultInterval;
+  // Determine refresh interval: 30s if any game is genuinely live, 120s
+  // otherwise. We now use the ESPN-backed status so finished games (which the
+  // odds feed still lists with a past start time) don't pin us to fast refresh.
+  const hasLiveGame = games.some(g => isGameLive(g));
+    const refreshInterval = hasLiveGame ? 30 : defaultInterval;
 
   // ============================================================
   // Fetchers
@@ -121,6 +146,20 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                 if (!res.ok) return [];
                 const data = await res.json();
                 return Array.isArray(data) ? data : [];
+        } catch {
+                return [];
+        }
+  }, []);
+
+  // ESPN-backed live status: real state/period/clock, live scores, marquee
+  // headlines, and MLB probable pitchers. Soft-fails to [] so a hiccup never
+  // blocks the odds board.
+  const fetchLiveStatus = useCallback(async (sport) => {
+        try {
+                const res = await fetch(`/api/live-status?sport=${sport}`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return Array.isArray(data?.events) ? data.events : [];
         } catch {
                 return [];
         }
@@ -217,20 +256,24 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           const sportResults = await Promise.all(sportsToFetch.map(async ([sportName, sportKey]) => {
                     try {
-                                const [oddsData, scoresData, injuryList] = await Promise.all([
+                                const [oddsData, scoresData, injuryList, liveEvents] = await Promise.all([
                                               fetchOdds(sportKey),
                                               fetchScores(sportKey),
                                               fetchInjuries(sportKey),
+                                              fetchLiveStatus(sportKey),
                                             ]);
 
                       const gamesWithScores = oddsData.map(game => {
                                     const scoreData = findScoreForGame(scoresData, game);
+                                    const liveStatus = findLiveStatusForGame(liveEvents, game);
                                     return {
                                                     ...game,
                                                     scores: scoreData?.scores?.length ? scoreData.scores : null,
-                                                    completed: scoreData?.completed || false,
-                                                    homeScore: getTeamScore(scoreData, game.home_team),
-                                                    awayScore: getTeamScore(scoreData, game.away_team),
+                                                    // ESPN is authoritative for completion when present.
+                                                    completed: liveStatus ? liveStatus.completed : (scoreData?.completed || false),
+                                                    homeScore: getTeamScore(scoreData, game.home_team) ?? liveStatus?.homeScore ?? null,
+                                                    awayScore: getTeamScore(scoreData, game.away_team) ?? liveStatus?.awayScore ?? null,
+                                                    liveStatus: liveStatus || null,
                                     };
                       });
 
@@ -349,7 +392,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                    } finally {
                                            setLoading(false);
                                    }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchPlayerProps, getSportsToFetch, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+  }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
   // Initial load
   useEffect(() => {

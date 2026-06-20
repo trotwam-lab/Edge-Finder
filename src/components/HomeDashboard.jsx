@@ -12,6 +12,8 @@ import {
   getSpreadMoveSignal,
 } from '../utils/odds-math.js';
 import { getSportVisual } from '../utils/team-logos.js';
+import { getGameStatus, formatStartTime } from '../utils/live-status.js';
+import GameTicker from './GameTicker.jsx';
 
 const PRO_LOCKED_BOOK_COUNT = Object.keys(BOOKMAKERS).length - FREE_BOOKS.length;
 
@@ -26,8 +28,11 @@ async function getAuthHeaders() {
   }
 }
 
-function isUpcoming(game) {
-  return game?.commence_time && Date.parse(game.commence_time) >= Date.now() - 3 * 60 * 60 * 1000;
+// On-board = live right now or scheduled (not finished). Finished games are
+// excluded so the dashboard stops surfacing games that already ended.
+function isLiveOrUpcoming(game) {
+  const s = getGameStatus(game);
+  return s.isLive || s.isUpcoming;
 }
 
 function formatGameTime(value) {
@@ -145,6 +150,7 @@ export default function HomeDashboard({
   gameLineHistory = {},
   historicOdds = {},
   onNavigate = () => {},
+  onSelectGame,
   onRefresh = () => {},
 }) {
   const { tier, user } = useAuth();
@@ -173,7 +179,7 @@ export default function HomeDashboard({
     loadEdges();
   }, [loadEdges]);
 
-  const upcoming = useMemo(() => games.filter(isUpcoming), [games]);
+  const upcoming = useMemo(() => games.filter(isLiveOrUpcoming), [games]);
 
   const topEdges = useMemo(() => edges.slice(0, 3), [edges]);
 
@@ -241,10 +247,16 @@ export default function HomeDashboard({
       .slice(0, 3);
   }, [playerProps]);
 
+  // Live games float to the top, then the soonest scheduled games.
   const startingSoon = useMemo(() => {
     return [...upcoming]
-      .sort((a, b) => Date.parse(a.commence_time) - Date.parse(b.commence_time))
-      .slice(0, 4);
+      .sort((a, b) => {
+        const la = getGameStatus(a).isLive;
+        const lb = getGameStatus(b).isLive;
+        if (la !== lb) return la ? -1 : 1;
+        return Date.parse(a.commence_time) - Date.parse(b.commence_time);
+      })
+      .slice(0, 5);
   }, [upcoming]);
 
   const watchedGames = useMemo(
@@ -256,6 +268,9 @@ export default function HomeDashboard({
 
   return (
     <main className="edge-app-main" style={{ maxWidth: '980px' }}>
+      {/* Game of the Day + live ticker */}
+      <GameTicker games={games} onSelect={onSelectGame || (() => onNavigate('GAMES'))} />
+
       {/* Hero */}
       <div style={{
         padding: '20px',
@@ -468,8 +483,8 @@ export default function HomeDashboard({
         <Card>
           <SectionTitle
             icon={<CalendarClock size={18} color="#22c55e" />}
-            title="Starting Soon"
-            subtitle="Lines lock at tip-off — shop these first."
+            title="Live & Starting Soon"
+            subtitle="Live games up top, then the next to tip — shop these first."
           />
           {loading && startingSoon.length === 0 ? (
             <div style={{ color: '#64748b', fontSize: '12px', padding: '8px 0' }}>Loading the slate…</div>
@@ -478,19 +493,31 @@ export default function HomeDashboard({
               {startingSoon.map((game, idx) => {
                 const ctx = gameContext.get(game.id);
                 const visual = getSportVisual(game.sport_key);
+                const status = getGameStatus(game);
                 return (
                   <div key={game.id} style={{ paddingBottom: idx === startingSoon.length - 1 ? 0 : '10px', borderBottom: idx === startingSoon.length - 1 ? 'none' : '1px solid rgba(71,85,105,0.28)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
-                      <div style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 700 }}>
+                      <div
+                        onClick={() => onSelectGame?.(game)}
+                        style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 700, cursor: onSelectGame ? 'pointer' : 'default' }}
+                      >
                         {visual.icon} {game.away_team} @ {game.home_team}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {status.isLive && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '9px', fontWeight: 800, color: '#ef4444' }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'efPulse 1.4s ease-in-out infinite' }} />
+                            LIVE
+                          </span>
+                        )}
                         <TrustBadge trust={ctx?.trust} />
                         <WatchStar gameId={game.id} watchlist={watchlist} onToggleWatchlist={onToggleWatchlist} />
                       </div>
                     </div>
-                    <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
-                      {formatGameTime(game.commence_time)} · {game.bookmakers?.length || 0} books posting
+                    <div style={{ fontSize: '10px', color: status.isLive ? '#fca5a5' : '#94a3b8', marginTop: '2px' }}>
+                      {status.isLive
+                        ? `${status.detail || 'In progress'}${status.awayScore != null && status.homeScore != null ? ` · ${status.awayScore}–${status.homeScore}` : ''}`
+                        : `${formatStartTime(game.commence_time)} · ${game.bookmakers?.length || 0} books posting`}
                     </div>
                     {whyLine(ctx) && (
                       <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>{whyLine(ctx)}</div>

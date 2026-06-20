@@ -310,12 +310,12 @@ function goalieStats(goalieProfile) {
   return [goalieProfile?.savePercentage ? `${goalieProfile.savePercentage} SV%` : null, goalieProfile?.goalsAgainstAverage ? `${goalieProfile.goalsAgainstAverage} GAA` : null].filter(Boolean);
 }
 
-function PlayerCard({ title, player, emptyText, detail, stats = [] }) {
+function PlayerCard({ title, player, emptyText, detail, stats = [], badge = null }) {
   return (
     <div style={{ background: 'rgba(30,41,59,0.35)', borderRadius: '8px', padding: '10px', display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
       <PlayerAvatar player={player} label={title} />
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', color: '#cbd5e1', fontSize: '11px', fontWeight: 700 }}><UserRound size={12} /> {title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', color: '#cbd5e1', fontSize: '11px', fontWeight: 700 }}><UserRound size={12} /> {title}{badge}</div>
         <div style={{ color: '#f8fafc', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{player?.name || emptyText}</div>
         <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '4px' }}>{detail || 'No player data available'}</div>
         {stats.length > 0 && (
@@ -328,17 +328,38 @@ function PlayerCard({ title, player, emptyText, detail, stats = [] }) {
   );
 }
 
+function rotoConfBadge(confirmed) {
+  return (
+    <span style={{
+      fontSize: '8px', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 5px', borderRadius: '4px',
+      background: confirmed ? 'rgba(34,197,94,0.16)' : 'rgba(100,116,139,0.18)',
+      color: confirmed ? '#22c55e' : '#94a3b8',
+    }}>{confirmed ? 'CONFIRMED' : 'PROJ'}</span>
+  );
+}
+
 function BaseballExtras({ data }) {
   if (data?.sport !== 'baseball_mlb') return null;
   const homePitcher = data.pitchingMatchup?.home;
   const awayPitcher = data.pitchingMatchup?.away;
   const weather = data.weather;
+  const roto = data.roto;
+  const rotoColor = roto?.status === 'Confirmed' ? '#22c55e' : roto?.status === 'Partial' ? '#eab308' : '#94a3b8';
 
   return (
     <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(71,85,105,0.15)', display: 'grid', gap: '10px' }}>
+      {/* Roto: starting-pitcher confirmation status */}
+      {roto && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '8px 10px', borderRadius: '8px', background: 'rgba(15,23,42,0.5)', border: `1px solid ${rotoColor}33` }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '10px', fontWeight: 800, color: rotoColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            ⚾ Roto: {roto.status}
+          </span>
+          <span style={{ fontSize: '10px', color: '#94a3b8' }}>{roto.note}</span>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-        <PlayerCard title="Away starter" player={awayPitcher} emptyText="Not listed yet" detail={awayPitcher?.last3Starts?.length ? 'Recent starter form' : 'Estimated from recent starts'} stats={pitcherStats(awayPitcher)} />
-        <PlayerCard title="Home starter" player={homePitcher} emptyText="Not listed yet" detail={homePitcher?.last3Starts?.length ? 'Recent starter form' : 'Estimated from recent starts'} stats={pitcherStats(homePitcher)} />
+        <PlayerCard title="Away starter" player={awayPitcher} emptyText="Not listed yet" badge={awayPitcher ? rotoConfBadge(!!awayPitcher.confirmed) : null} detail={awayPitcher?.confirmed ? 'Confirmed probable (Roto)' : awayPitcher?.last3Starts?.length ? 'Projected · recent starter form' : 'Projected from rotation'} stats={pitcherStats(awayPitcher)} />
+        <PlayerCard title="Home starter" player={homePitcher} emptyText="Not listed yet" badge={homePitcher ? rotoConfBadge(!!homePitcher.confirmed) : null} detail={homePitcher?.confirmed ? 'Confirmed probable (Roto)' : homePitcher?.last3Starts?.length ? 'Projected · recent starter form' : 'Projected from rotation'} stats={pitcherStats(homePitcher)} />
       </div>
 
       <div style={{ background: 'rgba(30,41,59,0.35)', borderRadius: '8px', padding: '10px' }}>

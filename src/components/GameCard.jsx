@@ -4,6 +4,7 @@ import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, americanT
 import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
+import { getGameStatus, formatStartTime } from '../utils/live-status.js';
 
 function TeamLogo({ name, url, size = 26 }) {
   const [fallback, setFallback] = useState(!url);
@@ -28,12 +29,16 @@ function TeamLogo({ name, url, size = 26 }) {
   );
 }
 
-function formatGameTime(date) {
-  const now = new Date();
-  if (date < now) return 'LIVE';
-  const diff = date - now;
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+// Right-rail status text: live game detail (inning/quarter/clock), Final, a
+// short countdown when it's minutes away, or the scheduled start time.
+function statusDisplay(status, commence) {
+  if (status.isLive) return status.detail || 'LIVE';
+  if (status.isFinal) return 'Final';
+  if (status.label === 'IN PROGRESS') return 'In progress';
+  if (status.label === 'ENDED') return 'Ended';
+  const diff = new Date(commence) - new Date();
+  if (diff > 0 && diff < 3600000) return `${Math.max(1, Math.floor(diff / 60000))}m`;
+  return formatStartTime(commence);
 }
 
 function HoldBadge({ hold }) {
@@ -57,7 +62,11 @@ export default function GameCard({
   const { tier } = useAuth(); // Get tier for EV display
   const [copied, setCopied] = useState(false); // For share button "Copied!" tooltip
   const [showQuickPick, setShowQuickPick] = useState(false); // Quick-pick bet popover
-  const isLive = new Date(game.commence_time) < new Date();
+  // Accurate status from the ESPN-backed feed (falls back to time/scores).
+  const status = getGameStatus(game);
+  const isLive = status.isLive;
+  const isFinal = status.isFinal;
+  const hasGameScore = status.homeScore != null && status.awayScore != null;
 
   // === EDGE SCORE™ — pro-only composite rating ===
   const edgeScore = calculateEdgeScore(game, gameLineHistory);
@@ -251,14 +260,24 @@ export default function GameCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
             <span style={{
               padding: '2px 6px',
-              background: game.scores ? 'rgba(239, 68, 68, 0.2)' : `${sportVisual.color}20`,
-              color: game.scores ? '#ef4444' : sportVisual.color,
+              background: isLive ? 'rgba(239, 68, 68, 0.2)' : isFinal ? 'rgba(100,116,139,0.2)' : `${sportVisual.color}20`,
+              color: isLive ? '#ef4444' : isFinal ? '#94a3b8' : sportVisual.color,
               borderRadius: '4px', fontSize: '9px', fontWeight: 700,
               display: 'inline-flex', alignItems: 'center', gap: '4px',
             }}>
-              <span aria-hidden="true">{game.scores ? '•' : sportVisual.icon}</span>
-              {game.scores ? 'LIVE' : sportLabel}
+              <span aria-hidden="true" style={isLive ? { animation: 'efPulse 1.4s ease-in-out infinite' } : undefined}>
+                {isLive ? '●' : isFinal ? '✓' : sportVisual.icon}
+              </span>
+              {isLive ? 'LIVE' : isFinal ? 'FINAL' : sportLabel}
             </span>
+            {/* Precise live game clock: "Top 5th", "Q3 4:21", "2nd 12:05"… */}
+            {isLive && status.detail && (
+              <span style={{
+                padding: '2px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: 700,
+                background: 'rgba(239,68,68,0.12)', color: '#fca5a5',
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+              }}>{status.detail}</span>
+            )}
             {/* Edge Score™ badge — Pro users see score, free users see lock */}
             {tier === 'pro' ? (
               <span style={{
@@ -305,7 +324,7 @@ export default function GameCard({
                 INJ {awayInjuries.length}
               </span>
             )}
-            {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.awayScore}</span>}
+            {hasGameScore && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{status.awayScore}</span>}
             <span style={{ color: '#64748b', fontSize: '12px' }}>@</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <TeamLogo name={game.home_team} url={homeLogo} />
@@ -316,7 +335,7 @@ export default function GameCard({
                 INJ {homeInjuries.length}
               </span>
             )}
-            {game.scores && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{game.homeScore}</span>}
+            {hasGameScore && <span style={{ fontWeight: 700, fontSize: '16px', color: '#f8fafc' }}>{status.homeScore}</span>}
           </div>
           {/* Fair odds summary on card */}
           <div className="game-fair-line" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -397,8 +416,8 @@ export default function GameCard({
             fontSize: '11px', padding: '3px 8px', borderRadius: '4px',
             background: isLive ? 'rgba(239,68,68,0.2)' : 'transparent',
             color: isLive ? '#ef4444' : '#94a3b8',
-            fontWeight: isLive ? 700 : 400
-          }}>{formatGameTime(new Date(game.commence_time))}</span>
+            fontWeight: isLive ? 700 : 400, whiteSpace: 'nowrap',
+          }}>{statusDisplay(status, game.commence_time)}</span>
           {expanded ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
         </div>
       </div>
