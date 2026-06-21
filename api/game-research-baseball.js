@@ -6,6 +6,7 @@
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb';
 const ESPN_CORE = 'https://site.api.espn.com/apis/core/v2/sports/baseball/mlb';
 const ESPN_SCOREBOARD = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard';
+const ROTOWIRE_LINEUPS = 'https://www.rotowire.com/baseball/daily-lineups.php';
 
 // ESPN team name → team ID mapping (exported for reuse by parent module)
 export const MLB_IDS = {
@@ -94,6 +95,36 @@ function normalizeTeamKey(teamName) {
   return String(teamName || '').trim().replace(/\s+/g, ' ');
 }
 
+function normalizeSearchKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function stripHtml(value) {
+  return String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#039;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function teamMatches(shortName, fullName) {
+  const shortKey = normalizeSearchKey(shortName);
+  const fullKey = normalizeSearchKey(fullName);
+  if (!shortKey || !fullKey) return false;
+  return shortKey === fullKey || fullKey.includes(shortKey) || shortKey.includes(fullKey);
+}
+
 function canonicalTeamName(teamName) {
   const normalized = normalizeTeamKey(teamName);
   if (MLB_IDS[normalized]) return normalized;
@@ -133,6 +164,20 @@ async function safeFetch(url, opts = {}) {
   }
 }
 
+async function safeFetchText(url, opts = {}) {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(opts.timeout || 10000),
+      headers: { 'User-Agent': 'Mozilla/5.0 EdgeFinderDaily/1.0' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } catch (err) {
+    console.error(`Fetch text error for ${url}:`, err.message);
+    return null;
+  }
+}
+
 // Format date as YYYY-MM-DD
 function formatDate(d) {
   const date = new Date(d);
@@ -147,6 +192,67 @@ function daysAgo(days) {
 }
 
 // ─── 1. PITCHING MATCHUP DATA ──────────────────────────────────────────────
+
+function rotowireSide(block, side) {
+  const sideMatch = block.match(new RegExp(`<ul class="lineup__list is-${side}">([\\s\\S]*?)(?=<ul class="lineup__list|</div>\\s*</div>)`));
+  const sideHtml = sideMatch?.[1] || '';
+  const pitcherMatch = sideHtml.match(/lineup__player-highlight-name[\s\S]*?<a[^>]*>(.*?)<\/a>/);
+  const statusMatch = sideHtml.match(/lineup__status[^"]*is-([^"\s]+)[\s\S]*?<\/div>\s*([^<]+)/);
+  return {
+    pitcher: stripHtml(pitcherMatch?.[1]) || 'TBD',
+    lineupStatus: stripHtml(statusMatch?.[2]) || 'unknown',
+  };
+}
+
+async function fetchRotowireProbables(gameDate) {
+  const targetDate = formatDate(gameDate);
+  const today = formatDate(new Date());
+  const urls = targetDate === today
+    ? [ROTOWIRE_LINEUPS]
+    : [`${ROTOWIRE_LINEUPS}?date=${encodeURIComponent(targetDate)}`, ROTOWIRE_LINEUPS];
+
+  for (const url of urls) {
+    const page = await safeFetchText(url, { timeout: 12000 });
+    if (!page) continue;
+    const games = [];
+    const blocks = page.split(/<div class="lineup is-mlb[^"]*"/).slice(1);
+    for (const block of blocks) {
+      const teams = [...block.matchAll(/<div class="lineup__mteam is-(visit|home)">([\s\S]*?)<\/div>/g)]
+        .reduce((acc, match) => {
+          acc[match[1]] = stripHtml(match[2].replace(/<span[\s\S]*?<\/span>/g, ''));
+          return acc;
+        }, {});
+      if (!teams.visit || !teams.home) continue;
+      const away = rotowireSide(block, 'visit');
+      const home = rotowireSide(block, 'home');
+      games.push({
+        awayTeam: teams.visit,
+        homeTeam: teams.home,
+        awayPitcher: away.pitcher,
+        homePitcher: home.pitcher,
+        awayLineupStatus: away.lineupStatus,
+        homeLineupStatus: home.lineupStatus,
+      });
+    }
+    if (games.length) return games;
+  }
+  return [];
+}
+
+function findRotowireGame(rotowireGames, awayTeam, homeTeam) {
+  return rotowireGames.find(game =>
+    teamMatches(game.awayTeam, awayTeam) && teamMatches(game.homeTeam, homeTeam)
+  ) || null;
+}
+
+function rotowireProbable(name) {
+  if (!name || normalizeSearchKey(name) === 'tbd') return null;
+  return {
+    name,
+    source: 'rotowire',
+    confirmed: true,
+  };
+}
 
 /**
  * Fetch team roster and identify probable starting pitcher
@@ -216,12 +322,13 @@ async function fetchPitchingMatchup(homeTeam, awayTeam, gameDate) {
   const awayId = getTeamId(awayTeam);
   if (!homeId || !awayId) return { error: 'Team ID not found' };
 
-  const [homeRoster, awayRoster, homeSchedule, awaySchedule, scoreboardProbables] = await Promise.all([
+  const [homeRoster, awayRoster, homeSchedule, awaySchedule, scoreboardProbables, rotowireGames] = await Promise.all([
     safeFetch(`${ESPN_BASE}/teams/${homeId}/roster`),
     safeFetch(`${ESPN_BASE}/teams/${awayId}/roster`),
     safeFetch(`${ESPN_BASE}/teams/${homeId}/schedule`),
     safeFetch(`${ESPN_BASE}/teams/${awayId}/schedule`),
     fetchScoreboardProbables(homeId, awayId, gameDate),
+    fetchRotowireProbables(gameDate),
   ]);
 
   // Find the specific game in schedule to get probable pitchers if available
@@ -229,13 +336,20 @@ async function fetchPitchingMatchup(homeTeam, awayTeam, gameDate) {
   const homeGame = findGameByDate(homeSchedule, targetDate);
   const awayGame = findGameByDate(awaySchedule, targetDate);
 
-  // Preference order: confirmed scoreboard probable > schedule-note probable >
+  // Preference order: RotoWire probable > ESPN scoreboard probable > schedule-note probable >
   // rotation estimate (projected). confirmedHome/Away drive the Roto status.
+  const rotowireGame = findRotowireGame(rotowireGames, awayTeam, homeTeam);
+  const homeRoto = rotowireGame?.homePitcher
+    ? mergeProbableWithRoster(rotowireProbable(rotowireGame.homePitcher), homeRoster)
+    : null;
+  const awayRoto = rotowireGame?.awayPitcher
+    ? mergeProbableWithRoster(rotowireProbable(rotowireGame.awayPitcher), awayRoster)
+    : null;
   const homeConfirmed = scoreboardProbables?.home ? mergeProbableWithRoster(scoreboardProbables.home, homeRoster) : null;
   const awayConfirmed = scoreboardProbables?.away ? mergeProbableWithRoster(scoreboardProbables.away, awayRoster) : null;
 
-  const homeProbable = homeConfirmed || extractProbablePitcher(homeGame, homeRoster);
-  const awayProbable = awayConfirmed || extractProbablePitcher(awayGame, awayRoster);
+  const homeProbable = homeRoto || homeConfirmed || extractProbablePitcher(homeGame, homeRoster);
+  const awayProbable = awayRoto || awayConfirmed || extractProbablePitcher(awayGame, awayRoster);
 
   // If no probable found, estimate from rotation and flag it as projected.
   const homeStarter = homeProbable || markProjected(await estimateNextStarter(homeId, homeRoster, homeSchedule, targetDate));
@@ -246,6 +360,11 @@ async function fetchPitchingMatchup(homeTeam, awayTeam, gameDate) {
     away: awayStarter,
     confirmedHome: !!homeProbable?.confirmed,
     confirmedAway: !!awayProbable?.confirmed,
+    source: rotowireGame ? 'RotoWire' : scoreboardProbables ? 'ESPN probables' : 'Projection',
+    sourceCheck: rotowireGame ? {
+      home: `RotoWire: ${rotowireGame.homePitcher || 'TBD'}; ESPN: ${scoreboardProbables?.home?.name || 'TBD'}`,
+      away: `RotoWire: ${rotowireGame.awayPitcher || 'TBD'}; ESPN: ${scoreboardProbables?.away?.name || 'TBD'}`,
+    } : null,
   };
 }
 
@@ -993,16 +1112,18 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
     // know whether the pitching matchup is locked or still a rotation guess.
     const confirmedCount = (pitchingMatchup.confirmedHome ? 1 : 0) + (pitchingMatchup.confirmedAway ? 1 : 0);
     const rotoStatus = confirmedCount === 2 ? 'Confirmed' : confirmedCount === 1 ? 'Partial' : 'Projected';
+    const probableSource = pitchingMatchup.source || 'Projection';
     const roto = {
       status: rotoStatus,
-      source: 'ESPN probables',
+      source: probableSource,
       home: { name: pitchingMatchup.home?.name || null, confirmed: !!pitchingMatchup.confirmedHome },
       away: { name: pitchingMatchup.away?.name || null, confirmed: !!pitchingMatchup.confirmedAway },
       note: rotoStatus === 'Confirmed'
-        ? 'Both starters confirmed by ESPN probables.'
+        ? `Both starters confirmed by ${probableSource}.`
         : rotoStatus === 'Partial'
           ? 'One starter confirmed; the other projected from the rotation.'
           : 'Starters projected from recent rotation — not yet confirmed.',
+      sourceCheck: pitchingMatchup.sourceCheck,
     };
 
     // Build betting trends
@@ -1033,7 +1154,7 @@ export async function getBaseballResearch(homeTeam, awayTeam, gameDate) {
       meta: {
         dataSources: ['ESPN API', 'OpenWeatherMap (if configured)'],
         notes: [
-          'Pitching matchup estimated from rotation if probable starter not announced',
+          'Pitching matchup uses RotoWire first, ESPN probables second, and rotation estimates last',
           'Bullpen stats cover last 7 days of games',
           'Weather requires OPENWEATHER_API_KEY environment variable',
         ],
