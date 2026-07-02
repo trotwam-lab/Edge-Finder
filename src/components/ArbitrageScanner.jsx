@@ -3,6 +3,7 @@ import { Scale, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { americanToDecimal, formatOdds } from '../utils/odds-math.js';
+import { getGameStatus } from '../utils/live-status.js';
 
 // Arbitrage & Low-Hold Scanner — Pro tool.
 // Scans every game already on the board for outcome sets where taking the
@@ -116,6 +117,9 @@ export default function ArbitrageScanner({ games = [] }) {
 
   const opportunities = useMemo(() => {
     return games
+      // Pregame only — in-play prices from a 60-120s-old snapshot make
+      // stale-book "arbs" that are gone before anyone can place both sides.
+      .filter(game => getGameStatus(game).isUpcoming)
       .flatMap(scanGame)
       .filter(op => op.multiBook)
       .sort((a, b) => b.roi - a.roi)
