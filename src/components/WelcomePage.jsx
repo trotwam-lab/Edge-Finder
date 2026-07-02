@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase";
+import { LogoMark } from "./Logo.jsx";
 
 const COLORS = {
   bg: "#0d1117",
@@ -123,9 +124,30 @@ function HeroPreviewPanel() {
 }
 
 function HeroSection({ onSignIn }) {
+  // Live, verifiable proof: the 30-day close-beat rate from the public
+  // graded track record (/api/edge-receipts). Falls back to static copy
+  // until enough days have graded out.
+  const [trackRecord, setTrackRecord] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/edge-receipts")
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        if (cancelled || !json?.available) return;
+        const d30 = json.rolling?.d30;
+        if (d30?.graded >= 10 && d30.beatRate != null) {
+          setTrackRecord({ beatRate: d30.beatRate, graded: d30.graded });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const metrics = [
     ["Live odds", "7+ books"],
-    ["Signal stack", "Steam + CLV"],
+    trackRecord
+      ? ["30-day receipts", `${trackRecord.beatRate}% beat close`]
+      : ["Signal stack", "Steam + CLV"],
     ["Decision view", "Best number first"],
   ];
 
@@ -297,12 +319,7 @@ function SignInPopup({ open, onClose }) {
         <div style={{ padding: "24px 28px 0" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{
-                width: 28, height: 28, borderRadius: 7,
-                background: COLORS.gradient,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 14, fontWeight: 700, color: "#fff",
-              }}>E</span>
+              <LogoMark size={28} />
               <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: COLORS.text }}>EdgeFinder</span>
             </div>
             <button onClick={onClose} style={{
@@ -1951,11 +1968,7 @@ export default function EdgeFinderSections() {
         padding: "24px 0", borderBottom: `1px solid ${COLORS.border}`, marginBottom: 20,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{
-            width: 28, height: 28, borderRadius: 7, background: COLORS.gradient,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, fontWeight: 700, color: "#fff",
-          }}>E</span>
+          <LogoMark size={30} />
           <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: COLORS.text, letterSpacing: -0.5 }}>EdgeFinder</span>
         </div>
         <button onClick={() => setSignInOpen(true)} style={{

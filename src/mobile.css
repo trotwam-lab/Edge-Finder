@@ -1,13 +1,13 @@
 html {
   min-height: 100%;
-  background: #07111f;
+  background: #070b14;
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-height: 100%;
-  background: #07111f;
+  background: #070b14;
   overscroll-behavior-y: none;
 }
 
@@ -58,7 +58,7 @@ input {
   border: 1px solid rgba(100, 116, 139, 0.22);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(7, 17, 31, 0.82)),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(7, 11, 20, 0.82)),
     repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.04) 0 1px, transparent 1px 82px);
   box-shadow: 0 18px 44px rgba(2, 6, 23, 0.2);
 }
@@ -367,10 +367,6 @@ input {
   white-space: nowrap;
 }
 
-.pro-tools-upgrade {
-  margin-bottom: 14px;
-}
-
 .pro-tools-layout {
   display: grid;
   grid-template-columns: 290px minmax(0, 1fr);
@@ -424,6 +420,20 @@ input {
 .pro-tool-tab strong {
   color: #e2e8f0;
   font-size: 12px;
+}
+
+.pro-tool-badge {
+  font-style: normal;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: 2px;
 }
 
 .pro-tool-tab small {
@@ -563,7 +573,7 @@ input {
     top: 56px;
     z-index: 80;
     padding: 10px 0 8px;
-    background: rgba(7, 17, 31, 0.92);
+    background: rgba(7, 11, 20, 0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(148, 163, 184, 0.08);
@@ -595,7 +605,7 @@ input {
     position: sticky;
     top: 0;
     z-index: 90;
-    background: rgba(7, 17, 31, 0.96);
+    background: rgba(7, 11, 20, 0.96);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     margin: 0 -12px 14px !important;
@@ -667,7 +677,7 @@ input {
   .pro-tools-sidebar {
     position: static;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
 

@@ -37,8 +37,12 @@ body {
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: linear-gradient(135deg, #0f766e, #38bdf8);
-  box-shadow: 0 16px 36px rgba(14, 165, 233, 0.22);
+  box-shadow: 0 16px 36px rgba(0, 200, 255, 0.22);
+}
+.mark svg {
+  width: 38px;
+  height: 38px;
+  display: block;
 }
 .brand-muted {
   color: #94a3b8;
@@ -225,7 +229,20 @@ h1 strong {
 <body>
 <main class="cover">
   <div class="brand">
-    <div class="mark">E</div>
+    <div class="mark">
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="efGrad" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0" stop-color="#7b5cff"/>
+            <stop offset="1" stop-color="#00c8ff"/>
+          </linearGradient>
+        </defs>
+        <rect x="2" y="2" width="60" height="60" rx="15" fill="#0d1117" stroke="url(#efGrad)" stroke-width="2.5"/>
+        <path d="M14 43 L25 34 L33 38.5 L47 19" fill="none" stroke="url(#efGrad)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="47" cy="19" r="6.5" fill="none" stroke="#00c8ff" stroke-width="2" opacity="0.45"/>
+        <circle cx="47" cy="19" r="3.4" fill="#00c8ff"/>
+      </svg>
+    </div>
     <span>EDGE</span><span class="brand-muted">FINDER DAILY</span>
   </div>
 
