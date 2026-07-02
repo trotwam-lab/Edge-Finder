@@ -50,20 +50,34 @@ export function probIndexKey(gameId, market, outcomeName, outcomePoint) {
   return `${gameId}|${market}|${outcomeName}|${outcomePoint ?? ''}`;
 }
 
-// Dedupe to one edge per outcome (the best price already wins on EV sort)
-// and cap the day at MAX_EDGES_PER_DAY.
+// Games starting inside this window grade out by the next morning. Books
+// post soft lines on games weeks or months ahead (NFL openers in July) that
+// show big EV, but a receipt that stays PENDING for two months proves
+// nothing — near-term games get the day's slots first.
+const NEAR_TERM_WINDOW_MS = 36 * 60 * 60 * 1000;
+
+// Dedupe to one edge per outcome (the best price already wins on EV sort),
+// prefer edges whose game starts soon, and cap the day at MAX_EDGES_PER_DAY.
+// Far-out lines only fill whatever slots the near-term slate leaves empty.
 function pickSnapshotEdges(edges) {
   const seen = new Set();
-  const picked = [];
+  const nearTerm = [];
+  const futures = [];
+  const cutoff = Date.now() + NEAR_TERM_WINDOW_MS;
   for (const edge of edges) {
     if (edge.outcomeName == null) continue;
     const key = receiptKey(edge);
     if (seen.has(key)) continue;
     seen.add(key);
-    picked.push(edge);
-    if (picked.length >= MAX_EDGES_PER_DAY) break;
+    const start = Date.parse(edge.commenceTime);
+    if (Number.isFinite(start) && start <= cutoff) {
+      nearTerm.push(edge);
+    } else {
+      futures.push(edge);
+    }
+    if (nearTerm.length >= MAX_EDGES_PER_DAY) break;
   }
-  return picked;
+  return nearTerm.concat(futures).slice(0, MAX_EDGES_PER_DAY);
 }
 
 // Called from the edge scan after every fresh odds fetch.
@@ -87,11 +101,27 @@ export async function updateReceiptsSnapshot(db, edges, probIndex) {
   const yesterdayDoc = yesterdaySnap.exists ? yesterdaySnap.data() : null;
   let touchedToday = false;
 
+  const isNearTerm = (commenceTime) => {
+    const start = Date.parse(commenceTime);
+    return Number.isFinite(start) && start <= Date.now() + NEAR_TERM_WINDOW_MS;
+  };
+
   // 1. Snapshot new edges flagged today (first-seen price is the record).
   for (const edge of pickSnapshotEdges(edges)) {
     const key = receiptKey(edge);
     if (todayDoc.edges[key]) continue;
-    if (Object.keys(todayDoc.edges).length >= MAX_EDGES_PER_DAY) break;
+    if (Object.keys(todayDoc.edges).length >= MAX_EDGES_PER_DAY) {
+      // Day is full. Near-term slates often post after morning scans have
+      // already stored far-out lines, so a near-term edge may displace the
+      // weakest far-future entry — it would sit PENDING for weeks anyway.
+      // Nothing near-term (gradeable tomorrow) is ever evicted.
+      if (!isNearTerm(edge.commenceTime)) continue;
+      const evictKey = Object.entries(todayDoc.edges)
+        .filter(([, entry]) => !isNearTerm(entry.commenceTime))
+        .sort(([, a], [, b]) => (a.flaggedEv ?? 0) - (b.flaggedEv ?? 0))[0]?.[0];
+      if (!evictKey) continue;
+      delete todayDoc.edges[evictKey];
+    }
     touchedToday = true;
     todayDoc.edges[key] = {
       sport: edge.sport,
