@@ -237,6 +237,13 @@ export default async function handler(req, res) {
                         }
                         const games = await response.json();
                         for (const game of games) {
+                                    // Pregame only. In-play lines move faster than the 60s scan
+                                    // refreshes, so a stale book mid-game reads as a big edge
+                                    // that is already gone. Skipping live games here also keeps
+                                    // live numbers out of the receipts probIndex, so a stored
+                                    // edge's "closing line" is always the last PREGAME price.
+                                    const start = Date.parse(game.commence_time);
+                                    if (!Number.isFinite(start) || start <= Date.now()) continue;
                                     const edges = findEdges(game, sport, probIndex);
                                     allEdges.push(...edges);
                         }
