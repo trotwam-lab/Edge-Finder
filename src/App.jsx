@@ -350,21 +350,24 @@ export default function BettingApp() {
     position: 'fixed', top: 'calc(14px + env(safe-area-inset-top, 0px))', left: '50%', transform: 'translateX(-50%)',
     padding: '14px 24px', borderRadius: '10px', zIndex: 9999,
     display: 'flex', alignItems: 'center', gap: '10px',
-    fontFamily: "'JetBrains Mono', monospace", fontSize: '14px', fontWeight: 600,
+    fontFamily: 'var(--ef-font-body)', fontSize: '14px', fontWeight: 600,
   };
 
   return (
     <div className="edge-app-shell" style={{
       minHeight: '100vh',
-      background: 'linear-gradient(145deg, #07111f 0%, #0f172a 48%, #111827 100%)',
+      background: `
+        radial-gradient(1100px 480px at 85% -10%, rgba(123, 92, 255, 0.14), transparent 60%),
+        radial-gradient(900px 420px at 8% -6%, rgba(0, 200, 255, 0.1), transparent 55%),
+        var(--ef-bg)`,
       backgroundAttachment: 'fixed',
-      fontFamily: "'JetBrains Mono', monospace",
-      color: '#e2e8f0',
+      fontFamily: 'var(--ef-font-body)',
+      color: 'var(--ef-text)',
       paddingBottom: 'calc(82px + env(safe-area-inset-bottom, 0px))',
     }}>
       {showCheckoutToast && (
         <div style={{ ...toastBase, background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', boxShadow: '0 4px 20px rgba(34,197,94,0.4)', fontWeight: 700 }}>
-          {'🎯 Welcome to Edge Finder Pro! All features unlocked.'}
+          {'🎯 Welcome to EdgeFinder Pro! All features unlocked.'}
           <button onClick={() => setShowCheckoutToast(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
             <X size={16} />
           </button>
@@ -535,12 +538,12 @@ export default function BettingApp() {
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>Subscription</div>
             {tier === 'pro' ? (
               <div>
-                <div style={{ fontSize: '14px', color: '#c4b5fd', fontWeight: 700, marginBottom: '8px' }}>You are on Edge Finder Pro</div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>All features unlocked. Thank you for supporting Edge Finder!</div>
+                <div style={{ fontSize: '14px', color: '#c4b5fd', fontWeight: 700, marginBottom: '8px' }}>You are on EdgeFinder Pro</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>All features unlocked. Thank you for supporting EdgeFinder!</div>
                 <button
                   onClick={handleManageSubscription}
                   disabled={isOpeningPortal}
-                  style={{ padding: '8px 16px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '6px', color: '#818cf8', fontSize: '11px', cursor: isOpeningPortal ? 'not-allowed' : 'pointer', opacity: isOpeningPortal ? 0.7 : 1, fontFamily: '"JetBrains Mono", monospace' }}
+                  style={{ padding: '8px 16px', background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '6px', color: '#818cf8', fontSize: '11px', cursor: isOpeningPortal ? 'not-allowed' : 'pointer', opacity: isOpeningPortal ? 0.7 : 1, fontFamily: 'var(--ef-font-body)' }}
                 >
                   {isOpeningPortal ? 'Opening...' : 'Manage Subscription'}
                 </button>
@@ -672,7 +675,7 @@ export default function BettingApp() {
             </div>
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>Edge Finder Live Odds</div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '8px' }}>EdgeFinder Live Odds</div>
             <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.6' }}>Real-time odds comparison across 7+ sportsbooks and 25+ sports. Track line movement, find value, and sharpen your edge.</div>
             <div style={{ marginTop: '12px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <a href="https://edgefinder.beehiiv.com" target="_blank" rel="noopener" style={{ fontSize: '11px', color: '#6366f1', textDecoration: 'none' }}>Newsletter</a>
@@ -680,7 +683,7 @@ export default function BettingApp() {
             </div>
           </div>
           <div style={{ textAlign: 'center', padding: '16px', fontSize: '10px', color: '#475569' }}>
-            Edge Finder v2.4
+            EdgeFinder v3.0
           </div>
         </main>
       )}
@@ -693,19 +696,6 @@ export default function BettingApp() {
         .ef-ticker-scroll { animation: efMarquee 42s linear infinite; }
         .ef-ticker-scroll:hover { animation-play-state: paused; }
         @media (prefers-reduced-motion: reduce) { .ef-ticker-scroll { animation: none; } }
-        @media (max-width: 768px) {
-          .mobile-nav { display: flex !important; }
-          .header-inner { flex-direction: column !important; align-items: flex-start !important; }
-          .header-tabs { display: none !important; }
-          .header-status { width: 100%; justify-content: flex-start !important; }
-          .game-card-header { grid-template-columns: 30px 1fr !important; grid-template-rows: auto auto !important; gap: 8px !important; padding: 12px !important; }
-          .game-spread, .game-total { display: none !important; }
-          .game-teams { grid-column: 2 !important; }
-          .sport-filter-bar { flex-direction: column !important; }
-          .sport-buttons { width: 100%; padding-bottom: 8px !important; }
-          .sport-buttons::-webkit-scrollbar { display: none; }
-          .mobile-nav::-webkit-scrollbar { display: none; }
-        }
       `}</style>
     </div>
   );

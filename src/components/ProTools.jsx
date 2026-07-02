@@ -1,17 +1,23 @@
 import React, { Suspense, lazy, useMemo, useState } from 'react';
-import { Activity, Bell, Calculator, DollarSign, Star, Wrench, Zap } from 'lucide-react';
+import { Activity, Bell, Calculator, DollarSign, Layers, Scale, Star, Wrench, Zap } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
-import ProBanner from './ProBanner.jsx';
 
 const EdgeAlerts = lazy(() => import('./EdgeAlerts.jsx'));
 const EVCalculator = lazy(() => import('./EVCalculator.jsx'));
 const KellyCriterion = lazy(() => import('./KellyCriterion.jsx'));
+const ParlayBuilder = lazy(() => import('./ParlayBuilder.jsx'));
+const ArbitrageScanner = lazy(() => import('./ArbitrageScanner.jsx'));
 
+// The Toolkit mixes free and Pro tools. Free tools give every user a reason
+// to open this tab daily; Pro tools upsell in place (each one renders its
+// own ProBanner when locked).
 const TOOLS = [
-  { key: 'ALERTS', label: 'Market Alerts', icon: Bell, description: 'Steam, edge, and book-disagreement alerts.' },
-  { key: 'WATCHLIST', label: 'Watchlist', icon: Star, description: 'Games that deserve follow-up before close.' },
-  { key: 'EV', label: 'EV Calculator', icon: Calculator, description: 'Compare your number against the book.' },
-  { key: 'KELLY', label: 'Kelly Sizing', icon: DollarSign, description: 'Size bets around bankroll and edge.' },
+  { key: 'PARLAY', label: 'Parlay Builder', icon: Layers, description: 'True combined odds, payout, and EV for any parlay.', pro: false },
+  { key: 'ARB', label: 'Arb Scanner', icon: Scale, description: 'Guaranteed-profit and low-hold pairs across books.', pro: true },
+  { key: 'ALERTS', label: 'Market Alerts', icon: Bell, description: 'Steam, edge, and book-disagreement alerts.', pro: true },
+  { key: 'WATCHLIST', label: 'Watchlist', icon: Star, description: 'Games that deserve follow-up before close.', pro: false },
+  { key: 'EV', label: 'EV Calculator', icon: Calculator, description: 'Compare your number against the book.', pro: true },
+  { key: 'KELLY', label: 'Kelly Sizing', icon: DollarSign, description: 'Size bets around bankroll and edge.', pro: true },
 ];
 
 function ToolFallback() {
@@ -89,34 +95,30 @@ function MarketWatchlist({ games, injuries, watchlist, onToggleWatchlist }) {
 
 export default function ProTools({ games = [], injuries = {}, watchlist = [], onToggleWatchlist = () => {} }) {
   const { tier } = useAuth();
-  const [activeTool, setActiveTool] = useState('ALERTS');
+  const isPro = tier === 'pro';
+  const [activeTool, setActiveTool] = useState('PARLAY');
   const ActiveIcon = TOOLS.find(tool => tool.key === activeTool)?.icon || Wrench;
 
   return (
     <main className="edge-app-main pro-tools-page">
       <section className="pro-tools-hero">
         <div>
-          <div className="market-kicker">Pro Tools</div>
-          <h1>Alerts, EV, and bet sizing in one workspace.</h1>
+          <div className="market-kicker">Toolkit</div>
+          <h1>Price it, size it, and lock it in — one workspace.</h1>
           <p>
-            Watch for market moves, check whether the price is worth betting, then size the position without jumping between tabs.
+            Build parlays at their true price, scan for arbitrage, check EV, and size positions —
+            without jumping between tabs. Tools marked PRO unlock with the membership.
           </p>
         </div>
         <div className="pro-tools-status">
           <Zap size={18} />
-          <span>{tier === 'pro' ? 'Live Pro Workspace' : 'Pro Preview'}</span>
+          <span>{isPro ? 'Live Pro Workspace' : 'Free Tools + Pro Preview'}</span>
         </div>
       </section>
 
-      {tier !== 'pro' && (
-        <div className="pro-tools-upgrade">
-          <ProBanner />
-        </div>
-      )}
-
       <div className="pro-tools-layout">
         <aside className="pro-tools-sidebar">
-          {TOOLS.map(({ key, label, icon: Icon, description }) => {
+          {TOOLS.map(({ key, label, icon: Icon, description, pro }) => {
             const active = activeTool === key;
             return (
               <button
@@ -126,7 +128,10 @@ export default function ProTools({ games = [], injuries = {}, watchlist = [], on
               >
                 <Icon size={18} />
                 <span>
-                  <strong>{label}</strong>
+                  <strong>
+                    {label}
+                    {pro && !isPro && <em className="pro-tool-badge">PRO</em>}
+                  </strong>
                   <small>{description}</small>
                 </span>
               </button>
@@ -140,6 +145,8 @@ export default function ProTools({ games = [], injuries = {}, watchlist = [], on
             <span>{TOOLS.find(tool => tool.key === activeTool)?.label}</span>
           </div>
           <Suspense fallback={<ToolFallback />}>
+            {activeTool === 'PARLAY' && <ParlayBuilder />}
+            {activeTool === 'ARB' && <ArbitrageScanner games={games} />}
             {activeTool === 'ALERTS' && <EdgeAlerts />}
             {activeTool === 'WATCHLIST' && (
               <MarketWatchlist

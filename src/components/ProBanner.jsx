@@ -63,11 +63,11 @@ export default function ProBanner({ compact = false }) {
         </span>
         <button onClick={handleUpgrade} disabled={isLoading} style={{
           padding: '6px 14px',
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          background: 'var(--ef-gradient)',
           border: 'none', borderRadius: '6px',
           color: '#fff', fontSize: '11px', fontWeight: 700,
           cursor: isLoading ? 'not-allowed' : 'pointer',
-          fontFamily: '"JetBrains Mono", monospace',
+          fontFamily: 'var(--ef-font-body)',
           opacity: isLoading ? 0.7 : 1,
         }}>
           {isLoading ? 'Loading...' : 'Upgrade'}
@@ -98,7 +98,7 @@ export default function ProBanner({ compact = false }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', position: 'relative' }}>
         <div style={{
           width: '36px', height: '36px',
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          background: 'var(--ef-gradient)',
           borderRadius: '10px',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
@@ -106,7 +106,7 @@ export default function ProBanner({ compact = false }) {
         </div>
         <div>
           <div style={{ fontSize: '16px', fontWeight: 800, color: '#f8fafc' }}>
-            Edge Finder Pro — {PRO_FEATURES.price}
+            EdgeFinder Pro — {PRO_FEATURES.price}
           </div>
           <div style={{ fontSize: '11px', color: '#a78bfa' }}>
             {PRO_FEATURES.headline}
@@ -133,11 +133,11 @@ export default function ProBanner({ compact = false }) {
       {/* CTA Button */}
       <button onClick={handleUpgrade} disabled={isLoading} style={{
         width: '100%', padding: '14px',
-        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+        background: 'var(--ef-gradient)',
         border: 'none', borderRadius: '10px',
         color: '#fff', fontSize: '14px', fontWeight: 700,
         cursor: isLoading ? 'not-allowed' : 'pointer',
-        fontFamily: '"JetBrains Mono", monospace',
+        fontFamily: 'var(--ef-font-body)',
         position: 'relative',
         transition: 'transform 0.15s',
         opacity: isLoading ? 0.7 : 1,

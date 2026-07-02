@@ -1,17 +1,9 @@
 import React from 'react';
 import { Home, Target, Users, TrendingUp, Settings, FileText, Wrench } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
+import { NAV_TABS } from '../constants.js';
 
-// All tabs — Pro-only tabs are gated with proOnly: true
-const ALL_TABS = [
-  { key: 'HOME',        label: 'Home',      icon: Home,        proOnly: false },
-  { key: 'GAMES',       label: 'Games',     icon: Target,      proOnly: false },
-  { key: 'PROPS',       label: 'Props',     icon: Users,       proOnly: false },
-  { key: 'PRO_TOOLS',   label: 'Tools',     icon: Wrench,      proOnly: true  },
-  { key: 'REPORT',      label: 'Report',    icon: FileText,    proOnly: true  },
-  { key: 'TRACKER',     label: 'Tracker',   icon: TrendingUp,  proOnly: false },
-  { key: 'SETTINGS',    label: 'Settings',  icon: Settings,    proOnly: false },
-];
+const TAB_ICONS = { Home, Target, Users, Wrench, FileText, TrendingUp, Settings };
 
 export default function MobileNav({ activeTab, setActiveTab }) {
   const { tier } = useAuth();
@@ -22,11 +14,12 @@ export default function MobileNav({ activeTab, setActiveTab }) {
       className="mobile-nav"
       style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'rgba(7, 17, 31, 0.97)',
-        borderTop: '1px solid rgba(148, 163, 184, 0.14)',
+        background: 'rgba(7, 11, 20, 0.96)',
+        borderTop: '1px solid var(--ef-border)',
         display: 'none',
         zIndex: 200,
         backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
       }}
     >
       <div style={{
@@ -36,7 +29,8 @@ export default function MobileNav({ activeTab, setActiveTab }) {
         scrollbarWidth: 'none', msOverflowStyle: 'none',
         padding: '8px 0 env(safe-area-inset-bottom, 8px)',
       }}>
-        {ALL_TABS.map(({ key, label, icon: Icon, proOnly }) => {
+        {NAV_TABS.map(({ key, label, icon, proOnly }) => {
+          const Icon = TAB_ICONS[icon];
           const isLocked = proOnly && !isPro;
           const isActive = activeTab === key;
           return (
@@ -53,8 +47,9 @@ export default function MobileNav({ activeTab, setActiveTab }) {
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px',
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: isLocked ? 'rgba(100, 116, 139, 0.5)' : isActive ? '#5eead4' : '#64748b',
-                fontSize: '11px', fontWeight: isActive ? 700 : 400,
+                color: isLocked ? 'var(--ef-text-dim)' : isActive ? 'var(--ef-cyan)' : 'var(--ef-text-muted)',
+                fontSize: '11px', fontWeight: isActive ? 700 : 500,
+                fontFamily: 'var(--ef-font-body)',
                 padding: '8px 14px', flexShrink: 0, minHeight: '52px',
                 scrollSnapAlign: 'start', minWidth: '64px', position: 'relative',
               }}
@@ -64,7 +59,7 @@ export default function MobileNav({ activeTab, setActiveTab }) {
               {isLocked && (
                 <span style={{
                   position: 'absolute', top: '2px', right: '10px',
-                  fontSize: '7px', color: '#fbbf24', lineHeight: 1, fontWeight: 800,
+                  fontSize: '7px', color: 'var(--ef-amber)', lineHeight: 1, fontWeight: 800,
                 }}>PRO</span>
               )}
             </button>

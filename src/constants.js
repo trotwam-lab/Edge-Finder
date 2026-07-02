@@ -63,13 +63,28 @@ export const AFFILIATE_LINKS = {
 // Pro users see all supported sportsbook keys returned by The Odds API.
 export const FREE_BOOKS = ['fanduel', 'draftkings', 'betmgm'];
 
-// PRO_FEATURES ★ What you get with Edge Finder Pro ($12.99/mo)
+// NAV_TABS ★ Single source of truth for app navigation.
+// Rendered by Header (desktop) and MobileNav (bottom bar) so the two can
+// never drift apart. Icons are resolved by name inside each component to
+// keep this file dependency-free.
+export const NAV_TABS = [
+  { key: 'HOME',      label: 'Home',     icon: 'Home',       proOnly: false },
+  { key: 'GAMES',     label: 'Games',    icon: 'Target',     proOnly: false },
+  { key: 'PROPS',     label: 'Props',    icon: 'Users',      proOnly: false },
+  { key: 'PRO_TOOLS', label: 'Tools',    icon: 'Wrench',     proOnly: false },
+  { key: 'REPORT',    label: 'Report',   icon: 'FileText',   proOnly: true  },
+  { key: 'TRACKER',   label: 'Tracker',  icon: 'TrendingUp', proOnly: false },
+  { key: 'SETTINGS',  label: 'Settings', icon: 'Settings',   proOnly: false },
+];
+
+// PRO_FEATURES ★ What you get with EdgeFinder Pro ($12.99/mo)
 export const PRO_FEATURES = {
   price: '$12.99/mo',
   headline: 'Tell me where to look today.',
-  subheadline: 'Pro opens with a Daily Report that does the scanning for you: best prices, biggest moves, props worth researching, and the games to skip.',
+  subheadline: 'Pro opens with a Daily Report that does the scanning for you, then backs it up with an arbitrage scanner, full edge board, and every sportsbook we track.',
   features: [
     { icon: '📝', text: 'Daily Pro Report — top edges, steam moves, best books, and games to avoid in one morning screen' },
+    { icon: '⚖️', text: 'Arbitrage & Low-Hold Scanner — guaranteed-profit and near-free bets across books, with stake splits computed for you' },
     { icon: '🎯', text: 'Full edge board with exact book, line, EV, and fair probability' },
     { icon: '🔥', text: 'Steam Move Tracker — see which lines moved most since open' },
     { icon: '🛒', text: 'Line Shopping Score + Best Books leaderboard across every game' },
