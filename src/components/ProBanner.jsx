@@ -22,13 +22,15 @@ export default function ProBanner({ compact = false }) {
 
     setIsLoading(true);
     try {
+      // Identity travels as a verified ID token — the server ignores any
+      // body-supplied userId/email when creating checkout sessions.
+      const token = await user.getIdToken();
       const response = await fetch('/api/create-checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          email: user.email,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       const data = await response.json();
