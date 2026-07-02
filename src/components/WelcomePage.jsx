@@ -124,9 +124,30 @@ function HeroPreviewPanel() {
 }
 
 function HeroSection({ onSignIn }) {
+  // Live, verifiable proof: the 30-day close-beat rate from the public
+  // graded track record (/api/edge-receipts). Falls back to static copy
+  // until enough days have graded out.
+  const [trackRecord, setTrackRecord] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/edge-receipts")
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        if (cancelled || !json?.available) return;
+        const d30 = json.rolling?.d30;
+        if (d30?.graded >= 10 && d30.beatRate != null) {
+          setTrackRecord({ beatRate: d30.beatRate, graded: d30.graded });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const metrics = [
     ["Live odds", "7+ books"],
-    ["Signal stack", "Steam + CLV"],
+    trackRecord
+      ? ["30-day receipts", `${trackRecord.beatRate}% beat close`]
+      : ["Signal stack", "Steam + CLV"],
     ["Decision view", "Best number first"],
   ];
 

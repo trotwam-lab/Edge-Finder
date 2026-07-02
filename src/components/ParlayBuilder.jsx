@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Layers, Plus, Trash2 } from 'lucide-react';
-import { americanToDecimal, americanToImplied, impliedToAmerican, formatOdds } from '../utils/odds-math.js';
+import { americanToDecimal, impliedToAmerican, formatOdds } from '../utils/odds-math.js';
 
 // Parlay Builder — free for everyone.
 // Enter the legs of a parlay and get the true combined price, the payout,

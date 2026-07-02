@@ -13,8 +13,10 @@ EdgeFinder is a live sports-betting intelligence dashboard: it compares odds acr
 ## Product tiers
 | Tier | What you get |
 |------|--------------|
-| Free | Board with 3 sportsbooks, props preview, bet tracker, watchlist, **Parlay Builder** |
-| Pro ($12.99/mo) | Daily Pro Report, **Arbitrage & Low-Hold Scanner**, full edge board, steam tracker, all sportsbooks, unlimited props, EV/Kelly calculators |
+| Free | Board with 3 sportsbooks, props preview, bet tracker, watchlist, **Parlay Builder**, **Yesterday's Receipts** (the fully public, auto-graded record of yesterday's edges vs their closing lines) |
+| Pro ($12.99/mo) | Today's live edge board, Daily Pro Report, **Arbitrage & Low-Hold Scanner**, steam tracker, all sportsbooks, unlimited props, EV/Kelly calculators |
+
+The receipts pipeline snapshots each day's flagged edges (Firestore collection `edge_receipts`, one doc per ET date) as a side effect of the `/api/edges` scan, keeps observing their no-vig consensus until game start, and `/api/edge-receipts` serves the graded record publicly — it is the product's proof-of-work and requires the Firebase Admin env vars below.
 
 ## Local development
 1. Install dependencies:

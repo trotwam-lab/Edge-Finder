@@ -85,7 +85,7 @@ export const PRO_FEATURES = {
   features: [
     { icon: '📝', text: 'Daily Pro Report — top edges, steam moves, best books, and games to avoid in one morning screen' },
     { icon: '⚖️', text: 'Arbitrage & Low-Hold Scanner — guaranteed-profit and near-free bets across books, with stake splits computed for you' },
-    { icon: '🎯', text: 'Full edge board with exact book, line, EV, and fair probability' },
+    { icon: '🎯', text: 'Full edge board with exact book, line, EV, and fair probability — the same edges graded publicly in Yesterday’s Receipts' },
     { icon: '🔥', text: 'Steam Move Tracker — see which lines moved most since open' },
     { icon: '🛒', text: 'Line Shopping Score + Best Books leaderboard across every game' },
     { icon: '📊', text: 'All sportsbooks unlocked — not just the 3-book free preview' },

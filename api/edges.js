@@ -4,6 +4,8 @@
 // Caches results for 60 seconds to save API credits while keeping edges fresh.
 
 import { getRequestTier, isProTier } from './_auth.js';
+import { getAdminDb } from './_firebaseAdmin.js';
+import { probIndexKey, updateReceiptsSnapshot } from './_receipts.js';
 
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
@@ -119,7 +121,10 @@ function getConsensusProbabilities(bookmakers, marketKey) {
 // ============================================================
 // Edge detection for a single game
 // ============================================================
-function findEdges(game, sportKey) {
+// `probIndex` (optional Map) collects the consensus fair probability and best
+// price for EVERY priced outcome — not just +EV ones — so the receipts
+// tracker can keep observing an edge's closing line after its EV fades.
+function findEdges(game, sportKey, probIndex = null) {
     const edges = [];
     const sportName = SPORT_LABELS[sportKey] || sportKey.toUpperCase();
     const emoji = SPORT_EMOJI[sportName] || '🎯';
@@ -149,6 +154,16 @@ function findEdges(game, sportKey) {
                     const fairProb = consensusProbs.get(key);
                     if (!fairProb) continue;
 
+                if (probIndex) {
+                        const pKey = probIndexKey(game.id, marketKey, outcome.name, outcome.point ?? null);
+                        const existing = probIndex.get(pKey);
+                        if (!existing) {
+                            probIndex.set(pKey, { fairProb, bestPrice: outcome.price, commenceTime: game.commence_time });
+                        } else if (outcome.price > existing.bestPrice) {
+                            existing.bestPrice = outcome.price;
+                        }
+                }
+
                 const decimal = americanToDecimal(outcome.price);
                     const ev = calculateEV(decimal, fairProb);
 
@@ -176,6 +191,9 @@ function findEdges(game, sportKey) {
                                     book: bookmaker.title,
                                     bookKey: bookmaker.key,
                                     market: marketKey,
+                                    outcomeName: outcome.name,
+                                    outcomePoint: outcome.point ?? null,
+                                    price: outcome.price,
                                     confidence,
                                     fairProbability: parseFloat((fairProb * 100).toFixed(1)),
                                     timestamp: new Date().toISOString(),
@@ -207,6 +225,7 @@ export default async function handler(req, res) {
 
   try {
         const allEdges = [];
+        const probIndex = new Map();
 
       for (const sport of TRACKED_SPORTS) {
               try {
@@ -218,7 +237,7 @@ export default async function handler(req, res) {
                         }
                         const games = await response.json();
                         for (const game of games) {
-                                    const edges = findEdges(game, sport);
+                                    const edges = findEdges(game, sport, probIndex);
                                     allEdges.push(...edges);
                         }
               } catch (e) {
@@ -228,6 +247,15 @@ export default async function handler(req, res) {
 
       // Sort all edges by EV descending
       allEdges.sort((a, b) => b.ev - a.ev);
+
+      // Record today's edges + refresh closing lines for the public track
+      // record ("Yesterday's Receipts"). Never let receipts bookkeeping break
+      // the edge feed itself.
+      try {
+            await updateReceiptsSnapshot(getAdminDb(), allEdges, probIndex);
+      } catch (e) {
+            console.warn('Receipts snapshot failed:', e.message);
+      }
 
       cache.data = allEdges;
         cache.ts = Date.now();

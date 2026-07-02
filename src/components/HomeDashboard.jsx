@@ -14,6 +14,7 @@ import {
 import { getSportVisual } from '../utils/team-logos.js';
 import { getGameStatus, formatStartTime } from '../utils/live-status.js';
 import GameTicker from './GameTicker.jsx';
+import EdgeReceipts from './EdgeReceipts.jsx';
 
 const PRO_LOCKED_BOOK_COUNT = Object.keys(BOOKMAKERS).length - FREE_BOOKS.length;
 
@@ -430,6 +431,9 @@ export default function HomeDashboard({
           )}
         </Card>
       </div>
+
+      {/* Public track record: yesterday's edges graded vs the close */}
+      <EdgeReceipts onNavigate={onNavigate} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginBottom: '14px' }}>
         {/* Top props */}
