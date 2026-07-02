@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { getAdminDb } from './_firebaseAdmin.js';
+import { getVerifiedUser } from './_auth.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -46,7 +47,7 @@ async function getCustomerIdFromStripe(email) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -57,15 +58,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId, email } = req.body || {};
-
-    if (!userId && !email) {
-      return res.status(400).json({ error: 'Missing userId or email in request body.' });
+    // SECURITY: the billing portal exposes payment method, invoices, and
+    // cancel controls. Identity comes ONLY from a verified Firebase ID
+    // token — a body-supplied userId/email would let anyone open the portal
+    // for any subscriber they can name.
+    const caller = await getVerifiedUser(req);
+    if (!caller) {
+      return res.status(401).json({ error: 'Please sign in again to manage your subscription.' });
     }
 
     const customerId =
-      (await getCustomerIdFromFirestore(userId)) ||
-      (await getCustomerIdFromStripe(email));
+      (await getCustomerIdFromFirestore(caller.uid)) ||
+      (await getCustomerIdFromStripe(caller.email));
 
     if (!customerId) {
       return res.status(404).json({ error: 'No Stripe customer found for this account.' });
@@ -79,6 +83,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ url: session.url });
   } catch (error) {
     console.error('Error creating portal session:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Could not open the billing portal. Please try again.' });
   }
 }

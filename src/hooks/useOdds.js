@@ -107,6 +107,8 @@ function getTeamScore(scoreData, teamName) {
   return row?.score ?? null;
 }
 
+const EMPTY_PROP_HISTORY = {};
+
 export function useOdds({ filter, enabledSports = null, refreshInterval: defaultInterval = 120 }) {
     const [games, setGames] = useState([]);
     const [playerProps, setPlayerProps] = useState([]);
@@ -118,10 +120,43 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [isConnected, setIsConnected] = useState(true);
     const [countdown, setCountdown] = useState(defaultInterval);
     const [sportLastUpdated, setSportLastUpdated] = useState({});
-    const [propHistory, setPropHistory] = usePersistentState('edgefinder_prop_history', {});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
     const hasCompletedInitialLoadRef = useRef(false);
+
+  // One-time storage hygiene. These maps are keyed by game id and games churn
+  // daily, so without pruning they grow forever — every state change then
+  // re-serializes the whole blob to localStorage, which is exactly the kind
+  // of main-thread work that makes the app feel sluggish on phones.
+  useEffect(() => {
+        // Nothing has written prop history for several versions — drop the
+        // stale blob instead of parsing it into memory on every boot.
+        try { localStorage.removeItem('edgefinder_prop_history'); } catch {}
+
+      const pruneMap = (setter, isFresh) => {
+            setter(prev => {
+                    const next = {};
+                    let dropped = 0;
+                    for (const [id, value] of Object.entries(prev || {})) {
+                            if (isFresh(value)) next[id] = value;
+                            else dropped += 1;
+                    }
+                    return dropped ? next : prev;
+            });
+      };
+
+      const OPENER_MAX_AGE = 14 * 24 * 60 * 60 * 1000;
+        pruneMap(setHistoricOdds, opener => {
+              const ts = Date.parse(opener?.capturedAt || '');
+              return Number.isFinite(ts) && Date.now() - ts < OPENER_MAX_AGE;
+        });
+
+      const LINES_MAX_AGE = 5 * 24 * 60 * 60 * 1000;
+        pruneMap(setGameLineHistory, history => {
+              const last = Array.isArray(history) ? history[history.length - 1] : null;
+              return last?.timestamp && Date.now() - last.timestamp < LINES_MAX_AGE;
+        });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Determine refresh interval: 30s if any game is genuinely live, 120s
   // otherwise. We now use the ESPN-backed status so finished games (which the
@@ -339,49 +374,57 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
           // Merge injuries
           setInjuries(prev => isInitial ? injuriesByTeam : { ...prev, ...injuriesByTeam });
 
-          // Auto-capture opening lines (first time we see a game)
-          newGames.forEach(game => {
-                    setHistoricOdds(prev => {
-                                if (prev[game.id]) return prev;
-                                const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')
-                                  ?.outcomes?.find(o => o.name === game.home_team)?.point;
-                                const total = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')
-                                  ?.outcomes?.[0]?.point;
-                                const h2h = game.bookmakers?.[0]?.markets?.find(m => m.key === 'h2h')?.outcomes;
-                                if (spread == null && total == null) return prev;
-                                return {
-                                              ...prev,
-                                              [game.id]: {
-                                                              spread,
-                                                              total,
-                                                              h2h: h2h?.map(o => ({ name: o.name, price: o.price })) || [],
-                                                              capturedAt: new Date().toISOString(),
-                                                              book: game.bookmakers?.[0]?.title,
-                                              },
-                                };
+          // Auto-capture opening lines + line history in ONE state update
+          // each. The old per-game setState loops created a fresh copy of the
+          // whole persisted map for every game on every refresh — O(games²)
+          // object churn plus repeated full-blob localStorage serialization,
+          // which is what phones feel as jank.
+          if (newGames.length) {
+                    const nowIso = new Date().toISOString();
+                    const timeLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const nowTs = Date.now();
+                    const lineOf = (game) => ({
+                              spread: game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')
+                                ?.outcomes?.find(o => o.name === game.home_team)?.point,
+                              total: game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')
+                                ?.outcomes?.[0]?.point,
+                              book: game.bookmakers?.[0]?.title,
                     });
-          });
 
-          // Track game line history (last 20 snapshots per game)
-          newGames.forEach(game => {
-                    const spread = game.bookmakers?.[0]?.markets?.find(m => m.key === 'spreads')
-                      ?.outcomes?.find(o => o.name === game.home_team)?.point;
-                    const total = game.bookmakers?.[0]?.markets?.find(m => m.key === 'totals')
-                      ?.outcomes?.[0]?.point;
-                    if (spread !== undefined || total !== undefined) {
-                                setGameLineHistory(prev => {
-                                              const history = prev[game.id] || [];
-                                              const entry = {
-                                                              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                                                              timestamp: Date.now(),
-                                                              spread,
-                                                              total,
-                                                              book: game.bookmakers?.[0]?.title,
-                                              };
-                                              return { ...prev, [game.id]: [...history, entry].slice(-20) };
-                                });
-                    }
-          });
+                    setHistoricOdds(prev => {
+                              let changed = false;
+                              const next = { ...prev };
+                              newGames.forEach(game => {
+                                        if (next[game.id]) return;
+                                        const { spread, total, book } = lineOf(game);
+                                        if (spread == null && total == null) return;
+                                        const h2h = game.bookmakers?.[0]?.markets?.find(m => m.key === 'h2h')?.outcomes;
+                                        next[game.id] = {
+                                                  spread,
+                                                  total,
+                                                  h2h: h2h?.map(o => ({ name: o.name, price: o.price })) || [],
+                                                  capturedAt: nowIso,
+                                                  book,
+                                        };
+                                        changed = true;
+                              });
+                              return changed ? next : prev;
+                    });
+
+                    // Last 20 snapshots per game.
+                    setGameLineHistory(prev => {
+                              let changed = false;
+                              const next = { ...prev };
+                              newGames.forEach(game => {
+                                        const { spread, total, book } = lineOf(game);
+                                        if (spread === undefined && total === undefined) return;
+                                        const entry = { time: timeLabel, timestamp: nowTs, spread, total, book };
+                                        next[game.id] = [...(next[game.id] || []), entry].slice(-20);
+                                        changed = true;
+                              });
+                              return changed ? next : prev;
+                    });
+          }
 
           setLastUpdate(new Date());
                                            setIsConnected(true);
@@ -440,7 +483,9 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         isConnected,
         countdown,
         gameLineHistory,
-        propHistory,
+        // Prop history has no writer anymore; keep the field so consumers'
+        // prop types stay stable, but never load the old blob into memory.
+        propHistory: EMPTY_PROP_HISTORY,
         sportLastUpdated,
         manualRefresh,
         setGameLineHistory,

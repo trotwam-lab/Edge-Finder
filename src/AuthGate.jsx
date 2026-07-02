@@ -27,7 +27,7 @@ export function AuthProvider({ children }) {
   // Call this after a successful Stripe checkout to update the UI
   const refreshTier = async () => {
     if (user?.email || user?.uid) {
-      const userTier = await getUserTier({ email: user.email, uid: user.uid });
+      const userTier = await getUserTier();
       setTier(userTier);
     }
   };
@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
       setUser(u);
       if (u) {
         // User is logged in — check their subscription tier using Firebase UID first, then email fallback
-        const userTier = await getUserTier({ email: u.email, uid: u.uid });
+        const userTier = await getUserTier();
         setTier(userTier);
       } else {
         // User logged out — reset to free

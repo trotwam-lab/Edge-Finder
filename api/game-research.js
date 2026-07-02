@@ -148,6 +148,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing homeTeam or awayTeam query parameter.' });
     }
 
+    // The generic fallback interpolates `sport` into an ESPN URL path —
+    // restrict it to a sane sport-key shape so callers can't smuggle in
+    // extra path segments or query strings.
+    if (!/^[a-z0-9_]+(\/[a-z0-9.-]+)?$/i.test(String(sport))) {
+      return res.status(400).json({ error: 'Invalid sport parameter.' });
+    }
+
     const gameDate = commenceTime
       ? new Date(commenceTime).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0];

@@ -24,14 +24,18 @@ export const app = initializeApp(firebaseConfig);
 // Auth — handles user login/signup
 export const auth = getAuth(app);
 
-// Helper: check a user's subscription tier by calling our API endpoint
-// This asks Stripe (via our serverless function) if the user is Pro or Free
-export async function getUserTier({ email, uid }) {
+// Helper: check a user's subscription tier by calling our API endpoint.
+// The server derives identity from the verified ID token — the endpoint no
+// longer accepts an email/uid from the caller (that made it a public oracle
+// for whether any email had an active subscription).
+export async function getUserTier() {
   try {
-    const params = new URLSearchParams();
-    if (email) params.set('email', email);
-    if (uid) params.set('uid', uid);
-    const response = await fetch(`/api/user-tier?${params.toString()}`);
+    const user = auth.currentUser;
+    if (!user) return 'free';
+    const token = await user.getIdToken();
+    const response = await fetch('/api/user-tier', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     const data = await response.json();
     return data.tier || 'free';
   } catch (err) {

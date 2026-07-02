@@ -143,16 +143,37 @@ export async function getRequestTier(req) {
 
     return { tier: 'free', source: 'verified-free', uid: decoded.uid, email };
   } catch (error) {
-    // If token verification fails but the logged-in browser included an email,
-    // only Stripe can recover Pro access. Complimentary/admin email fallbacks
-    // stay gated behind ALLOW_EMAIL_TIER_FALLBACK.
-    const headerStripeTier = await getTierFromStripe(getClientEmailHeader(req));
-    if (headerStripeTier) {
-      return { ...headerStripeTier, source: 'stripe-email-header-auth-error' };
+    // SECURITY: when token verification fails, the X-EdgeFinder-Email header
+    // is the only identity left and it is attacker-controlled — recovering
+    // Pro from it would let anyone unlock the paywall by sending a garbage
+    // Bearer token plus any subscriber's email. Like the other email
+    // fallbacks, it is only honored behind ALLOW_EMAIL_TIER_FALLBACK
+    // (local dev / previews). Real clients recover by refreshing the token.
+    if (process.env.ALLOW_EMAIL_TIER_FALLBACK === 'true') {
+      const headerStripeTier = await getTierFromStripe(getClientEmailHeader(req));
+      if (headerStripeTier) {
+        return { ...headerStripeTier, source: 'stripe-email-header-auth-error' };
+      }
     }
 
     console.warn('Auth tier check failed:', error.message);
     return { tier: 'free', source: 'auth-error' };
+  }
+}
+
+// Verify the request's Firebase ID token and return the caller's identity,
+// or null. Endpoints that act on an account (billing portal, checkout, tier
+// lookup) must derive uid/email from THIS — never from the request body or
+// query string, which anyone can spoof.
+export async function getVerifiedUser(req) {
+  const token = getBearerToken(req);
+  if (!token) return null;
+  try {
+    const decoded = await getAuth(getTokenVerifierApp()).verifyIdToken(token);
+    return { uid: decoded.uid, email: normalizeEmail(decoded.email) };
+  } catch (error) {
+    console.warn('Token verification failed:', error.message);
+    return null;
   }
 }
 

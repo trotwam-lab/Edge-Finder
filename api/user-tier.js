@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { getAdminDb } from './_firebaseAdmin.js';
+import { getVerifiedUser } from './_auth.js';
 
 const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
 const FRIEND_EMAILS = [
@@ -77,7 +78,7 @@ async function getTierFromStripe(email) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -88,12 +89,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, uid } = req.query;
-    const normalizedEmail = typeof email === 'string' ? email.toLowerCase() : '';
-
-    if (!normalizedEmail && !uid) {
-      return res.status(400).json({ error: 'Missing email or uid query parameter.' });
+    // SECURITY: identity comes from the verified token, never the query
+    // string — otherwise this endpoint is a public oracle that reveals
+    // whether any email address has an active subscription.
+    const caller = await getVerifiedUser(req);
+    if (!caller) {
+      return res.status(401).json({ error: 'Sign in to check subscription tier.' });
     }
+    const normalizedEmail = caller.email;
+    const uid = caller.uid;
 
     if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail)) {
       return res.status(200).json({ tier: 'pro', admin: true });
@@ -118,6 +122,6 @@ export default async function handler(req, res) {
     return res.status(200).json(stripeTier);
   } catch (error) {
     console.error('Error checking user tier:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'Tier check failed. Please try again.' });
   }
 }
