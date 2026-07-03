@@ -25,6 +25,15 @@ export const SPORT_VISUALS = {
   soccer_mexico_ligamx: { short: 'LIGAMX', icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },
   tennis_atp_italian_open: { short: 'ATP', icon: '🎾', color: '#eab308', gradient: 'linear-gradient(135deg, #eab308, #a16207)' },
   tennis_wta_italian_open: { short: 'WTA', icon: '🎾', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  tennis_atp_wimbledon:  { short: 'ATP',  icon: '🎾', color: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e, #14532d)' },
+  tennis_wta_wimbledon:  { short: 'WTA',  icon: '🎾', color: '#4ade80', gradient: 'linear-gradient(135deg, #4ade80, #166534)' },
+  tennis_atp_us_open:    { short: 'ATP',  icon: '🎾', color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #1e40af)' },
+  tennis_wta_us_open:    { short: 'WTA',  icon: '🎾', color: '#60a5fa', gradient: 'linear-gradient(135deg, #60a5fa, #1d4ed8)' },
+  tennis_atp_french_open: { short: 'ATP', icon: '🎾', color: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #9a3412)' },
+  tennis_wta_french_open: { short: 'WTA', icon: '🎾', color: '#fb923c', gradient: 'linear-gradient(135deg, #fb923c, #c2410c)' },
+  tennis_atp_aus_open_singles: { short: 'ATP', icon: '🎾', color: '#06b6d4', gradient: 'linear-gradient(135deg, #06b6d4, #0e7490)' },
+  tennis_wta_aus_open_singles: { short: 'WTA', icon: '🎾', color: '#22d3ee', gradient: 'linear-gradient(135deg, #22d3ee, #155e75)' },
+  soccer_uefa_europa_league: { short: 'UEL', icon: '⚽', color: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #9a3412)' },
   golf_masters_tournament_winner: { short: 'GOLF', icon: '⛳', color: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #065f46)' },
   aussierules_afl:      { short: 'AFL',   icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
   rugbyleague_nrl:      { short: 'NRL',   icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
@@ -33,6 +42,26 @@ export const SPORT_VISUALS = {
 const DEFAULT_VISUAL = {
   short: 'SPORT', icon: '🎯', color: '#6366f1',
   gradient: 'linear-gradient(135deg, #6366f1, #4338ca)',
+};
+
+// Sports without an explicit entry above inherit a look from their key's
+// family prefix (soccer_*, tennis_*, cricket_*, …) so a newly tracked league
+// still renders with the right ball and color instead of the generic target.
+const FAMILY_VISUALS = {
+  soccer:           { icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },
+  tennis:           { icon: '🎾', color: '#eab308', gradient: 'linear-gradient(135deg, #eab308, #a16207)' },
+  cricket:          { icon: '🏏', color: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #065f46)' },
+  basketball:       { icon: '🏀', color: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
+  americanfootball: { icon: '🏈', color: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e, #15803d)' },
+  icehockey:        { icon: '🏒', color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
+  baseball:         { icon: '⚾', color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
+  lacrosse:         { icon: '🥍', color: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #5b21b6)' },
+  rugbyunion:       { icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  rugbyleague:      { icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  aussierules:      { icon: '🏉', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  boxing:           { icon: '🥊', color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444, #7f1d1d)' },
+  mma:              { icon: '🥊', color: '#dc2626', gradient: 'linear-gradient(135deg, #dc2626, #991b1b)' },
+  golf:             { icon: '⛳', color: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #065f46)' },
 };
 
 const ESPN_ABBR_FALLBACKS = {
@@ -87,7 +116,12 @@ function fallbackTeamLogo(sportKey, teamName) {
 }
 
 export function getSportVisual(sportKey) {
-  return SPORT_VISUALS[sportKey] || DEFAULT_VISUAL;
+  if (SPORT_VISUALS[sportKey]) return SPORT_VISUALS[sportKey];
+  const family = FAMILY_VISUALS[String(sportKey || '').split('_')[0]];
+  if (!family) return DEFAULT_VISUAL;
+  // Short label comes from the sport's display name (e.g. "EREDIVISIE").
+  const label = getSportMeta(sportKey).label || 'SPORT';
+  return { ...family, short: label.toUpperCase().slice(0, 12) };
 }
 
 // Shared logo fetcher — keeps a sport->teamKey->logoUrl map in component state.

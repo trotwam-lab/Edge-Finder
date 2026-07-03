@@ -168,6 +168,25 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   // Fetchers
   // ============================================================
 
+  // The Odds API rotates seasonal keys (each tennis major is its own sport
+  // key; cups come and go), so most of our catalog is inactive at any given
+  // moment. /api/sports is quota-free and says what's in season — we skip the
+  // rest instead of spending a paid odds request per dead key every refresh.
+  const activeSportsRef = useRef(null);
+  const getActiveSportKeys = useCallback(async () => {
+        if (activeSportsRef.current) return activeSportsRef.current;
+        try {
+                const res = await fetch('/api/sports');
+                if (!res.ok) return null;
+                const list = await res.json();
+                if (!Array.isArray(list) || list.length === 0) return null;
+                activeSportsRef.current = new Set(list.map(s => s.key));
+                return activeSportsRef.current;
+        } catch {
+                return null;
+        }
+  }, []);
+
   const fetchOdds = useCallback(async (sport) => {
         const headers = await getAuthHeaders();
         const res = await fetch(`/api/odds?sport=${sport}&markets=h2h,spreads,totals`, { headers });
@@ -289,10 +308,26 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                              rotationIndexRef.current = sportsToFetch.length;
                                            }
 
-          const sportResults = await Promise.all(sportsToFetch.map(async ([sportName, sportKey]) => {
+          // Out-of-season sports are skipped entirely (their odds request
+          // would just 404). When the user explicitly filters to one sport we
+          // fetch it regardless, so a stale catalog can never hide a chip the
+          // user tapped. If /api/sports fails we fall back to fetching all.
+          const activeKeys = await getActiveSportKeys();
+          const isSpecificFilter = filter && filter !== 'ALL';
+          const gatedSports = activeKeys && !isSpecificFilter
+            ? sportsToFetch.filter(([, key]) => activeKeys.has(key))
+            : sportsToFetch;
+
+          const sportResults = await Promise.all(gatedSports.map(async ([sportName, sportKey]) => {
                     try {
-                                const [oddsData, scoresData, injuryList, liveEvents] = await Promise.all([
-                                              fetchOdds(sportKey),
+                                const oddsData = await fetchOdds(sportKey);
+                                if (!Array.isArray(oddsData) || oddsData.length === 0) {
+                                        // No games listed — skip scores/injuries/live-status so an
+                                        // idle sport costs one request instead of four.
+                                        setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
+                                        return { games: [], injuriesByTeam: {} };
+                                }
+                                const [scoresData, injuryList, liveEvents] = await Promise.all([
                                               fetchScores(sportKey),
                                               fetchInjuries(sportKey),
                                               fetchLiveStatus(sportKey),
@@ -435,7 +470,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                    } finally {
                                            setLoading(false);
                                    }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+  }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveSportKeys, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
   // Initial load
   useEffect(() => {

@@ -10,10 +10,12 @@ import { probIndexKey, updateReceiptsSnapshot } from './_receipts.js';
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
 
-// Every game-market sport the app tracks (mirrors SPORTS in src/constants.js).
-// Golf is excluded: its Odds API key is outrights-only, so there is no
-// h2h/spreads/totals market to scan. Sports with no current games (e.g.
-// tennis between tournaments) soft-fail upstream and are skipped.
+// The scan discovers what to cover at runtime: The Odds API's /v4/sports
+// catalog (quota-free) lists every sport key currently in season, so seasonal
+// events — each tennis major is its own key, cups come and go — are picked up
+// automatically. Outright-only keys (golf winners, futures) carry no
+// h2h/spreads/totals market and are filtered out, as is the Politics group.
+// TRACKED_SPORTS is only the fallback if the catalog call itself fails.
 const TRACKED_SPORTS = [
     'soccer_fifa_world_cup',
     'basketball_nba',
@@ -34,11 +36,26 @@ const TRACKED_SPORTS = [
     'soccer_uefa_champs_league',
     'soccer_usa_mls',
     'soccer_mexico_ligamx',
-    'tennis_atp_italian_open',
-    'tennis_wta_italian_open',
+    'tennis_atp_wimbledon',
+    'tennis_wta_wimbledon',
     'aussierules_afl',
     'rugbyleague_nrl',
   ];
+
+async function getScannableSports(apiKey) {
+    try {
+          const res = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${apiKey}`);
+          if (!res.ok) return null;
+          const catalog = await res.json();
+          if (!Array.isArray(catalog)) return null;
+          const scannable = catalog.filter(s =>
+                  s?.active && !s.has_outrights && s.group !== 'Politics'
+          );
+          return scannable.length ? scannable : null;
+    } catch {
+          return null;
+    }
+}
 
 const SPORT_LABELS = {
     soccer_fifa_world_cup: 'World Cup',
@@ -60,8 +77,15 @@ const SPORT_LABELS = {
     soccer_uefa_champs_league: 'UCL',
     soccer_usa_mls: 'MLS',
     soccer_mexico_ligamx: 'Liga MX',
-    tennis_atp_italian_open: 'ATP',
-    tennis_wta_italian_open: 'WTA',
+    soccer_uefa_europa_league: 'Europa League',
+    tennis_atp_wimbledon: 'ATP Wimbledon',
+    tennis_wta_wimbledon: 'WTA Wimbledon',
+    tennis_atp_us_open: 'ATP US Open',
+    tennis_wta_us_open: 'WTA US Open',
+    tennis_atp_french_open: 'ATP French Open',
+    tennis_wta_french_open: 'WTA French Open',
+    tennis_atp_aus_open_singles: 'ATP Aus Open',
+    tennis_wta_aus_open_singles: 'WTA Aus Open',
     aussierules_afl: 'AFL',
     rugbyleague_nrl: 'NRL',
 };
@@ -73,7 +97,16 @@ const SPORT_EMOJI = {
     UFC: '🥊', Boxing: '🥊',
     EPL: '⚽', 'La Liga': '⚽', 'Serie A': '⚽', Bundesliga: '⚽',
     'Ligue 1': '⚽', UCL: '⚽', MLS: '⚽', 'Liga MX': '⚽',
-    ATP: '🎾', WTA: '🎾', AFL: '🏉', NRL: '🏉',
+    AFL: '🏉', NRL: '🏉',
+};
+
+// Catalog-discovered sports fall back to an emoji by their Odds API group.
+const GROUP_EMOJI = {
+    Soccer: '⚽', Tennis: '🎾', Cricket: '🏏', Basketball: '🏀',
+    'American Football': '🏈', 'Ice Hockey': '🏒', Baseball: '⚾',
+    Boxing: '🥊', 'Mixed Martial Arts': '🥊',
+    'Rugby League': '🏉', 'Rugby Union': '🏉', 'Aussie Rules': '🏉',
+    Lacrosse: '🥍', Golf: '⛳',
 };
 
 // Minimum EV threshold — below this isn't worth flagging
@@ -168,10 +201,12 @@ function getConsensusProbabilities(bookmakers, marketKey) {
 // `probIndex` (optional Map) collects the consensus fair probability and best
 // price for EVERY priced outcome — not just +EV ones — so the receipts
 // tracker can keep observing an edge's closing line after its EV fades.
-function findEdges(game, sportKey, probIndex = null) {
+// `sport` is a catalog entry: { key, title, group } — title/group let
+// discovered sports label themselves without a hardcoded map entry.
+function findEdges(game, sport, probIndex = null) {
     const edges = [];
-    const sportName = SPORT_LABELS[sportKey] || sportKey.toUpperCase();
-    const emoji = SPORT_EMOJI[sportName] || '🎯';
+    const sportName = SPORT_LABELS[sport.key] || sport.title || sport.key.toUpperCase();
+    const emoji = SPORT_EMOJI[sportName] || GROUP_EMOJI[sport.group] || '🎯';
     const home = game.home_team;
     const away = game.away_team;
     const gameName = `${away} @ ${home}`;
@@ -271,12 +306,17 @@ export default async function handler(req, res) {
         const allEdges = [];
         const probIndex = new Map();
 
-      for (const sport of TRACKED_SPORTS) {
+      // Scan every in-season game-market sport; fall back to the static
+      // list only if the catalog call fails.
+      const sportsToScan = (await getScannableSports(apiKey))
+        || TRACKED_SPORTS.map(key => ({ key, title: SPORT_LABELS[key] || key, group: '' }));
+
+      for (const sport of sportsToScan) {
               try {
-                        const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2&markets=h2h,spreads,totals&oddsFormat=american`;
+                        const url = `https://api.the-odds-api.com/v4/sports/${sport.key}/odds?apiKey=${apiKey}&regions=us,us2&markets=h2h,spreads,totals&oddsFormat=american`;
                         const response = await fetch(url);
                         if (!response.ok) {
-                                    console.warn(`Odds API error for ${sport}: ${response.status}`);
+                                    console.warn(`Odds API error for ${sport.key}: ${response.status}`);
                                     continue;
                         }
                         const games = await response.json();
@@ -292,7 +332,7 @@ export default async function handler(req, res) {
                                     allEdges.push(...edges);
                         }
               } catch (e) {
-                        console.warn(`Edge scan failed for ${sport}:`, e.message);
+                        console.warn(`Edge scan failed for ${sport.key}:`, e.message);
               }
       }
 
