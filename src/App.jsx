@@ -185,7 +185,7 @@ export default function BettingApp() {
     // One-time migration: sports added to the app after a user saved their
     // preferences (e.g. WNBA) would otherwise stay invisible forever. The
     // flag keeps us from re-adding a sport the user deliberately turns off.
-    const NEW_SPORTS = ['WNBA'];
+    const NEW_SPORTS = ['WNBA', 'World Cup'];
     NEW_SPORTS.forEach(sport => {
       const migrationKey = `edgefinder_sport_added_${sport}`;
       try {

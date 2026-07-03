@@ -75,6 +75,7 @@ export const SPORT_META = {
   americanfootball_ncaaf: { label: 'NCAAF', icon: '🏈', family: 'football', espnPath: 'football/college-football', logoSport: 'ncf' },
   icehockey_nhl: { label: 'NHL', icon: '🏒', family: 'hockey', espnPath: 'hockey/nhl', logoSport: 'nhl' },
   baseball_mlb: { label: 'MLB', icon: '⚾', family: 'baseball', espnPath: 'baseball/mlb', logoSport: 'mlb' },
+  soccer_fifa_world_cup: { label: 'World Cup', icon: '🏆', family: 'soccer', espnPath: 'soccer/fifa.world', logoSport: 'soccer' },
   soccer_epl: { label: 'EPL', icon: '⚽', family: 'soccer', espnPath: 'soccer/eng.1', logoSport: 'soccer' },
   soccer_spain_la_liga: { label: 'La Liga', icon: '⚽', family: 'soccer', espnPath: 'soccer/esp.1', logoSport: 'soccer' },
   soccer_italy_serie_a: { label: 'Serie A', icon: '⚽', family: 'soccer', espnPath: 'soccer/ita.1', logoSport: 'soccer' },
@@ -92,7 +93,7 @@ export const SPORT_META = {
   rugbyleague_nrl: { label: 'NRL', icon: '🏉', family: 'rugby' },
 };
 
-export const SPORT_SORT_ORDER = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb', 'basketball_wnba', 'basketball_ncaab', 'americanfootball_ncaaf', 'basketball_wncaab', 'soccer_epl', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_champs_league', 'soccer_usa_mls', 'soccer_mexico_ligamx', 'tennis_atp_italian_open', 'tennis_wta_italian_open', 'mma_mixed_martial_arts', 'boxing_boxing', 'golf_masters_tournament_winner', 'aussierules_afl', 'rugbyleague_nrl'];
+export const SPORT_SORT_ORDER = ['basketball_nba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb', 'basketball_wnba', 'basketball_ncaab', 'americanfootball_ncaaf', 'basketball_wncaab', 'soccer_fifa_world_cup', 'soccer_epl', 'soccer_spain_la_liga', 'soccer_italy_serie_a', 'soccer_germany_bundesliga', 'soccer_france_ligue_one', 'soccer_uefa_champs_league', 'soccer_usa_mls', 'soccer_mexico_ligamx', 'tennis_atp_italian_open', 'tennis_wta_italian_open', 'mma_mixed_martial_arts', 'boxing_boxing', 'golf_masters_tournament_winner', 'aussierules_afl', 'rugbyleague_nrl'];
 
 export function getSportMeta(sport) {
   return SPORT_META[sport] || { label: sport?.split('_').slice(-1)[0]?.toUpperCase() || 'Other', icon: '🎯', family: 'other' };

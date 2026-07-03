@@ -131,6 +131,17 @@ export default function GameCard({
   const homeSpread = firstBook?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team);
   const totalLine = firstBook?.markets?.find(m => m.key === 'totals')?.outcomes?.[0];
 
+  // Soccer moneylines are 3-way (home/draw/away). When the market carries a
+  // Draw outcome, show the full 1X2 line in the card's line column instead of
+  // a spread, ordered home · draw · away.
+  const isSoccer = game.sport_key?.startsWith('soccer');
+  const h2hOutcomes = firstBook?.markets?.find(m => m.key === 'h2h')?.outcomes || [];
+  const threeWay = isSoccer && h2hOutcomes.length >= 3 ? {
+    home: h2hOutcomes.find(o => o.name === game.home_team),
+    draw: h2hOutcomes.find(o => /^draw$/i.test(o.name || '')),
+    away: h2hOutcomes.find(o => o.name === game.away_team),
+  } : null;
+
   return (
     <div>
       {/* Clickable card header */}
@@ -392,7 +403,14 @@ export default function GameCard({
         </div>
 
         <div className="game-spread">
-          {homeSpread ? (
+          {threeWay ? (
+            <>
+              <div style={{ fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {formatOdds(threeWay.home?.price)} / {formatOdds(threeWay.draw?.price)} / {formatOdds(threeWay.away?.price)}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b' }}>1X2 · {game.bookmakers?.length || 0} books</div>
+            </>
+          ) : homeSpread ? (
             <>
               <div style={{ fontSize: '14px', fontWeight: 700 }}>
                 {homeSpread.point > 0 ? '+' : ''}{homeSpread.point}

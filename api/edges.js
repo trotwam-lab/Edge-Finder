@@ -10,26 +10,70 @@ import { probIndexKey, updateReceiptsSnapshot } from './_receipts.js';
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
 
+// Every game-market sport the app tracks (mirrors SPORTS in src/constants.js).
+// Golf is excluded: its Odds API key is outrights-only, so there is no
+// h2h/spreads/totals market to scan. Sports with no current games (e.g.
+// tennis between tournaments) soft-fail upstream and are skipped.
 const TRACKED_SPORTS = [
+    'soccer_fifa_world_cup',
     'basketball_nba',
     'basketball_wnba',
+    'basketball_ncaab',
+    'basketball_wncaab',
     'americanfootball_nfl',
+    'americanfootball_ncaaf',
     'icehockey_nhl',
     'baseball_mlb',
     'mma_mixed_martial_arts',
+    'boxing_boxing',
+    'soccer_epl',
+    'soccer_spain_la_liga',
+    'soccer_italy_serie_a',
+    'soccer_germany_bundesliga',
+    'soccer_france_ligue_one',
+    'soccer_uefa_champs_league',
+    'soccer_usa_mls',
+    'soccer_mexico_ligamx',
+    'tennis_atp_italian_open',
+    'tennis_wta_italian_open',
+    'aussierules_afl',
+    'rugbyleague_nrl',
   ];
 
 const SPORT_LABELS = {
+    soccer_fifa_world_cup: 'World Cup',
     basketball_nba: 'NBA',
     basketball_wnba: 'WNBA',
+    basketball_ncaab: 'NCAAB',
+    basketball_wncaab: 'WNCAAB',
     americanfootball_nfl: 'NFL',
+    americanfootball_ncaaf: 'NCAAF',
     icehockey_nhl: 'NHL',
     baseball_mlb: 'MLB',
     mma_mixed_martial_arts: 'UFC',
+    boxing_boxing: 'Boxing',
+    soccer_epl: 'EPL',
+    soccer_spain_la_liga: 'La Liga',
+    soccer_italy_serie_a: 'Serie A',
+    soccer_germany_bundesliga: 'Bundesliga',
+    soccer_france_ligue_one: 'Ligue 1',
+    soccer_uefa_champs_league: 'UCL',
+    soccer_usa_mls: 'MLS',
+    soccer_mexico_ligamx: 'Liga MX',
+    tennis_atp_italian_open: 'ATP',
+    tennis_wta_italian_open: 'WTA',
+    aussierules_afl: 'AFL',
+    rugbyleague_nrl: 'NRL',
 };
 
 const SPORT_EMOJI = {
-    NBA: '🏀', WNBA: '🏀', NFL: '🏈', NHL: '🏒', MLB: '⚾', UFC: '🥊',
+    'World Cup': '🏆',
+    NBA: '🏀', WNBA: '🏀', NCAAB: '🏀', WNCAAB: '🏀',
+    NFL: '🏈', NCAAF: '🏈', NHL: '🏒', MLB: '⚾',
+    UFC: '🥊', Boxing: '🥊',
+    EPL: '⚽', 'La Liga': '⚽', 'Serie A': '⚽', Bundesliga: '⚽',
+    'Ligue 1': '⚽', UCL: '⚽', MLS: '⚽', 'Liga MX': '⚽',
+    ATP: '🎾', WTA: '🎾', AFL: '🏉', NRL: '🏉',
 };
 
 // Minimum EV threshold — below this isn't worth flagging

@@ -9,6 +9,7 @@ export const SPORTS = {
   WNCAAB: 'basketball_wncaab',
   MMA: 'mma_mixed_martial_arts',
   Boxing: 'boxing_boxing',
+  'World Cup': 'soccer_fifa_world_cup',
   EPL: 'soccer_epl',
   'La Liga': 'soccer_spain_la_liga',
   'Serie A': 'soccer_italy_serie_a',

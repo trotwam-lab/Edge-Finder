@@ -15,6 +15,7 @@ const ALLOWED_PATHS = new Set([
   'football/college-football',
   'hockey/nhl',
   'baseball/mlb',
+  'soccer/fifa.world',
   'soccer/eng.1',
   'soccer/esp.1',
   'soccer/ita.1',

@@ -18,6 +18,7 @@ export const SPORT_ESPN_SCOREBOARD = {
   americanfootball_ncaaf: 'football/college-football',
   icehockey_nhl: 'hockey/nhl',
   baseball_mlb: 'baseball/mlb',
+  soccer_fifa_world_cup: 'soccer/fifa.world',
   soccer_epl: 'soccer/eng.1',
   soccer_spain_la_liga: 'soccer/esp.1',
   soccer_italy_serie_a: 'soccer/ita.1',
