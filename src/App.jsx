@@ -185,7 +185,23 @@ export default function BettingApp() {
     // One-time migration: sports added to the app after a user saved their
     // preferences (e.g. WNBA) would otherwise stay invisible forever. The
     // flag keeps us from re-adding a sport the user deliberately turns off.
-    const NEW_SPORTS = ['WNBA', 'World Cup'];
+    const NEW_SPORTS = [
+      'WNBA', 'World Cup',
+      // 2026-07 catalog expansion
+      'CFL', 'Europa League', 'Conference League', 'Nations League',
+      'Libertadores', 'Copa América', 'FA Cup', 'EFL Cup', 'Eredivisie',
+      'Primeira Liga', 'Scottish Prem', 'Süper Lig', 'Belgian Pro',
+      'Austrian Liga', 'Swiss Super Lg', 'Greek Super Lg', 'Brasileirão',
+      'Argentina Primera', 'J League', 'K League', 'Chinese SL', 'A-League',
+      'Allsvenskan', 'Eliteserien', 'Danish Superliga', 'Veikkausliiga',
+      'League of Ireland', 'Ekstraklasa', 'Championship', 'League One',
+      'League Two', 'Bundesliga 2', 'Serie B', 'Ligue 2', 'La Liga 2',
+      'ATP Wimbledon', 'WTA Wimbledon', 'ATP US Open', 'WTA US Open',
+      'ATP French Open', 'WTA French Open', 'ATP Aus Open', 'WTA Aus Open',
+      'KBO', 'NPB', 'EuroLeague', 'NBL', 'AHL', 'SHL', 'Liiga',
+      'IPL', 'Big Bash', 'The Hundred', 'T20 Blast', 'Intl T20',
+      'Test Cricket', 'ODI Cricket', 'PLL', 'Six Nations',
+    ];
     NEW_SPORTS.forEach(sport => {
       const migrationKey = `edgefinder_sport_added_${sport}`;
       try {
