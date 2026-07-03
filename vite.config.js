@@ -6,13 +6,18 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' + our PWAUpdatePrompt component: when a new build ships, the
+      // waiting service worker surfaces a visible "Update available" toast
+      // instead of silently serving the old bundle. iOS installed PWAs are
+      // especially prone to pinning a stale build, which is how comp/Pro
+      // users end up stuck on a months-old client that can't auth correctly.
+      registerType: 'prompt',
       manifest: {
-        name: 'Edge Finder - Live Odds Tracker',
+        name: 'EdgeFinder — Live Odds & Edges',
         short_name: 'EdgeFinder',
-        description: 'Live odds, fair lines, and +EV betting analytics',
-        theme_color: '#0a0f1a',
-        background_color: '#0a0f1a',
+        description: 'Compare live odds across sportsbooks to find the best number, line moves, +EV edges, and props before you bet.',
+        theme_color: '#070b14',
+        background_color: '#070b14',
         display: 'standalone',
         start_url: '/',
         icons: [
