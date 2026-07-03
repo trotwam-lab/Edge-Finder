@@ -14,6 +14,7 @@ export const SPORT_VISUALS = {
   baseball_mlb:         { short: 'MLB',   icon: '⚾', color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
   mma_mixed_martial_arts: { short: 'MMA', icon: '🥊', color: '#dc2626', gradient: 'linear-gradient(135deg, #dc2626, #991b1b)' },
   boxing_boxing:        { short: 'BOX',   icon: '🥊', color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444, #7f1d1d)' },
+  soccer_fifa_world_cup: { short: 'WC',   icon: '🏆', color: '#facc15', gradient: 'linear-gradient(135deg, #facc15, #ca8a04)' },
   soccer_epl:           { short: 'EPL',   icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },
   soccer_spain_la_liga: { short: 'LIGA',  icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },
   soccer_italy_serie_a: { short: 'SERIE', icon: '⚽', color: '#a855f7', gradient: 'linear-gradient(135deg, #a855f7, #6b21a8)' },

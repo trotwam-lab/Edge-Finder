@@ -182,7 +182,20 @@ export default function HomeDashboard({
 
   const upcoming = useMemo(() => games.filter(isLiveOrUpcoming), [games]);
 
-  const topEdges = useMemo(() => edges.slice(0, 3), [edges]);
+  // Top 3 by EV, with one twist during the World Cup: if the tournament has a
+  // qualifying edge that didn't crack the top 3 on EV alone, it takes the last
+  // slot so the marquee event is always represented in the day's featured bets.
+  const topEdges = useMemo(() => {
+    const top = edges.slice(0, 3);
+    if (!top.some(e => e.sport === 'World Cup')) {
+      const worldCup = edges.find(e => e.sport === 'World Cup');
+      if (worldCup) {
+        if (top.length === 3) top[top.length - 1] = worldCup;
+        else top.push(worldCup);
+      }
+    }
+    return top;
+  }, [edges]);
 
   // Per-game market context so each row can explain itself and carry an
   // honest trust label.
