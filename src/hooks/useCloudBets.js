@@ -36,10 +36,14 @@ function mergePair(a, b) {
   if (!b) return a;
   const out = { ...a };
   // Determine which record is "newer" so differing values can actually update.
-  // Uses settledDate (YYYY-MM-DD) as a proxy for "last meaningful update",
-  // falling back to id (Date.now() at creation) for a deterministic order.
-  const aTime = Date.parse(a.settledDate || '') || 0;
-  const bTime = Date.parse(b.settledDate || '') || 0;
+  // updatedAt (epoch ms, stamped on every edit) is the primary signal; without
+  // it two pending copies of the same bet tie and the FIRST list wins any
+  // conflict — which is how a stale archive/cloud copy used to silently revert
+  // a manually corrected closing line on the next reload. settledDate remains
+  // as a fallback for records written before updatedAt existed, then id
+  // (Date.now() at creation) for a deterministic order.
+  const aTime = Math.max(a.updatedAt || 0, Date.parse(a.settledDate || '') || 0);
+  const bTime = Math.max(b.updatedAt || 0, Date.parse(b.settledDate || '') || 0);
   const bIsNewer = bTime !== aTime ? bTime > aTime : (b.id || 0) > (a.id || 0);
   Object.keys(b).forEach(k => {
     const bv = b[k];

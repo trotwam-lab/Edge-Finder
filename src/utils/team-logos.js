@@ -5,6 +5,7 @@ import { normalizeTeamKey, getSportMeta } from './props.js';
 // sport has a consistent color, icon, gradient, and short label.
 export const SPORT_VISUALS = {
   basketball_nba:       { short: 'NBA',   icon: '🏀', color: '#f97316', gradient: 'linear-gradient(135deg, #f97316, #ea580c)' },
+  basketball_nba_summer_league: { short: 'NBA SL', icon: '🏀', color: '#fbbf24', gradient: 'linear-gradient(135deg, #fbbf24, #d97706)' },
   basketball_wnba:      { short: 'WNBA',  icon: '🏀', color: '#fb7185', gradient: 'linear-gradient(135deg, #fb7185, #be123c)' },
   basketball_ncaab:     { short: 'NCAAB', icon: '🏀', color: '#fb923c', gradient: 'linear-gradient(135deg, #fb923c, #c2410c)' },
   basketball_wncaab:    { short: 'WNBB',  icon: '🏀', color: '#f472b6', gradient: 'linear-gradient(135deg, #f472b6, #db2777)' },

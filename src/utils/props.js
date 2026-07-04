@@ -68,6 +68,8 @@ export const MARKET_DISPLAY_NAMES = {
 
 export const SPORT_META = {
   basketball_nba: { label: 'NBA', icon: '🏀', family: 'basketball', espnPath: 'basketball/nba', logoSport: 'nba' },
+  // Summer league rosters are NBA franchises, so NBA team logos apply.
+  basketball_nba_summer_league: { label: 'NBA Summer', icon: '🏀', family: 'basketball', logoSport: 'nba' },
   basketball_wnba: { label: 'WNBA', icon: '🏀', family: 'basketball', espnPath: 'basketball/wnba', logoSport: 'wnba' },
   basketball_ncaab: { label: 'NCAAB', icon: '🏀', family: 'basketball', espnPath: 'basketball/mens-college-basketball', logoSport: 'ncb' },
   basketball_wncaab: { label: 'WNCAAB', icon: '🏀', family: 'basketball', espnPath: 'basketball/womens-college-basketball', logoSport: 'ncb' },

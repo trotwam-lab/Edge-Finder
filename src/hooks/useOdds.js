@@ -172,15 +172,26 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   // key; cups come and go), so most of our catalog is inactive at any given
   // moment. /api/sports is quota-free and says what's in season — we skip the
   // rest instead of spending a paid odds request per dead key every refresh.
+  // It also tells us about in-season game-market sports our static SPORTS map
+  // doesn't list (e.g. NBA Summer League, preseason keys): the edge scanner
+  // discovers those from the same catalog, so the Games tab must fetch them
+  // too or an edge can point at a game that never appears on the board.
   const activeSportsRef = useRef(null);
-  const getActiveSportKeys = useCallback(async () => {
+  const getActiveCatalog = useCallback(async () => {
         if (activeSportsRef.current) return activeSportsRef.current;
         try {
                 const res = await fetch('/api/sports');
                 if (!res.ok) return null;
                 const list = await res.json();
                 if (!Array.isArray(list) || list.length === 0) return null;
-                activeSportsRef.current = new Set(list.map(s => s.key));
+                const known = new Set(Object.values(SPORTS));
+                activeSportsRef.current = {
+                        keys: new Set(list.map(s => s.key)),
+                        // [displayName, sportKey] pairs, same shape as Object.entries(SPORTS).
+                        extras: list
+                          .filter(s => s.key && !s.has_outrights && s.group !== 'Politics' && !known.has(s.key))
+                          .map(s => [s.title || s.key, s.key]),
+                };
                 return activeSportsRef.current;
         } catch {
                 return null;
@@ -312,13 +323,27 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
           // would just 404). When the user explicitly filters to one sport we
           // fetch it regardless, so a stale catalog can never hide a chip the
           // user tapped. If /api/sports fails we fall back to fetching all.
-          const activeKeys = await getActiveSportKeys();
+          const catalog = await getActiveCatalog();
+          const activeKeys = catalog?.keys ?? null;
           const isSpecificFilter = filter && filter !== 'ALL';
           const gatedSports = activeKeys && !isSpecificFilter
             ? sportsToFetch.filter(([, key]) => activeKeys.has(key))
             : sportsToFetch;
 
-          const sportResults = await Promise.all(gatedSports.map(async ([sportName, sportKey]) => {
+          // Cover catalog sports the static SPORTS map doesn't list, so the
+          // Games tab always represents everything the edge scan can surface.
+          const extraSports = catalog?.extras ?? [];
+          let sportsToLoad = gatedSports;
+          if (!isSpecificFilter) {
+                  sportsToLoad = [...gatedSports, ...extraSports];
+          } else if (!SPORTS[filter]) {
+                  // The tapped chip may be a catalog-discovered sport (its chip
+                  // label is the catalog title, e.g. "NBA Preseason").
+                  const extraMatch = extraSports.find(([name]) => name.toLowerCase() === filter.toLowerCase());
+                  if (extraMatch) sportsToLoad = [extraMatch];
+          }
+
+          const sportResults = await Promise.all(sportsToLoad.map(async ([sportName, sportKey]) => {
                     try {
                                 const oddsData = await fetchOdds(sportKey);
                                 if (!Array.isArray(oddsData) || oddsData.length === 0) {
@@ -470,7 +495,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                    } finally {
                                            setLoading(false);
                                    }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveSportKeys, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+  }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveCatalog, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
   // Initial load
   useEffect(() => {

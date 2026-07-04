@@ -14,7 +14,7 @@ import {
 import { americanToDecimal, americanToImplied } from '../utils/odds-math.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
-import { useCloudBets, scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
+import { scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
 import WeeklyRecap from './WeeklyRecap.jsx';
 
 // Constants
@@ -203,35 +203,11 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-// Find the current live quote for a bet's market/outcome in the games feed.
-// Returns null if anything is missing. We match line markets by outcome name
-// first so a moved spread/total can still be captured as CLV.
-function findLiveQuote(games, bet) {
-  if (!bet?.gameId || !bet?.marketKey || !bet?.outcomeName) return null;
-  const game = games?.find(g => g.id === bet.gameId);
-  if (!game) return null;
-  const book = bet.book
-    ? game.bookmakers?.find(b => b.key === bet.book) || game.bookmakers?.[0]
-    : game.bookmakers?.[0];
-  const market = book?.markets?.find(m => m.key === bet.marketKey);
-  if (!market) return null;
-  const outcome = market.outcomes?.find(o => {
-    if (o.name !== bet.outcomeName) return false;
-    return true;
-  });
-  if (!outcome) return null;
-  return {
-    price: outcome.price ?? null,
-    point: outcome.point ?? null,
-    book: book?.key ?? null,
-    capturedAt: Date.now(),
-  };
-}
-
-export default function BetTracker({ pendingBet, onBetConsumed, games = [], historicOdds = {} }) {
+// Bets state lives in App (useCloudBets) so closing-line auto-capture keeps
+// running app-wide even when this tab isn't mounted; see useClosingLineCapture.
+export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets }) {
   const { tier, user } = useAuth();
   const isPro = tier === 'pro';
-  const [bets, setBets] = useCloudBets('edgefinder_bets', []);
   
   // Form state
   const [game, setGame] = useState('');
@@ -262,6 +238,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   function buildBetFromInput(source = pendingBet) {
     return {
       id: Date.now(),
+      updatedAt: Date.now(),
       game,
       type: betType,
       pick,
@@ -308,6 +285,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
           consumedAutoSaveRef.current.add(autoKey);
           const autoBet = {
             id: Date.now(),
+            updatedAt: Date.now(),
             game: pendingBet.game || pendingBet.player || '',
             type: pendingBet.type || 'Player Prop',
             pick: pendingBet.pick || '',
@@ -344,75 +322,6 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
     }
   }, [pendingBet, setBets, onBetConsumed]);
 
-  // Auto-capture CLV: for every pending bet whose market we can identify,
-  // track the latest live price and, once the game starts, snapshot it as
-  // the closing line. Also backfill opening odds from historicOdds when seen.
-  useEffect(() => {
-    if (!games?.length) return;
-    const now = Date.now();
-    // Build a patch map keyed by bet id. We apply it via a functional setBets
-    // so we never overwrite a newer bets array (e.g. a bet the user just added
-    // while the odds feed was refreshing).
-    const patches = new Map();
-    bets.forEach(bet => {
-      if (!bet.gameId || !bet.marketKey) return;
-      const patch = {};
-
-      // Backfill opening odds from historicOdds once we have a capture.
-      if (bet.openingOdds == null && bet.marketKey === 'h2h' && bet.outcomeName) {
-        const opener = historicOdds?.[bet.gameId]?.h2h?.find(o => o.name === bet.outcomeName);
-        if (opener?.price != null) patch.openingOdds = opener.price;
-      }
-
-      if ((bet.closingOdds == null || bet.closingPoint == null) && bet.status === 'pending') {
-        const liveQuote = findLiveQuote(games, bet);
-        const commence = bet.commenceTime ? new Date(bet.commenceTime).getTime() : null;
-        const gameStillListed = games.some(g => g.id === bet.gameId);
-
-        if (liveQuote && commence && now < commence) {
-          if (liveQuote.price != null && bet.lastPreGameOdds !== liveQuote.price) {
-            patch.lastPreGameOdds = liveQuote.price;
-            patch.lastPreGameAt = now;
-          }
-          if (liveQuote.point != null && bet.lastPreGamePoint !== liveQuote.point) {
-            patch.lastPreGamePoint = liveQuote.point;
-            patch.lastPreGameAt = now;
-          }
-        } else if (commence && now >= commence) {
-          const closingOdds = bet.lastPreGameOdds ?? liveQuote?.price;
-          const closingPoint = bet.lastPreGamePoint ?? liveQuote?.point;
-          if (closingOdds != null && bet.closingOdds == null) {
-            patch.closingOdds = closingOdds;
-            patch.closingCapturedAt = now;
-          }
-          if (closingPoint != null && bet.closingPoint == null) {
-            patch.closingPoint = closingPoint;
-            patch.closingCapturedAt = now;
-          }
-        } else if (!gameStillListed && (bet.lastPreGameOdds != null || bet.lastPreGamePoint != null)) {
-          if (bet.closingOdds == null) patch.closingOdds = bet.lastPreGameOdds;
-          if (bet.closingPoint == null && bet.lastPreGamePoint != null) patch.closingPoint = bet.lastPreGamePoint;
-          if (patch.closingOdds != null || patch.closingPoint != null) patch.closingCapturedAt = now;
-        }
-      }
-
-      if (Object.keys(patch).length) patches.set(bet.id, patch);
-    });
-
-    if (patches.size === 0) return;
-    setBets(prev => {
-      let changed = false;
-      const next = prev.map(b => {
-        const patch = patches.get(b.id);
-        if (!patch) return b;
-        changed = true;
-        return { ...b, ...patch };
-      });
-      return changed ? next : prev;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, historicOdds]);
-  
   // Auto-detect sports
   const detectedSports = useMemo(() => {
     const sports = new Set(['All']);
@@ -625,7 +534,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
       } else if (result === 'lost') {
         profit = -bet.wager;
       }
-      return { ...bet, status: result, profit, settledDate: todayStr() };
+      return { ...bet, status: result, profit, settledDate: todayStr(), updatedAt: Date.now() };
     }));
   }
   
@@ -634,7 +543,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
   // cloud merge ever "resurrecting" a deleted bet, and it preserves the record
   // in the local archive so the user can always recover it if needed.
   function deleteBet(id) {
-    setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: true, deletedAt: Date.now() } : b));
+    setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: true, deletedAt: Date.now(), updatedAt: Date.now() } : b));
   }
 
   function mergeBetLists(existingBets, incoming, { overwriteDeleted = false } = {}) {
@@ -668,6 +577,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
         restored += 1;
       }
       if (changed) {
+        filled.updatedAt = Date.now();
         map.set(b.id, filled);
         merged += 1;
       }
@@ -790,6 +700,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
         next.betPoint = next.openingPoint;
       }
       if (closingPoint !== undefined) next.closingPoint = closingPoint === null || closingPoint === '' ? null : Number(closingPoint);
+      // Recency stamp so the cloud/archive merge knows this manual edit beats
+      // any older copy of the bet — without it, edits reverted on reload.
+      next.updatedAt = Date.now();
       return next;
     }));
   }
@@ -1148,7 +1061,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, games = [], hist
                     const ids = bets.filter(b => b.deleted).map(b => b.id);
                     if (!confirm(`Restore ${ids.length} deleted bet(s)?`)) return;
                     const now = Date.now();
-                    setBets(prev => prev.map(b => ids.includes(b.id) ? { ...b, deleted: false, deletedAt: null, restoredAt: now } : b));
+                    setBets(prev => prev.map(b => ids.includes(b.id) ? { ...b, deleted: false, deletedAt: null, restoredAt: now, updatedAt: now } : b));
                     setDataPanelStatus(`Restored ${ids.length} deleted bet(s).`);
                   }}
                   style={{

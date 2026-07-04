@@ -5,6 +5,7 @@
 export const SPORTS = {
   // US majors
   NBA: 'basketball_nba',
+  'NBA Summer': 'basketball_nba_summer_league',
   NFL: 'americanfootball_nfl',
   NHL: 'icehockey_nhl',
   MLB: 'baseball_mlb',

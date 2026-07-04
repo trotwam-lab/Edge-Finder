@@ -5,6 +5,8 @@ import { useAuth } from './AuthGate.jsx';
 import ProBanner from './components/ProBanner.jsx';
 import { useOdds, usePersistentState } from './hooks/useOdds.js';
 import { useAlerts } from './hooks/useAlerts.js';
+import { useCloudBets } from './hooks/useCloudBets.js';
+import { useClosingLineCapture } from './hooks/useClosingLineCapture.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
@@ -201,6 +203,8 @@ export default function BettingApp() {
       'KBO', 'NPB', 'EuroLeague', 'NBL', 'AHL', 'SHL', 'Liiga',
       'IPL', 'Big Bash', 'The Hundred', 'T20 Blast', 'Intl T20',
       'Test Cricket', 'ODI Cricket', 'PLL', 'Six Nations',
+      // 2026-07: summer league was in edges but missing from the games board
+      'NBA Summer',
     ];
     NEW_SPORTS.forEach(sport => {
       const migrationKey = `edgefinder_sport_added_${sport}`;
@@ -228,6 +232,13 @@ export default function BettingApp() {
     games, playerProps, injuries, historicOdds, loading, error, lastUpdate,
     isConnected, countdown, gameLineHistory, propHistory, sportLastUpdated, manualRefresh,
   } = useOdds({ filter, enabledSports });
+
+  // Bets live at app level (not inside BetTracker) so the closing-line
+  // auto-capture below keeps observing the odds feed on EVERY tab. When this
+  // state lived in the Tracker tab, the close was only captured if the user
+  // happened to be sitting on that tab when the game kicked off.
+  const [bets, setBets] = useCloudBets('edgefinder_bets', []);
+  useClosingLineCapture(bets, setBets, games, historicOdds);
 
   const toggleWatchlist = (id) => {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -552,7 +563,7 @@ export default function BettingApp() {
           />
         </Suspense>
       )}
-      {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} games={games} historicOdds={historicOdds} /></Suspense>}
+      {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} bets={bets} setBets={setBets} /></Suspense>}
       {activeTab === 'SETTINGS' && (
         <main className="edge-app-main" style={{ maxWidth: '640px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>Settings</h2>

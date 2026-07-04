@@ -12,11 +12,13 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
   const stripRef = useRef(null);
   const activeRef = useRef(null);
 
-  // How many games each enabled sport has right now.
+  // How many games each enabled sport has right now. Catalog-discovered
+  // sports missing from the static SPORTS map (e.g. a new seasonal key) are
+  // counted under their feed title so they still get a chip below.
   const counts = useMemo(() => {
     const c = {};
     games.forEach(g => {
-      const name = NAME_BY_KEY[g.sport_key];
+      const name = NAME_BY_KEY[g.sport_key] || g.sport_title;
       if (name) c[name] = (c[name] || 0) + 1;
     });
     return c;
@@ -28,10 +30,16 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
   // of buried at the end of a long strip.
   const sports = useMemo(() => {
     const enabled = Object.keys(SPORTS).filter(s => !enabledSports || enabledSports.includes(s));
-    const withGames = enabled.filter(s => counts[s]);
-    const without = enabled.filter(s => !counts[s]);
+    // Sports present in the feed but not in the static map get a chip by
+    // their feed title, so the strip always covers every game on the board.
+    const dynamic = [...new Set(
+      games.filter(g => !NAME_BY_KEY[g.sport_key] && g.sport_title).map(g => g.sport_title)
+    )].filter(title => !enabled.includes(title));
+    const all = [...enabled, ...dynamic];
+    const withGames = all.filter(s => counts[s]);
+    const without = all.filter(s => !counts[s]);
     return ['ALL', ...withGames, ...without];
-  }, [enabledSports, counts]);
+  }, [enabledSports, counts, games]);
 
   // Keep the selected chip visible (scrolls the strip only, never the page).
   useEffect(() => {
