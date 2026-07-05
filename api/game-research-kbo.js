@@ -13,7 +13,7 @@ const MYKBO_URL = 'https://mykbostats.com/';
 // returns the last ~15 finished games with scores. Structured JSON and
 // datacenter-friendly, unlike MyKBO (Cloudflare 403s serverless IPs) and the
 // Odds API scores feed (carries only upcoming KBO games, never completed).
-const SPORTSDB_KBO_PAST = 'https://www.thesportsdb.com/api/v1/json/3/eventspastleague.php?id=4830';
+const SPORTSDB_KBO_PAST = 'https://www.thesportsdb.com/api/v1/json/123/eventspastleague.php?id=4830';
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let _pageCache = null; // { ts, text }
 let _sdbCache = null;  // { ts, events }
@@ -85,7 +85,11 @@ export async function getKboRecentForm(homeTeam, awayTeam, gameDate) {
 
   const home = recentFor(homeTeam);
   const away = recentFor(awayTeam);
-  if (home.length === 0 && away.length === 0) return null;
+  if (home.length === 0 && away.length === 0) {
+    const sample = events.slice(0, 3).map((e) => `${e.strAwayTeam}@${e.strHomeTeam}:${e.intAwayScore}-${e.intHomeScore}`).join(', ');
+    console.warn(`[KBO Research] TheSportsDB: no match for ${awayTeam} @ ${homeTeam} in ${events.length} events (${sample || 'empty feed'})`);
+    return null;
+  }
 
   return {
     sport: 'baseball_kbo',
