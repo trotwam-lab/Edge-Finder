@@ -14,6 +14,16 @@ const ESPN_LEAGUE_BASES = {
   basketball_wnba: 'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba',
 };
 
+// RotoWire lineup pages — the same markup system the MLB module already
+// parses in production. First URL that yields parseable blocks wins.
+const ROTOWIRE_LINEUP_URLS = {
+  basketball_nba: ['https://www.rotowire.com/basketball/nba-lineups.php'],
+  basketball_wnba: [
+    'https://www.rotowire.com/wnba/lineups.php',
+    'https://www.rotowire.com/basketball/wnba-lineups.php',
+  ],
+};
+
 // Simple in-memory cache with TTL (mirrors MLB module pattern)
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -62,6 +72,18 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate, sportKey 
       fetchAtsTrends(awayTeam),
     ]);
 
+    // Roto lineup confirmations (best effort — null when RotoWire has no
+    // page/game or the markup shifted; research ships without it).
+    let homeLineup = null;
+    let awayLineup = null;
+    try {
+      const lineupGame = findLineupGame(await fetchRotoLineups(sportKey), awayTeam, homeTeam);
+      homeLineup = lineupGame?.home || null;
+      awayLineup = lineupGame?.away || null;
+    } catch (err) {
+      console.warn('[Basketball Research] lineup fetch failed:', err.message);
+    }
+
     // Build enriched form objects from box-score data
     const homeForm = buildTeamForm(homeBoxScores, homeId);
     const awayForm = buildTeamForm(awayBoxScores, awayId);
@@ -100,6 +122,7 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate, sportKey 
         form: homeForm,
         rest: homeRest,
         injuries: homeInjuries,
+        lineup: homeLineup,
         ats: homeAts,
         seasonStats: homeStats,
       },
@@ -108,6 +131,7 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate, sportKey 
         form: awayForm,
         rest: awayRest,
         injuries: awayInjuries,
+        lineup: awayLineup,
         ats: awayAts,
         seasonStats: awayStats,
       },
@@ -330,6 +354,93 @@ async function fetchInjuries(teamName, base) {
       ? `${playersOut.length} out, ${dayToDay} day-to-day`
       : 'No reported injuries',
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* 2b. Roto Lineup Confirmations (RotoWire)                            */
+/* ------------------------------------------------------------------ */
+
+const _lineupCache = new Map(); // sportKey -> { ts, games }
+const LINEUP_TTL_MS = 5 * 60 * 1000; // confirmations flip close to tip-off
+
+function stripTags(s) {
+  return String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function lineupTeamMatches(rotoName, oddsName) {
+  const a = stripTags(rotoName).toLowerCase();
+  const b = String(oddsName || '').toLowerCase().trim();
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  return a.split(/\s+/).pop() === b.split(/\s+/).pop();
+}
+
+function parseLineupSide(block, side) {
+  const m = block.match(new RegExp(`<ul class="lineup__list is-${side}[^"]*">([\\s\\S]*?)(?=<ul class="lineup__list|$)`));
+  const html = m?.[1] || '';
+  const statusMatch = html.match(/lineup__status[^"]*\bis-(confirmed|expected)\b/);
+  const players = [];
+  for (const pm of html.matchAll(/<li class="lineup__player[\s\S]*?lineup__pos[^>]*>([^<]*)<[\s\S]*?<a[^>]*title="([^"]+)"/g)) {
+    players.push({ position: stripTags(pm[1]) || null, name: stripTags(pm[2]) });
+    if (players.length >= 5) break; // starters only
+  }
+  if (!statusMatch && players.length === 0) return null;
+  return { status: statusMatch?.[1] || 'unknown', players, source: 'rotowire' };
+}
+
+async function fetchRotoLineups(sportKey) {
+  const urls = ROTOWIRE_LINEUP_URLS[sportKey];
+  if (!urls) return [];
+  const hit = _lineupCache.get(sportKey);
+  if (hit && Date.now() - hit.ts < LINEUP_TTL_MS) return hit.games;
+
+  for (const url of urls) {
+    let page = null;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) {
+        console.warn(`[Basketball Research] RotoWire HTTP ${res.status}: ${url}`);
+        continue;
+      }
+      page = await res.text();
+    } catch (err) {
+      console.warn(`[Basketball Research] RotoWire fetch failed: ${url}`, err.message);
+      continue;
+    }
+
+    const games = [];
+    const blocks = page.split(/<div class="lineup is-(?:nba|wnba)[^"]*"/).slice(1);
+    for (const block of blocks) {
+      const teams = {};
+      for (const tm of block.matchAll(/<div class="lineup__mteam is-(visit|home)[^"]*">([\s\S]*?)<\/div>/g)) {
+        teams[tm[1]] = stripTags(tm[2].replace(/<span[\s\S]*?<\/span>/g, ''));
+      }
+      if (!teams.visit || !teams.home) continue;
+      games.push({
+        awayTeam: teams.visit,
+        homeTeam: teams.home,
+        away: parseLineupSide(block, 'visit'),
+        home: parseLineupSide(block, 'home'),
+      });
+    }
+    if (games.length) {
+      _lineupCache.set(sportKey, { ts: Date.now(), games });
+      return games;
+    }
+    console.warn(`[Basketball Research] RotoWire page had no parseable lineup blocks: ${url}`);
+  }
+  return [];
+}
+
+function findLineupGame(games, awayTeam, homeTeam) {
+  return (games || []).find((g) =>
+    lineupTeamMatches(g.awayTeam, awayTeam) && lineupTeamMatches(g.homeTeam, homeTeam)) || null;
 }
 
 /* ------------------------------------------------------------------ */
