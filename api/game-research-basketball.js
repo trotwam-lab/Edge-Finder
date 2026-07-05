@@ -7,8 +7,12 @@
  * - Odds API: ATS trends (if available)
  */
 
-// ESPN API base URLs
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
+// ESPN API base URLs — the module serves every basketball league ESPN carries
+// with the same API shape; the sport key picks the league path.
+const ESPN_LEAGUE_BASES = {
+  basketball_nba: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba',
+  basketball_wnba: 'https://site.api.espn.com/apis/site/v2/sports/basketball/wnba',
+};
 
 // Simple in-memory cache with TTL (mirrors MLB module pattern)
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -20,12 +24,13 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * @param {string} gameDate - ISO date string (YYYY-MM-DD)
  * @returns {Promise<Object>}
  */
-async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
+async function getBasketballGameResearch(homeTeam, awayTeam, gameDate, sportKey = 'basketball_nba') {
+  const base = ESPN_LEAGUE_BASES[sportKey] || ESPN_LEAGUE_BASES.basketball_nba;
   try {
     // Resolve ESPN team IDs
     const [homeId, awayId] = await Promise.all([
-      resolveTeamId(homeTeam),
-      resolveTeamId(awayTeam),
+      resolveTeamId(homeTeam, base, sportKey),
+      resolveTeamId(awayTeam, base, sportKey),
     ]);
 
     if (!homeId || !awayId) {
@@ -45,14 +50,14 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
       homeAts,
       awayAts,
     ] = await Promise.all([
-      fetchTeamStats(homeId),
-      fetchTeamStats(awayId),
-      fetchTeamSchedule(homeId),
-      fetchTeamSchedule(awayId),
-      fetchRecentBoxScores(homeId, 5),
-      fetchRecentBoxScores(awayId, 5),
-      fetchInjuries(homeTeam),
-      fetchInjuries(awayTeam),
+      fetchTeamStats(homeId, base),
+      fetchTeamStats(awayId, base),
+      fetchTeamSchedule(homeId, base),
+      fetchTeamSchedule(awayId, base),
+      fetchRecentBoxScores(homeId, 5, base),
+      fetchRecentBoxScores(awayId, 5, base),
+      fetchInjuries(homeTeam, base),
+      fetchInjuries(awayTeam, base),
       fetchAtsTrends(homeTeam),
       fetchAtsTrends(awayTeam),
     ]);
@@ -68,7 +73,7 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
     // Injury / availability & ATS already fetched in parallel above
 
     // Pace & efficiency
-    const paceMatchup = await buildPaceMatchup(homeStats, awayStats, homeForm, awayForm);
+    const paceMatchup = await buildPaceMatchup(homeStats, awayStats, homeForm, awayForm, base);
 
     // Auto-generated trends with confidence
     const trends = generateTrends({
@@ -86,7 +91,7 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
     });
 
     return {
-      sport: 'basketball_nba',
+      sport: sportKey,
       gameDate,
       homeTeam,
       awayTeam,
@@ -113,10 +118,10 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
       generatedAt: new Date().toISOString(),
     };
   } catch (err) {
-    console.error('[NBA Research] Error:', err.message);
+    console.error('[Basketball Research] Error:', err.message);
     // Return a graceful fallback so the caller doesn't blow up
     return {
-      sport: 'basketball_nba',
+      sport: sportKey,
       gameDate,
       homeTeam,
       awayTeam,
@@ -134,8 +139,8 @@ async function getBasketballGameResearch(homeTeam, awayTeam, gameDate) {
  * Fetches the last N box scores for a team and returns an array of
  * parsed game objects with advanced stats.
  */
-async function fetchRecentBoxScores(teamId, limit = 5) {
-  const schedule = await fetchTeamSchedule(teamId);
+async function fetchRecentBoxScores(teamId, limit = 5, base) {
+  const schedule = await fetchTeamSchedule(teamId, base);
   if (!schedule || !Array.isArray(schedule.events)) return [];
 
   // Only completed games
@@ -146,14 +151,14 @@ async function fetchRecentBoxScores(teamId, limit = 5) {
   const boxScores = [];
   for (const ev of completed) {
     const gameId = ev.id;
-    const box = await fetchBoxScore(gameId);
+    const box = await fetchBoxScore(gameId, base);
     if (box) boxScores.push(box);
   }
   return boxScores;
 }
 
-async function fetchBoxScore(gameId) {
-  const url = `${ESPN_BASE}/summary?event=${gameId}`;
+async function fetchBoxScore(gameId, base) {
+  const url = `${base}/summary?event=${gameId}`;
   const data = await safeFetch(url);
   if (!data) return null;
   return data;
@@ -284,25 +289,46 @@ function computeStreak(games) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Best-effort injury fetch.  If the project has an existing injuries API,
- * call it here.  Otherwise return an empty placeholder.
+ * Real injury report from ESPN's league-wide injuries feed. This is the
+ * availability ("roto") signal for basketball: who is Out, who is
+ * Day-To-Day, going into the game.
  */
-async function fetchInjuries(teamName) {
-  try {
-    // Attempt to use a project-level injuries endpoint if available
-    const { getInjuries } = await import('./injuries.js');
-    if (typeof getInjuries === 'function') {
-      return await getInjuries(teamName);
-    }
-  } catch {
-    // Module not available — that's fine
+async function fetchInjuries(teamName, base) {
+  const data = await cachedFetch(`${base}/injuries`);
+  const teams = Array.isArray(data?.injuries) ? data.injuries : null;
+  if (!teams) {
+    return { players: [], playersOut: [], impactScore: 0, note: 'Injury report unavailable' };
   }
 
-  // Placeholder: caller can overlay real data later
+  const norm = (s) => String(s || '').toLowerCase().trim();
+  const target = norm(teamName);
+  const entry = teams.find((t) => {
+    const dn = norm(t.displayName);
+    if (!dn) return false;
+    return dn === target || dn.includes(target) || target.includes(dn) ||
+      dn.split(' ').pop() === target.split(' ').pop();
+  });
+
+  const players = (entry?.injuries || [])
+    .map((i) => ({
+      name: i.athlete?.displayName || null,
+      position: i.athlete?.position?.abbreviation || null,
+      status: i.status || i.type?.description || 'Unknown',
+      detail: i.details?.type || i.shortComment || null,
+      returnDate: i.details?.returnDate || null,
+    }))
+    .filter((p) => p.name);
+
+  const playersOut = players.filter((p) => /out/i.test(p.status)).map((p) => p.name);
+  const dayToDay = players.filter((p) => /day-to-day|questionable|doubtful/i.test(p.status)).length;
+
   return {
-    playersOut: [],
-    impactScore: 0, // 0-10 scale
-    note: 'No injury data source configured',
+    players,
+    playersOut,
+    impactScore: Math.min(10, playersOut.length * 3 + dayToDay),
+    note: players.length
+      ? `${playersOut.length} out, ${dayToDay} day-to-day`
+      : 'No reported injuries',
   };
 }
 
@@ -386,7 +412,7 @@ function computeAtsFromOdds(oddsArray) {
 /* 5. Pace & Style Matchup                                             */
 /* ------------------------------------------------------------------ */
 
-async function buildPaceMatchup(homeStats, awayStats, homeForm, awayForm) {
+async function buildPaceMatchup(homeStats, awayStats, homeForm, awayForm, base) {
   // Use season stats if available, otherwise fall back to last-5 form
   const homePace = homeStats?.pace || homeForm?.averages?.pace || 100;
   const awayPace = awayStats?.pace || awayForm?.averages?.pace || 100;
@@ -394,7 +420,7 @@ async function buildPaceMatchup(homeStats, awayStats, homeForm, awayForm) {
   // Try to fetch league-wide pace stats for percentile-based ranking
   let allTeamPaces = null;
   try {
-    allTeamPaces = await fetchLeaguePaceStats();
+    allTeamPaces = await fetchLeaguePaceStats(base);
   } catch (err) {
     // Silently fall back to hardcoded thresholds
   }
@@ -452,15 +478,16 @@ function paceLabelFromPercentile(percentile) {
 /* League-wide pace helpers                                            */
 /* ------------------------------------------------------------------ */
 
-let _leaguePaceCache = null;
+const _leaguePaceCache = new Map(); // per-league (base URL) cache
 
-async function fetchLeaguePaceStats() {
+async function fetchLeaguePaceStats(base) {
   const now = Date.now();
-  if (_leaguePaceCache && now - _leaguePaceCache.ts < CACHE_TTL_MS) {
-    return _leaguePaceCache.data;
+  const hit = _leaguePaceCache.get(base);
+  if (hit && now - hit.ts < CACHE_TTL_MS) {
+    return hit.data;
   }
 
-  const data = await cachedFetch(`${ESPN_BASE}/teams`);
+  const data = await cachedFetch(`${base}/teams`);
   if (!data || !Array.isArray(data.sports?.[0]?.leagues?.[0]?.teams)) {
     return null;
   }
@@ -473,7 +500,7 @@ async function fetchLeaguePaceStats() {
       const teamId = t.team?.id;
       if (!teamId) return;
       try {
-        const stats = await fetchTeamStats(teamId);
+        const stats = await fetchTeamStats(teamId, base);
         if (stats && stats.pace) {
           paceValues.push(parseFloat(stats.pace));
         }
@@ -485,7 +512,7 @@ async function fetchLeaguePaceStats() {
 
   if (paceValues.length === 0) return null;
 
-  _leaguePaceCache = { ts: now, data: paceValues };
+  _leaguePaceCache.set(base, { ts: now, data: paceValues });
   return paceValues;
 }
 
@@ -605,8 +632,8 @@ function generateTrends(ctx) {
 /* Helpers — ESPN API wrappers                                         */
 /* ------------------------------------------------------------------ */
 
-async function fetchTeamStats(teamId) {
-  const url = `${ESPN_BASE}/teams/${teamId}/statistics`;
+async function fetchTeamStats(teamId, base) {
+  const url = `${base}/teams/${teamId}/statistics`;
   const data = await cachedFetch(url);
   if (!data) return null;
   // ESPN returns categories like "general", "offense", "defense"
@@ -620,18 +647,20 @@ async function fetchTeamStats(teamId) {
   return stats;
 }
 
-async function fetchTeamSchedule(teamId) {
-  const url = `${ESPN_BASE}/teams/${teamId}/schedule`;
+async function fetchTeamSchedule(teamId, base) {
+  const url = `${base}/teams/${teamId}/schedule`;
   return cachedFetch(url);
 }
 
-async function resolveTeamId(nameOrAbbr) {
-  // Try static mapping first (fast, no network)
-  const staticId = NBA_TEAM_IDS[nameOrAbbr.toUpperCase()];
-  if (staticId) return staticId;
+async function resolveTeamId(nameOrAbbr, base, sportKey) {
+  // Try static mapping first (fast, no network) — NBA IDs only apply to NBA
+  if (sportKey === 'basketball_nba') {
+    const staticId = NBA_TEAM_IDS[nameOrAbbr.toUpperCase()];
+    if (staticId) return staticId;
+  }
 
   // Fallback: search ESPN teams list
-  const data = await cachedFetch(`${ESPN_BASE}/teams`);
+  const data = await cachedFetch(`${base}/teams`);
   if (!data || !Array.isArray(data.sports?.[0]?.leagues?.[0]?.teams)) return null;
 
   const teams = data.sports[0].leagues[0].teams;
