@@ -9,14 +9,19 @@
  */
 
 const MYKBO_URL = 'https://mykbostats.com/';
-// TheSportsDB free API — Korean KBO League is id 4830; eventspastleague
-// returns the last ~15 finished games with scores. Structured JSON and
-// datacenter-friendly, unlike MyKBO (Cloudflare 403s serverless IPs) and the
-// Odds API scores feed (carries only upcoming KBO games, never completed).
-const SPORTSDB_KBO_PAST = 'https://www.thesportsdb.com/api/v1/json/123/eventspastleague.php?id=4830';
+// TheSportsDB free API (test key 123) — structured JSON and datacenter-
+// friendly, unlike MyKBO (Cloudflare 403s serverless IPs) and the Odds API
+// scores feed (carries only upcoming KBO games, never completed). The league
+// feed (eventspastleague) only exposes the current round, so recent form
+// comes from per-team lookups: resolve the team id once, then eventslast
+// returns that team's last 5 finished games with scores.
+const SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/123';
+const SPORTSDB_KBO_TEAMS = `${SPORTSDB}/search_all_teams.php?l=Korean%20KBO%20League`;
 const CACHE_TTL_MS = 10 * 60 * 1000;
-let _pageCache = null; // { ts, text }
-let _sdbCache = null;  // { ts, events }
+const TEAMS_TTL_MS = 24 * 60 * 60 * 1000;
+let _pageCache = null;   // { ts, text }  (MyKBO)
+let _teamsCache = null;  // { ts, teams } (TheSportsDB league roster)
+const _lastEventsCache = new Map(); // teamId -> { ts, results }
 
 // Odds-feed team name -> nickname token used to locate the game on the page
 const KBO_NICKNAMES = [
@@ -42,32 +47,35 @@ function teamMatches(eventTeam, oddsTeam) {
   return a.split(/\s+/).pop() === b.split(/\s+/).pop();
 }
 
-/**
- * Recent form for a KBO matchup from TheSportsDB's finished-games feed.
- * Returns a generic-research-shaped payload, or null if the source is down
- * or neither team appears (caller falls back).
- */
-export async function getKboRecentForm(homeTeam, awayTeam, gameDate) {
-  let events = null;
-  if (_sdbCache && Date.now() - _sdbCache.ts < CACHE_TTL_MS) {
-    events = _sdbCache.events;
-  } else {
-    try {
-      const res = await fetch(SPORTSDB_KBO_PAST, { signal: AbortSignal.timeout(10000) });
-      if (!res.ok) throw new Error(`TheSportsDB HTTP ${res.status}`);
-      const data = await res.json();
-      events = Array.isArray(data?.events) ? data.events : [];
-      _sdbCache = { ts: Date.now(), events };
-    } catch (err) {
-      console.warn('[KBO Research] TheSportsDB fetch failed:', err.message);
-      return null;
-    }
-  }
+async function sdbJson(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`TheSportsDB HTTP ${res.status}`);
+  return res.json();
+}
 
-  const recentFor = (teamName) => events
-    .filter((e) =>
-      (teamMatches(e.strHomeTeam, teamName) || teamMatches(e.strAwayTeam, teamName)) &&
-      e.intHomeScore != null && e.intAwayScore != null)
+async function lookupKboTeamId(teamName) {
+  if (!_teamsCache || Date.now() - _teamsCache.ts > TEAMS_TTL_MS) {
+    const data = await sdbJson(SPORTSDB_KBO_TEAMS);
+    _teamsCache = { ts: Date.now(), teams: Array.isArray(data?.teams) ? data.teams : [] };
+  }
+  const match = _teamsCache.teams.find(
+    (t) => teamMatches(t.strTeam, teamName) || teamMatches(t.strTeamAlternate, teamName)
+  );
+  return match?.idTeam || null;
+}
+
+async function lastEventsForTeam(teamId) {
+  const hit = _lastEventsCache.get(teamId);
+  if (hit && Date.now() - hit.ts < CACHE_TTL_MS) return hit.results;
+  const data = await sdbJson(`${SPORTSDB}/eventslast.php?id=${teamId}`);
+  const results = Array.isArray(data?.results) ? data.results : [];
+  _lastEventsCache.set(teamId, { ts: Date.now(), results });
+  return results;
+}
+
+function formFromEvents(events, teamName) {
+  return (events || [])
+    .filter((e) => e.intHomeScore != null && e.intAwayScore != null)
     .sort((a, b) => new Date(b.dateEvent || 0) - new Date(a.dateEvent || 0))
     .slice(0, 10)
     .map((e) => {
@@ -82,24 +90,49 @@ export async function getKboRecentForm(homeTeam, awayTeam, gameDate) {
         opponentScore: String(opp),
       };
     });
+}
 
-  const home = recentFor(homeTeam);
-  const away = recentFor(awayTeam);
-  if (home.length === 0 && away.length === 0) {
-    const sample = events.slice(0, 3).map((e) => `${e.strAwayTeam}@${e.strHomeTeam}:${e.intAwayScore}-${e.intHomeScore}`).join(', ');
-    console.warn(`[KBO Research] TheSportsDB: no match for ${awayTeam} @ ${homeTeam} in ${events.length} events (${sample || 'empty feed'})`);
+/**
+ * Recent form for a KBO matchup from TheSportsDB's per-team last-5 feeds.
+ * Returns a generic-research-shaped payload, or null if the source is down
+ * or neither team resolves (caller falls back).
+ */
+export async function getKboRecentForm(homeTeam, awayTeam, gameDate) {
+  try {
+    const [homeId, awayId] = await Promise.all([
+      lookupKboTeamId(homeTeam),
+      lookupKboTeamId(awayTeam),
+    ]);
+    if (!homeId && !awayId) {
+      const roster = (_teamsCache?.teams || []).map((t) => t.strTeam).join(', ');
+      console.warn(`[KBO Research] TheSportsDB: no team match for ${awayTeam} @ ${homeTeam} (roster: ${roster || 'empty'})`);
+      return null;
+    }
+
+    const [homeEvents, awayEvents] = await Promise.all([
+      homeId ? lastEventsForTeam(homeId) : [],
+      awayId ? lastEventsForTeam(awayId) : [],
+    ]);
+    const home = formFromEvents(homeEvents, homeTeam);
+    const away = formFromEvents(awayEvents, awayTeam);
+    if (home.length === 0 && away.length === 0) {
+      console.warn(`[KBO Research] TheSportsDB: teams resolved but no finished games (${awayTeam} @ ${homeTeam})`);
+      return null;
+    }
+
+    return {
+      sport: 'baseball_kbo',
+      gameDate,
+      supported: true,
+      dataSource: 'TheSportsDB',
+      home: { name: homeTeam, id: homeId, last10: home },
+      away: { name: awayTeam, id: awayId, last10: away },
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn('[KBO Research] TheSportsDB fetch failed:', err.message);
     return null;
   }
-
-  return {
-    sport: 'baseball_kbo',
-    gameDate,
-    supported: true,
-    dataSource: 'TheSportsDB',
-    home: { name: homeTeam, id: null, last10: home },
-    away: { name: awayTeam, id: null, last10: away },
-    generatedAt: new Date().toISOString(),
-  };
 }
 
 async function fetchPageText() {
