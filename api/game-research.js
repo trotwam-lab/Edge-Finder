@@ -12,6 +12,8 @@
 import { getBaseballResearch } from './game-research-baseball.js';
 import { getBasketballGameResearch } from './game-research-basketball.js';
 import { getHockeyGameResearch } from './game-research-hockey.js';
+import { getMmaGameResearch } from './game-research-mma.js';
+import { getKboProbables } from './game-research-kbo.js';
 import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
 
 // ────────────────────────────────────────────────────────────────
@@ -219,6 +221,31 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
 
   if (key === 'icehockey_nhl') {
     return getHockeyGameResearch(homeTeam, awayTeam, gameDate);
+  }
+
+  if (key === 'mma_mixed_martial_arts') {
+    try {
+      const tape = await getMmaGameResearch(homeTeam, awayTeam, gameDate);
+      if (tape) return tape;
+    } catch (err) {
+      console.warn('[MMA Research] failed, falling back:', err.message);
+    }
+    // Bout not on an ESPN card — fall through to the generic fallback chain.
+  }
+
+  if (key === 'baseball_kbo') {
+    const form = await getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
+    try {
+      const probables = await getKboProbables(homeTeam, awayTeam);
+      if (probables) {
+        if (form.home && probables.home) form.home.probablePitcher = probables.home;
+        if (form.away && probables.away) form.away.probablePitcher = probables.away;
+        form.probablesSource = probables.source;
+      }
+    } catch (err) {
+      console.warn('[KBO Research] probables failed:', err.message);
+    }
+    return form;
   }
 
   return getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
