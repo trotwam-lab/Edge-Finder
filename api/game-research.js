@@ -13,7 +13,7 @@ import { getBaseballResearch } from './game-research-baseball.js';
 import { getBasketballGameResearch } from './game-research-basketball.js';
 import { getHockeyGameResearch } from './game-research-hockey.js';
 import { getMmaGameResearch } from './game-research-mma.js';
-import { getKboProbables } from './game-research-kbo.js';
+import { getKboProbables, getKboRecentForm } from './game-research-kbo.js';
 import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
 
 // ────────────────────────────────────────────────────────────────
@@ -234,7 +234,13 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
   }
 
   if (key === 'baseball_kbo') {
-    const form = await getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
+    let form = null;
+    try {
+      form = await getKboRecentForm(homeTeam, awayTeam, gameDate);
+    } catch (err) {
+      console.warn('[KBO Research] recent form failed:', err.message);
+    }
+    if (!form) form = await getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
     try {
       const probables = await getKboProbables(homeTeam, awayTeam);
       if (probables) {
