@@ -9,6 +9,9 @@ node_modules/
 # Build output
 dist/
 
+# Python (research/ tooling)
+__pycache__/
+
 # Backup and temp files
 *.backup
 *.props_backup
