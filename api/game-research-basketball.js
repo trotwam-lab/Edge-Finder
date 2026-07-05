@@ -367,12 +367,42 @@ function stripTags(s) {
   return String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function isSubsequence(small, big) {
+  let i = 0;
+  for (const ch of big) if (ch === small[i]) i++;
+  return i === small.length;
+}
+
+// RotoWire's basketball pages show team ABBREVIATIONS (DAL, LV, PHX), not the
+// full names the odds feed uses — match abbreviations by initials or by
+// letter-subsequence of the city name (PHX ⊂ phoenix, WSH ⊂ washington).
 function lineupTeamMatches(rotoName, oddsName) {
-  const a = stripTags(rotoName).toLowerCase();
+  const a = stripTags(rotoName).toLowerCase().trim();
   const b = String(oddsName || '').toLowerCase().trim();
   if (!a || !b) return false;
   if (a === b || a.includes(b) || b.includes(a)) return true;
-  return a.split(/\s+/).pop() === b.split(/\s+/).pop();
+  if (a.split(/\s+/).pop() === b.split(/\s+/).pop()) return true;
+  const compact = a.replace(/[^a-z]/g, '');
+  if (compact.length >= 2 && compact.length <= 4) {
+    const words = b.split(/\s+/);
+    const initials = words.map((w) => w[0]).join('');
+    const cityInitials = words.slice(0, -1).map((w) => w[0]).join('');
+    if (compact === initials || (cityInitials.length >= 2 && compact === cityInitials)) return true;
+    if (isSubsequence(compact, words[0])) return true;
+  }
+  return false;
+}
+
+function extractTeamCandidates(html) {
+  const candidates = [];
+  const text = stripTags(html.replace(/<span[\s\S]*?<\/span>/g, ' '));
+  if (text) candidates.push(text);
+  for (const m of html.matchAll(/(?:alt|title)="([^"]+)"/g)) candidates.push(m[1]);
+  return candidates;
+}
+
+function anyTeamMatch(candidates, oddsName) {
+  return (candidates || []).some((c) => lineupTeamMatches(c, oddsName));
 }
 
 function parseLineupSide(block, side) {
@@ -417,11 +447,13 @@ async function fetchRotoLineups(sportKey) {
     const games = [];
     const blocks = page.split(/<div class="lineup is-(?:nba|wnba)[^"]*"/).slice(1);
     for (const block of blocks) {
+      // MLB pages use lineup__mteam with full names; basketball pages use
+      // lineup__team with abbreviations (plus alt/title attributes).
       const teams = {};
-      for (const tm of block.matchAll(/<div class="lineup__mteam is-(visit|home)[^"]*">([\s\S]*?)<\/div>/g)) {
-        teams[tm[1]] = stripTags(tm[2].replace(/<span[\s\S]*?<\/span>/g, ''));
+      for (const tm of block.matchAll(/<div class="lineup__m?team is-(visit|home)[^"]*">([\s\S]*?)<\/div>/g)) {
+        if (!teams[tm[1]]) teams[tm[1]] = extractTeamCandidates(tm[2]);
       }
-      if (!teams.visit || !teams.home) continue;
+      if (!teams.visit?.length || !teams.home?.length) continue;
       games.push({
         awayTeam: teams.visit,
         homeTeam: teams.home,
@@ -441,7 +473,7 @@ async function fetchRotoLineups(sportKey) {
 
 function findLineupGame(games, awayTeam, homeTeam) {
   return (games || []).find((g) =>
-    lineupTeamMatches(g.awayTeam, awayTeam) && lineupTeamMatches(g.homeTeam, homeTeam)) || null;
+    anyTeamMatch(g.awayTeam, awayTeam) && anyTeamMatch(g.homeTeam, homeTeam)) || null;
 }
 
 /* ------------------------------------------------------------------ */
