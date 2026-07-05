@@ -41,6 +41,11 @@ This repo is being standardised around the working Firebase login/subscriber flo
 - `api/stripe-webhook.js` — Stripe event handling
 - `api/_firebaseAdmin.js` — Firebase Admin / Firestore server helper
 
+## Research layer (scaffolding)
+- `research/` holds the sport-adapter architecture for the research/publish pipeline: a JSON sport registry (`research/sports_registry.json`) builds cadence-family adapters (`research/base_adapter.py`) that expose schedule/availability/form slots and a publish gate with a uniform stake policy
+- adding a sport = adding a registry entry; see `research/README.md`
+- Python tooling only — not part of the Vite build or Vercel functions
+
 ## Known debt
 - `src/hooks/useOdds.js` is oversized and mixes fetch, merge, polling, cache, and history logic
 - `src/App.jsx` is still a large orchestration component

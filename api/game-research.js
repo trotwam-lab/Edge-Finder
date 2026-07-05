@@ -12,13 +12,39 @@
 import { getBaseballResearch } from './game-research-baseball.js';
 import { getBasketballGameResearch } from './game-research-basketball.js';
 import { getHockeyGameResearch } from './game-research-hockey.js';
+import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
 
 // ────────────────────────────────────────────────────────────────
 // Generic fallback: last-10 games via ESPN
 // ────────────────────────────────────────────────────────────────
 
+// Research that couldn't be assembled is a degraded 200, never a 500 — the
+// client renders "No data" rows and the rest of the game card stays useful.
+function degradedResearch(homeTeam, awayTeam, sport, gameDate, note) {
+  return {
+    sport,
+    gameDate,
+    supported: false,
+    note,
+    home: { name: homeTeam, id: null, last10: [] },
+    away: { name: awayTeam, id: null, last10: [] },
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
-  const ESPN_BASE = `https://site.api.espn.com/apis/site/v2/sports/${sport}`;
+  // Sport keys are Odds API keys ("soccer_epl") — ESPN needs its own path
+  // ("soccer/eng.1"). An unmapped key means ESPN has no coverage: degrade
+  // instead of requesting a URL that can only 404.
+  const espnPath = SPORT_PATHS[sport] || (String(sport).includes('/') ? sport : null);
+  if (!espnPath) {
+    return degradedResearch(
+      homeTeam, awayTeam, sport, gameDate,
+      'Recent-form data is not available for this league.'
+    );
+  }
+
+  const ESPN_BASE = `${ESPN_SITE_BASE}/${espnPath}`;
 
   async function safeFetch(url) {
     try {
@@ -83,7 +109,10 @@ async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
   ]);
 
   if (!homeId || !awayId) {
-    throw new Error(`Could not resolve team IDs for generic research`);
+    return degradedResearch(
+      homeTeam, awayTeam, sport, gameDate,
+      'Could not match these teams to a recent-form source.'
+    );
   }
 
   const [homeGames, awayGames] = await Promise.all([

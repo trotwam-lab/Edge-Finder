@@ -7,62 +7,11 @@
 // of that here so the client can render an honest LIVE / FINAL / start-time badge
 // and surface a "Game of the Day" ticker.
 
-const ESPN_SITE_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
-const TTL = 20 * 1000; // 20s — live status needs to stay fresh during games
-const cache = new Map();
+import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
 
-// our odds-API sport key -> ESPN scoreboard path
-const SPORT_PATHS = {
-  basketball_nba: 'basketball/nba',
-  basketball_wnba: 'basketball/wnba',
-  basketball_ncaab: 'basketball/mens-college-basketball',
-  basketball_wncaab: 'basketball/womens-college-basketball',
-  americanfootball_nfl: 'football/nfl',
-  americanfootball_ncaaf: 'football/college-football',
-  icehockey_nhl: 'hockey/nhl',
-  baseball_mlb: 'baseball/mlb',
-  soccer_fifa_world_cup: 'soccer/fifa.world',
-  soccer_epl: 'soccer/eng.1',
-  soccer_spain_la_liga: 'soccer/esp.1',
-  soccer_italy_serie_a: 'soccer/ita.1',
-  soccer_germany_bundesliga: 'soccer/ger.1',
-  soccer_france_ligue_one: 'soccer/fra.1',
-  soccer_uefa_champs_league: 'soccer/uefa.champions',
-  soccer_usa_mls: 'soccer/usa.1',
-  soccer_mexico_ligamx: 'soccer/mex.1',
-  soccer_uefa_europa_league: 'soccer/uefa.europa',
-  soccer_uefa_europa_conference_league: 'soccer/uefa.europa.conf',
-  soccer_uefa_nations_league: 'soccer/uefa.nations',
-  soccer_conmebol_copa_libertadores: 'soccer/conmebol.libertadores',
-  soccer_conmebol_copa_america: 'soccer/conmebol.america',
-  soccer_fa_cup: 'soccer/eng.fa',
-  soccer_england_efl_cup: 'soccer/eng.league_cup',
-  soccer_efl_champ: 'soccer/eng.2',
-  soccer_england_league1: 'soccer/eng.3',
-  soccer_england_league2: 'soccer/eng.4',
-  soccer_netherlands_eredivisie: 'soccer/ned.1',
-  soccer_portugal_primeira_liga: 'soccer/por.1',
-  soccer_spl: 'soccer/sco.1',
-  soccer_turkey_super_league: 'soccer/tur.1',
-  soccer_belgium_first_div: 'soccer/bel.1',
-  soccer_austria_bundesliga: 'soccer/aut.1',
-  soccer_switzerland_superleague: 'soccer/sui.1',
-  soccer_greece_super_league: 'soccer/gre.1',
-  soccer_brazil_campeonato: 'soccer/bra.1',
-  soccer_argentina_primera_division: 'soccer/arg.1',
-  soccer_japan_j_league: 'soccer/jpn.1',
-  soccer_korea_kleague1: 'soccer/kor.1',
-  soccer_china_superleague: 'soccer/chn.1',
-  soccer_australia_aleague: 'soccer/aus.1',
-  soccer_sweden_allsvenskan: 'soccer/swe.1',
-  soccer_norway_eliteserien: 'soccer/nor.1',
-  soccer_denmark_superliga: 'soccer/den.1',
-  soccer_germany_bundesliga2: 'soccer/ger.2',
-  soccer_italy_serie_b: 'soccer/ita.2',
-  soccer_france_ligue_two: 'soccer/fra.2',
-  soccer_spain_segunda_division: 'soccer/esp.2',
-  americanfootball_cfl: 'football/cfl',
-};
+const TTL = 20 * 1000; // 20s — live status needs to stay fresh during games
+const ERROR_TTL = 5 * 60 * 1000; // 5min — don't re-hammer a path ESPN is rejecting
+const cache = new Map();
 
 // Marquee detection — ordered by importance, first match wins.
 const MARQUEE_RULES = [
@@ -195,7 +144,7 @@ export default async function handler(req, res) {
 
   const cacheKey = `live-${sport}`;
   const hit = cache.get(cacheKey);
-  if (hit && Date.now() - hit.ts < TTL) {
+  if (hit && Date.now() - hit.ts < (hit.ttl ?? TTL)) {
     res.setHeader('X-Cache', 'HIT');
     return res.status(200).json(hit.data);
   }
@@ -206,12 +155,22 @@ export default async function handler(req, res) {
       .map(ev => normalizeEvent(ev, sport, sportPath))
       .filter(Boolean);
     const payload = { sport, supported: true, generatedAt: new Date().toISOString(), events };
-    cache.set(cacheKey, { data: payload, ts: Date.now() });
+    cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: TTL });
     res.setHeader('X-Cache', 'MISS');
     return res.status(200).json(payload);
   } catch (err) {
-    console.error('live-status error:', err.message);
-    // Soft-fail: empty events keep the UI on its time-based fallback.
-    return res.status(200).json({ sport, supported: true, error: err.message, events: [] });
+    console.error(`live-status error: ${sport} (${sportPath}): ${err.message}`);
+    // Transient blip with a previous good payload: keep serving it briefly so
+    // live scores don't blank out mid-game.
+    if (hit?.data?.events?.length) {
+      cache.set(cacheKey, { data: hit.data, ts: Date.now(), ttl: 60 * 1000 });
+      res.setHeader('X-Cache', 'STALE');
+      return res.status(200).json(hit.data);
+    }
+    // No good data (e.g. ESPN rejects this path outright): soft-fail with empty
+    // events and cache the failure so the path isn't refetched every 20s.
+    const payload = { sport, supported: true, error: err.message, events: [] };
+    cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: ERROR_TTL });
+    return res.status(200).json(payload);
   }
 }

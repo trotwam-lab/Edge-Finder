@@ -1,0 +1,464 @@
+{
+  "sports": {
+    "mlb": {
+      "display_name": "MLB",
+      "cadence": "daily",
+      "timezone_anchor": "America/New_York",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "baseball_mlb"
+          },
+          "secondary": {
+            "source": "mlb_statsapi",
+            "endpoint": "/api/mlb-statsapi",
+            "note": "statsapi.mlb.com schedule — source of truth for probables"
+          }
+        },
+        "availability": {
+          "primitive": "confirmed_lineups",
+          "primary": {
+            "source": "mlb_statsapi",
+            "endpoint": "/api/mlb-statsapi",
+            "note": "official posted lineups + probable starters"
+          },
+          "secondary": {
+            "source": "rotowire",
+            "path": "/baseball/daily-lineups.php",
+            "note": "faster than StatsAPI on late scratches; already trusted by game-research-baseball"
+          },
+          "fields": ["confirmed", "probable_pitcher", "lineup", "thesis_anchor_scratched"],
+          "sport_specific": {
+            "probable_pitcher": "starter confirmation is the thesis anchor for most MLB edges",
+            "bullpen_usage": "flag if projected high-leverage arms threw 25+ pitches yesterday",
+            "weather": "wind/park check for totals edges only"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "fangraphs",
+            "metrics": ["wRC+", "xFIP", "SIERA", "K-BB%"]
+          },
+          "secondary": {
+            "source": "baseball_savant",
+            "metrics": ["xwOBA", "barrel_rate", "hard_hit_rate"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "cron_plus_gate",
+          "base_refresh": "0 10 * * *",
+          "publish_gate": "confirmed_lineups_posted",
+          "gate_notes": "Lineups typically post 2-4h before first pitch; starter edges stay PENDING until the card is up.",
+          "checkpoints": [
+            { "at": "T-60min", "action": "re-check lineup card for scratches and pitcher changes" }
+          ]
+        }
+      }
+    },
+
+    "kbo": {
+      "display_name": "KBO",
+      "cadence": "daily",
+      "timezone_anchor": "Asia/Seoul",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "baseball_kbo"
+          },
+          "secondary": {
+            "source": "mykbo",
+            "path": "/schedule",
+            "note": "English-language KBO schedule + probables"
+          }
+        },
+        "availability": {
+          "primitive": "confirmed_lineups",
+          "primary": {
+            "source": "mykbo",
+            "path": "/lineups",
+            "note": "probables + posted lineups; KST evening games = US morning gate"
+          },
+          "secondary": {
+            "source": "naver_sports",
+            "note": "Korean-language fallback when MyKBO lags"
+          },
+          "fields": ["confirmed", "probable_pitcher", "lineup", "thesis_anchor_scratched"],
+          "sport_specific": {
+            "probable_pitcher": "KBO rotations are stricter than MLB — probables rarely change day-of",
+            "foreign_pitcher_rule": "note when a team is on its foreign-arm turn; largest single form signal"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "statiz",
+            "metrics": ["wRC+", "FIP", "WAR"]
+          },
+          "secondary": {
+            "source": "mykbo",
+            "metrics": ["recent_starts", "season_line"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "cron_plus_gate",
+          "base_refresh": "0 22 * * *",
+          "publish_gate": "confirmed_lineups_posted",
+          "gate_notes": "Base refresh runs 22:00 ET = 11:00 KST, ~7h before typical 18:30 KST first pitch.",
+          "checkpoints": [
+            { "at": "T-90min", "action": "confirm posted lineup matches probables used in thesis" }
+          ]
+        }
+      }
+    },
+
+    "nba": {
+      "display_name": "NBA",
+      "cadence": "daily",
+      "timezone_anchor": "America/New_York",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "basketball_nba"
+          },
+          "secondary": {
+            "source": "espn",
+            "endpoint": "/api/scores",
+            "note": "scoreboard fallback + start-time verification"
+          }
+        },
+        "availability": {
+          "primitive": "injury_report",
+          "primary": {
+            "source": "nba_official",
+            "path": "/referee/injury-report",
+            "note": "league injury report, updated 5:30p ET and again 30min pre-tip"
+          },
+          "secondary": {
+            "source": "espn",
+            "endpoint": "/api/injuries",
+            "sport_key": "basketball/nba"
+          },
+          "fields": ["status", "questionable", "out", "thesis_anchor_scratched"],
+          "sport_specific": {
+            "back_to_back": "flag second night of a back-to-back — rest-day scratch risk for stars",
+            "questionable_resolution": "GTD tags usually resolve 30-90min before tip; hold stake until then"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "nba_stats",
+            "metrics": ["net_rating", "pace", "efg_pct", "last_10"]
+          },
+          "secondary": {
+            "source": "cleaning_the_glass",
+            "metrics": ["luck_adjusted_rating", "shot_profile"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "cron_plus_gate",
+          "base_refresh": "0 11 * * *",
+          "publish_gate": "final_injury_report_confirmed",
+          "gate_notes": "Edges built on a Questionable player stay PENDING until his status flips on the final report.",
+          "checkpoints": [
+            { "at": "0 17 * * *", "action": "ingest 5:30p ET league injury report" },
+            { "at": "T-45min", "action": "resolve remaining GTD tags before lock" }
+          ]
+        }
+      }
+    },
+
+    "nfl": {
+      "display_name": "NFL",
+      "cadence": "weekly",
+      "timezone_anchor": "America/New_York",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "americanfootball_nfl"
+          },
+          "secondary": {
+            "source": "espn",
+            "endpoint": "/api/scores",
+            "sport_key": "football/nfl"
+          }
+        },
+        "availability": {
+          "primitive": "injury_report",
+          "primary": {
+            "source": "nfl_official",
+            "path": "/injuries",
+            "note": "practice reports Wed-Fri, game statuses Fri, inactives T-90min"
+          },
+          "secondary": {
+            "source": "espn",
+            "endpoint": "/api/injuries",
+            "sport_key": "football/nfl"
+          },
+          "fields": ["status", "practice_participation", "inactive", "thesis_anchor_scratched"],
+          "sport_specific": {
+            "practice_ladder": "DNP -> LP -> FP trajectory across Wed-Fri beats the Friday tag itself",
+            "inactives": "hard truth arrives at T-90min; QB/OL inactives void spread edges"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "nflfastr",
+            "metrics": ["epa_per_play", "success_rate", "dvoa_proxy"]
+          },
+          "secondary": {
+            "source": "pff",
+            "metrics": ["ol_grade", "coverage_grade"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "relative_to_event",
+          "publish_gate": "inactives_posted",
+          "gate_notes": "Weekly adapter gates at T-75min; NFL inactives drop at T-90min so the gate check reads a posted list.",
+          "checkpoints": [
+            { "at": "0 18 * * 3", "action": "ingest Wednesday practice report" },
+            { "at": "0 18 * * 5", "action": "ingest Friday game statuses; downgrade edges on DNP trends" },
+            { "at": "T-90min", "action": "read inactives list; void edges on thesis-anchor inactives" }
+          ]
+        }
+      }
+    },
+
+    "soccer_epl": {
+      "display_name": "Soccer (EPL)",
+      "cadence": "weekly",
+      "timezone_anchor": "Europe/London",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "soccer_epl",
+            "note": "template entry — other leagues reuse this shape with their own sport_key from src/constants.js"
+          },
+          "secondary": {
+            "source": "espn",
+            "endpoint": "/api/scores",
+            "sport_key": "soccer/eng.1"
+          }
+        },
+        "availability": {
+          "primitive": "confirmed_xi",
+          "primary": {
+            "source": "club_official",
+            "note": "confirmed XIs drop T-60min; aggregated via flashscore/sofascore lineup feeds"
+          },
+          "secondary": {
+            "source": "sofascore",
+            "path": "/lineups",
+            "note": "fast XI aggregation + formation detection"
+          },
+          "fields": ["confirmed", "starting_xi", "thesis_anchor_benched", "unexpected_rotation", "source_down"],
+          "sport_specific": {
+            "rotation_risk": "flag league matches sandwiched by UCL/UEL fixtures — heavy rotation windows",
+            "presser_watch": "manager press conference T-2d often telegraphs rest decisions"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "understat",
+            "metrics": ["xG", "xGA", "xPTS", "last_6"]
+          },
+          "secondary": {
+            "source": "fbref",
+            "metrics": ["npxg_per90", "field_tilt", "ppda"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "relative_to_event",
+          "publish_gate": "confirmed_xi_at_T-75",
+          "gate_notes": "Official XIs land ~T-60; the T-75 gate means edges publish as leans until the XI is actually out.",
+          "checkpoints": [
+            { "at": "T-2d", "action": "press conference scan — injuries, rotation hints" },
+            { "at": "T-75min", "action": "confirmed XI check against thesis anchors" }
+          ]
+        }
+      }
+    },
+
+    "mma": {
+      "display_name": "MMA (UFC)",
+      "cadence": "event",
+      "timezone_anchor": "America/New_York",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "mma_mixed_martial_arts"
+          },
+          "secondary": {
+            "source": "ufc_official",
+            "path": "/events",
+            "note": "bout order + card changes"
+          }
+        },
+        "availability": {
+          "primitive": "weigh_in_watch",
+          "primary": {
+            "source": "ufc_official",
+            "path": "/weigh-in-results",
+            "note": "official Friday-morning weigh-in results"
+          },
+          "secondary": {
+            "source": "mma_junkie",
+            "note": "fastest reporting on misses, late replacements, and pulled bouts"
+          },
+          "fields": ["weigh_in_complete", "weight_miss_severity", "late_replacement"],
+          "sport_specific": {
+            "weight_miss_severity": "0 = made weight, 1 = minor miss (<=1lb), 2 = major miss or bad cut visuals — 2+ flags the edge",
+            "late_replacement": "opponent change inside 14 days voids any style-matchup thesis",
+            "card_shuffle": "bout-order changes affect prelim/main-card prop markets only"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "ufc_stats",
+            "metrics": ["sig_strikes_per_min", "takedown_accuracy", "control_time"]
+          },
+          "secondary": {
+            "source": "tapology",
+            "metrics": ["recent_results", "layoff_days", "camp_changes"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "event_lifecycle",
+          "publish_gate": "weigh_ins_complete",
+          "gate_notes": "Nothing publishes as final before Friday weigh-ins; misses and cut visuals move lines hard.",
+          "checkpoints": [
+            { "at": "fight_week_open", "action": "baseline card scan — replacements, injury rumors" },
+            { "at": "weigh_ins", "action": "record misses + severity; flag affected edges" },
+            { "at": "T-2h", "action": "final news scan for day-of pullouts" }
+          ]
+        }
+      }
+    },
+
+    "tennis": {
+      "display_name": "Tennis",
+      "cadence": "event",
+      "timezone_anchor": "tournament_local",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "tennis_atp_wimbledon",
+            "note": "sport_key is per-tournament — resolve the active slam/masters key from src/constants.js at fetch time"
+          },
+          "secondary": {
+            "source": "atp_wta_official",
+            "path": "/draws",
+            "note": "draw + order of play"
+          }
+        },
+        "availability": {
+          "primitive": "withdrawal_watch",
+          "primary": {
+            "source": "atp_wta_official",
+            "path": "/entry-lists",
+            "note": "official withdrawals + walkovers"
+          },
+          "secondary": {
+            "source": "news_scan",
+            "note": "beat-reporter scan for retirement risk, injury timeouts in prior rounds"
+          },
+          "fields": ["withdrawal", "retirement_flag", "news_scan_failed"],
+          "sport_specific": {
+            "prior_round_mto": "medical timeout or visible injury in previous match is the top retirement predictor",
+            "walkover_handling": "walkovers void the edge, not flag it — no bet settles"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "tennis_abstract",
+            "metrics": ["elo", "surface_elo", "return_points_won"]
+          },
+          "secondary": {
+            "source": "atp_wta_official",
+            "metrics": ["recent_results", "h2h"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "event_lifecycle",
+          "publish_gate": "no_withdrawal_at_T-2h",
+          "gate_notes": "DEGRADED (half stake) when the news scan can't run — silence is not confirmation of fitness.",
+          "checkpoints": [
+            { "at": "draw_release", "action": "map thesis players to draw paths" },
+            { "at": "order_of_play", "action": "confirm match scheduled; check court/session" },
+            { "at": "T-2h", "action": "withdrawal + retirement-risk news scan" }
+          ]
+        }
+      }
+    },
+
+    "golf": {
+      "display_name": "Golf (PGA)",
+      "cadence": "event",
+      "timezone_anchor": "America/New_York",
+      "slots": {
+        "schedule": {
+          "primary": {
+            "source": "odds_api",
+            "endpoint": "/api/odds",
+            "sport_key": "golf_masters_tournament_winner",
+            "note": "outright-winner keys are per-tournament — resolve the live key from src/constants.js"
+          },
+          "secondary": {
+            "source": "pga_tour",
+            "path": "/tee-times",
+            "note": "field list + tee times"
+          }
+        },
+        "availability": {
+          "primitive": "withdrawal_watch",
+          "primary": {
+            "source": "pga_tour",
+            "path": "/field",
+            "note": "official field + WD list"
+          },
+          "secondary": {
+            "source": "news_scan",
+            "note": "injury/illness reports between commitment deadline and first tee"
+          },
+          "fields": ["withdrawal", "news_scan_failed"],
+          "sport_specific": {
+            "wd_timing": "pre-tournament WD voids outrights at most books — flag, don't just downgrade",
+            "weather_waves": "AM/PM wave draw can be a bigger edge than form at links venues"
+          }
+        },
+        "form": {
+          "primary": {
+            "source": "datagolf",
+            "metrics": ["true_sg_total", "sg_approach", "course_fit"]
+          },
+          "secondary": {
+            "source": "pga_tour",
+            "metrics": ["sg_putting", "recent_finishes"]
+          }
+        },
+        "freshness": {
+          "trigger_type": "event_lifecycle",
+          "publish_gate": "field_finalized_no_wd",
+          "gate_notes": "Outright edges stay PENDING until the commitment deadline passes and the player is in the final field.",
+          "checkpoints": [
+            { "at": "commitment_deadline", "action": "confirm thesis players committed (Friday prior)" },
+            { "at": "tee_times_posted", "action": "check wave draw vs weather forecast" },
+            { "at": "T-morning", "action": "day-of WD scan before first tee" }
+          ]
+        }
+      }
+    }
+  }
+}
