@@ -32,12 +32,75 @@ function degradedResearch(homeTeam, awayTeam, sport, gameDate, note) {
   };
 }
 
+// Leagues ESPN doesn't carry (KBO, NPB, cricket, ...) still have recent
+// results in the Odds API scores feed we already pay for — daysFrom=3 covers
+// ~3 games per team in a daily league. Cached 5 minutes per sport.
+const _scoresCache = new Map();
+const SCORES_TTL = 5 * 60 * 1000;
+
+async function getOddsApiRecentForm(homeTeam, awayTeam, sport, gameDate) {
+  const apiKey = process.env.ODDS_API_KEY;
+  if (!apiKey) return null;
+  try {
+    let games;
+    const hit = _scoresCache.get(sport);
+    if (hit && Date.now() - hit.ts < SCORES_TTL) {
+      games = hit.games;
+    } else {
+      const res = await fetch(
+        `https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) return null;
+      games = await res.json();
+      _scoresCache.set(sport, { games, ts: Date.now() });
+    }
+
+    const recentFor = (teamName) => (games || [])
+      .filter((g) => g.completed && (g.home_team === teamName || g.away_team === teamName))
+      .sort((a, b) => new Date(b.commence_time) - new Date(a.commence_time))
+      .map((g) => {
+        const opponent = g.home_team === teamName ? g.away_team : g.home_team;
+        const self = Number(g.scores?.find((s) => s.name === teamName)?.score);
+        const opp = Number(g.scores?.find((s) => s.name === opponent)?.score);
+        if (!Number.isFinite(self) || !Number.isFinite(opp)) return null;
+        return {
+          date: (g.commence_time || '').split('T')[0],
+          opponent,
+          result: self > opp ? 'W' : self < opp ? 'L' : 'T',
+          score: String(self),
+          opponentScore: String(opp),
+        };
+      })
+      .filter(Boolean);
+
+    const home = recentFor(homeTeam);
+    const away = recentFor(awayTeam);
+    if (home.length === 0 && away.length === 0) return null;
+
+    return {
+      sport,
+      gameDate,
+      supported: true,
+      dataSource: 'Recent results (last 3 days)',
+      home: { name: homeTeam, id: null, last10: home },
+      away: { name: awayTeam, id: null, last10: away },
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    console.warn(`[generic] odds-scores fallback failed for ${sport}:`, err.message);
+    return null;
+  }
+}
+
 async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
   // Sport keys are Odds API keys ("soccer_epl") — ESPN needs its own path
-  // ("soccer/eng.1"). An unmapped key means ESPN has no coverage: degrade
-  // instead of requesting a URL that can only 404.
+  // ("soccer/eng.1"). An unmapped key means ESPN has no coverage: fall back
+  // to the Odds API's own scores feed before degrading.
   const espnPath = SPORT_PATHS[sport] || (String(sport).includes('/') ? sport : null);
   if (!espnPath) {
+    const oddsForm = await getOddsApiRecentForm(homeTeam, awayTeam, sport, gameDate);
+    if (oddsForm) return oddsForm;
     return degradedResearch(
       homeTeam, awayTeam, sport, gameDate,
       'Recent-form data is not available for this league.'
@@ -109,6 +172,8 @@ async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
   ]);
 
   if (!homeId || !awayId) {
+    const oddsForm = await getOddsApiRecentForm(homeTeam, awayTeam, sport, gameDate);
+    if (oddsForm) return oddsForm;
     return degradedResearch(
       homeTeam, awayTeam, sport, gameDate,
       'Could not match these teams to a recent-form source.'
@@ -148,8 +213,8 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
     return getBaseballResearch(homeTeam, awayTeam, gameDate);
   }
 
-  if (key === 'basketball_nba') {
-    return getBasketballGameResearch(homeTeam, awayTeam, gameDate);
+  if (key === 'basketball_nba' || key === 'basketball_wnba') {
+    return getBasketballGameResearch(homeTeam, awayTeam, gameDate, key);
   }
 
   if (key === 'icehockey_nhl') {

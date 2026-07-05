@@ -44,7 +44,7 @@ function normalizeTeamData(data, side) {
     };
   }
 
-  if (data.sport === 'basketball_nba') {
+  if (data.sport === 'basketball_nba' || data.sport === 'basketball_wnba') {
     const src = data[side];
     const games = src?.form?.lastGames || [];
     return {
