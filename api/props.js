@@ -4,7 +4,10 @@
 import { getRequestTier, isProTier } from './_auth.js';
 
 const cache = {};
-const TTL = 60 * 1000; // 1 minute
+const TTL = 60 * 1000;             // 1 minute for live prop boards
+const EMPTY_TTL = 10 * 60 * 1000;  // 10 minutes when a sport has no events (off-season)
+const BACKOFF_MS = 5 * 60 * 1000;  // pause upstream calls after a 429 (quota exhausted)
+let quotaBackoffUntil = 0;
 const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
 const FREE_PLAYER_LIMIT = 3;
 const ODDS_REGIONS = 'us,us2';
@@ -62,10 +65,29 @@ export default async function handler(req, res) {
   if (!API_KEY) return res.status(500).json({ error: 'API key not configured' });
 
   const cacheKey = `props-${sport}`;
-  if (cache[cacheKey] && Date.now() - cache[cacheKey].ts < TTL) {
+  const cached = cache[cacheKey];
+  if (cached && Date.now() - cached.ts < (cached.ttl ?? TTL)) {
     res.setHeader('X-Cache', 'HIT');
     setTierHeaders(res, tierInfo);
-    return res.json(isPro ? cache[cacheKey].data : buildFreePropsPreview(cache[cacheKey].data));
+    return res.json(isPro ? cached.data : buildFreePropsPreview(cached.data));
+  }
+
+  // Serve the last good board instead of an error when the upstream is
+  // unavailable — slightly old props beat an empty tab.
+  const serveDegraded = (reason) => {
+    setTierHeaders(res, tierInfo);
+    res.setHeader('X-EdgeFinder-Degraded', reason);
+    if (cached) {
+      res.setHeader('X-Cache', 'STALE');
+      return res.json(isPro ? cached.data : buildFreePropsPreview(cached.data));
+    }
+    return res.json([]);
+  };
+
+  // The Odds API quota is shared across every route; once it 429s, more calls
+  // only burn the budget further. Sit out the backoff window on cache/stale.
+  if (Date.now() < quotaBackoffUntil) {
+    return serveDegraded('quota-backoff');
   }
 
   try {
@@ -76,14 +98,21 @@ export default async function handler(req, res) {
       `https://api.the-odds-api.com/v4/sports/${sport}/events?apiKey=${API_KEY}`,
       { signal: AbortSignal.timeout(10000) }
     );
-    if (!eventsRes.ok) throw new Error(`Events fetch failed: ${eventsRes.status}`);
+    if (!eventsRes.ok) {
+      if (eventsRes.status === 429) quotaBackoffUntil = Date.now() + BACKOFF_MS;
+      console.error(`Props events fetch failed for ${sport}: ${eventsRes.status}`);
+      return serveDegraded(`upstream-${eventsRes.status}`);
+    }
     const events = await eventsRes.json();
     if (!events || events.length === 0) {
+      // Off-season/idle sports get a long TTL so they stop draining quota.
+      cache[cacheKey] = { data: [], ts: Date.now(), ttl: EMPTY_TTL };
       setTierHeaders(res, tierInfo);
       return res.json([]);
     }
 
     const allProps = [];
+    let quotaHit = false;
 
     // Step 2: Fetch props for up to 8 upcoming events
     for (const event of events.slice(0, 8)) {
@@ -92,7 +121,16 @@ export default async function handler(req, res) {
           `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=${ODDS_REGIONS}&markets=${markets.join(',')}&oddsFormat=american`,
           { signal: AbortSignal.timeout(10000) }
         );
-        if (!oddsRes.ok) { console.warn(`Props failed for ${event.id}: ${oddsRes.status}`); continue; }
+        if (!oddsRes.ok) {
+          console.warn(`Props failed for ${event.id}: ${oddsRes.status}`);
+          if (oddsRes.status === 429) {
+            // Quota is gone — every remaining event would 429 too.
+            quotaBackoffUntil = Date.now() + BACKOFF_MS;
+            quotaHit = true;
+            break;
+          }
+          continue;
+        }
         const oddsData = await oddsRes.json();
         if (!oddsData.bookmakers?.length) continue;
 
@@ -125,12 +163,19 @@ export default async function handler(req, res) {
       }
     }
 
-    cache[cacheKey] = { data: allProps, ts: Date.now() };
+    // Quota died before any props landed: keep the previous board alive
+    // rather than caching an empty one over it.
+    if (quotaHit && allProps.length === 0) {
+      return serveDegraded('quota-backoff');
+    }
+
+    cache[cacheKey] = { data: allProps, ts: Date.now(), ttl: TTL };
     res.setHeader('X-Cache', 'MISS');
     setTierHeaders(res, tierInfo);
     return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
   } catch (err) {
+    // Network failure/timeout — same degraded path as an upstream error code.
     console.error('Props API error:', err);
-    return res.status(500).json({ error: 'Failed to fetch props', details: err.message });
+    return serveDegraded('upstream-unreachable');
   }
 }

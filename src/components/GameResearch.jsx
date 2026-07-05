@@ -90,6 +90,26 @@ function normalizeTeamData(data, side) {
     };
   }
 
+  // Generic research: { home: { name, last10: [...] }, away: {...} }
+  const generic = data[side];
+  if (Array.isArray(generic?.last10)) {
+    if (generic.last10.length === 0) return null;
+    const games = generic.last10;
+    return {
+      wins: games.filter((g) => g.result === 'W').length,
+      losses: games.filter((g) => g.result === 'L').length,
+      streak: null,
+      badges: [],
+      recentGames: games.map((g) => ({
+        won: g.result === 'W',
+        isHome: null,
+        opponentAbbr: g.opponent,
+        teamScore: g.score,
+        opponentScore: g.opponentScore,
+      })),
+    };
+  }
+
   return data.teams?.[side] || null;
 }
 
