@@ -90,16 +90,34 @@ function normalizeTeamData(data, side) {
     };
   }
 
-  // Generic research: { home: { name, last10: [...] }, away: {...} }
+  // MMA tale of the tape: { home: { name, record, wins, losses, weightClass } }
+  if (data.sport === 'mma_mixed_martial_arts') {
+    const src = data[side];
+    if (!src) return null;
+    return {
+      wins: src.wins ?? 0,
+      losses: src.losses ?? 0,
+      streak: null,
+      badges: [
+        src.record ? `Record ${src.record}` : null,
+        data.weightClass || null,
+        data.card?.name || null,
+      ].filter(Boolean),
+      recentGames: [],
+    };
+  }
+
+  // Generic research: { home: { name, last10: [...], probablePitcher? }, away: {...} }
   const generic = data[side];
   if (Array.isArray(generic?.last10)) {
-    if (generic.last10.length === 0) return null;
     const games = generic.last10;
+    const badges = generic.probablePitcher ? [`SP ${generic.probablePitcher}`] : [];
+    if (games.length === 0 && badges.length === 0) return null;
     return {
       wins: games.filter((g) => g.result === 'W').length,
       losses: games.filter((g) => g.result === 'L').length,
       streak: null,
-      badges: [],
+      badges,
       recentGames: games.map((g) => ({
         won: g.result === 'W',
         isHome: null,
