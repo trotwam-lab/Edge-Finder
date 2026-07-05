@@ -96,6 +96,10 @@ async function scoreboardFor(league, yyyymmdd) {
  */
 async function recentMatchesFor(league, playerName, fromDate, days = 7) {
   const out = [];
+  // ESPN's tennis boards return the whole tournament event for every dates=
+  // query, so the same match shows up on each scanned day — dedup by
+  // competition id (or opponent+score when ids are missing).
+  const seen = new Set();
   for (let i = 1; i <= days; i++) {
     const d = new Date(fromDate.getTime() - i * 24 * 60 * 60 * 1000);
     const board = await scoreboardFor(league, dateStamp(d));
@@ -105,11 +109,15 @@ async function recentMatchesFor(league, playerName, fromDate, days = 7) {
       const self = competitorFor(comp, playerName);
       if (!self) continue;
       const opp = (comp.competitors || []).find((c) => c !== self);
+      const score = setsLine(comp, self, opp);
+      const key = comp.id || `${opp?.athlete?.displayName}|${score}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       out.push({
-        date: d.toISOString().slice(0, 10),
+        date: (comp.date || comp.startDate || d.toISOString()).slice(0, 10),
         opponent: opp?.athlete?.displayName || 'Unknown',
         result: self.winner === true ? 'W' : self.winner === false ? 'L' : 'T',
-        score: setsLine(comp, self, opp),
+        score,
         opponentScore: null,
         retired: flags.retired,
         walkover: flags.walkover,
@@ -117,7 +125,7 @@ async function recentMatchesFor(league, playerName, fromDate, days = 7) {
       });
     }
   }
-  return out;
+  return out.sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
 function playerCard(competitor, name, matches) {
@@ -125,7 +133,7 @@ function playerCard(competitor, name, matches) {
     name: competitor?.athlete?.displayName || name,
     rank: competitor?.curatedRank?.current ?? competitor?.athlete?.rank ?? null,
     seed: competitor?.seed ?? null,
-    last10: matches.map((m) => ({
+    last10: matches.slice(0, 10).map((m) => ({
       date: m.date, opponent: m.opponent, result: m.result,
       score: m.score, opponentScore: m.opponentScore,
     })),
