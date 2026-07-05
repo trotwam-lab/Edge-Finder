@@ -13,6 +13,7 @@ import { getBaseballResearch } from './game-research-baseball.js';
 import { getBasketballGameResearch } from './game-research-basketball.js';
 import { getHockeyGameResearch } from './game-research-hockey.js';
 import { getMmaGameResearch } from './game-research-mma.js';
+import { getTennisGameResearch } from './game-research-tennis.js';
 import { getKboProbables, getKboRecentForm } from './game-research-kbo.js';
 import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
 
@@ -221,6 +222,16 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
 
   if (key === 'icehockey_nhl') {
     return getHockeyGameResearch(homeTeam, awayTeam, gameDate);
+  }
+
+  if (key.startsWith('tennis_')) {
+    try {
+      const research = await getTennisGameResearch(homeTeam, awayTeam, key, gameDate);
+      if (research) return research;
+    } catch (err) {
+      console.warn('[Tennis Research] failed, falling back:', err.message);
+    }
+    // Player not on ESPN boards — fall through to the generic fallback chain.
   }
 
   if (key === 'mma_mixed_martial_arts') {

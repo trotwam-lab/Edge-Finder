@@ -52,6 +52,8 @@ function normalizeTeamData(data, side) {
       losses: src?.form?.record?.losses || 0,
       streak: src?.form?.streak,
       badges: [
+        src?.lineup?.status === 'confirmed' ? 'Lineup confirmed'
+          : src?.lineup?.status === 'expected' ? 'Lineup expected' : null,
         src?.rest?.note,
         src?.injuries?.note && src.injuries.note !== 'No injury data source configured' ? src.injuries.note : null,
         src?.ats?.note && src.ats.note !== 'No historical odds data source configured' ? src.ats.note : null,
@@ -107,11 +109,17 @@ function normalizeTeamData(data, side) {
     };
   }
 
-  // Generic research: { home: { name, last10: [...], probablePitcher? }, away: {...} }
+  // Generic research (also tennis player cards):
+  // { home: { name, last10: [...], probablePitcher?, rank?, seed?, retirementFlag? } }
   const generic = data[side];
   if (Array.isArray(generic?.last10)) {
     const games = generic.last10;
-    const badges = generic.probablePitcher ? [`SP ${generic.probablePitcher}`] : [];
+    const badges = [
+      generic.probablePitcher ? `SP ${generic.probablePitcher}` : null,
+      generic.rank != null ? `Rank #${generic.rank}` : null,
+      generic.seed != null ? `Seed ${generic.seed}` : null,
+      generic.retirementFlag ? 'Retirement risk' : null,
+    ].filter(Boolean);
     if (games.length === 0 && badges.length === 0) return null;
     return {
       wins: games.filter((g) => g.result === 'W').length,
