@@ -25,6 +25,7 @@ const FRIEND_EMAILS = [
     'domrici57@gmail.com',
     'ferencgary@yahoo.com',
     'dutchboyfresh702@gmail.com',
+    'ocean.jackson@gmail.com',
 ];
 
 async function getTierFromFirestore(uid) {
