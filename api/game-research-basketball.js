@@ -406,7 +406,7 @@ function anyTeamMatch(candidates, oddsName) {
 }
 
 function parseLineupSide(block, side) {
-  const m = block.match(new RegExp(`<ul class="lineup__list is-${side}[^"]*">([\\s\\S]*?)(?=<ul class="lineup__list|$)`));
+  const m = block.match(new RegExp(`<ul class="lineup__list is-${side}[^"]*"[^>]*>([\\s\\S]*?)(?=<ul class="lineup__list|$)`));
   const html = m?.[1] || '';
   const statusMatch = html.match(/lineup__status[^"]*\bis-(confirmed|expected)\b/);
   const players = [];
@@ -450,7 +450,7 @@ async function fetchRotoLineups(sportKey) {
       // MLB pages use lineup__mteam with full names; basketball pages use
       // lineup__team with abbreviations (plus alt/title attributes).
       const teams = {};
-      for (const tm of block.matchAll(/<div class="lineup__m?team is-(visit|home)[^"]*">([\s\S]*?)<\/div>/g)) {
+      for (const tm of block.matchAll(/<div class="lineup__m?team is-(visit|home)[^"]*"[^>]*>([\s\S]*?)<\/div>/g)) {
         if (!teams[tm[1]]) teams[tm[1]] = extractTeamCandidates(tm[2]);
       }
       if (!teams.visit?.length || !teams.home?.length) continue;
@@ -466,7 +466,10 @@ async function fetchRotoLineups(sportKey) {
       return games;
     }
     const classes = [...new Set([...page.matchAll(/class="(lineup[^"]*)"/g)].map((m) => m[1]))].slice(0, 10);
-    console.warn(`[Basketball Research] RotoWire page had no parseable lineup blocks: ${url} (lineup classes: ${classes.join(' | ') || 'none'})`);
+    const teamSnippet = (page.match(/<div class="lineup__m?team is-visit[\s\S]{0,220}/) || [''])[0]
+      .replace(/\s+/g, ' ');
+    console.warn(`[Basketball Research] RotoWire: ${blocks.length} blocks, 0 games parsed: ${url} ` +
+      `(classes: ${classes.join(' | ') || 'none'}) (team snippet: ${teamSnippet || 'none'})`);
   }
   return [];
 }
