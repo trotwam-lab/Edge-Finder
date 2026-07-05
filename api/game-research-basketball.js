@@ -433,7 +433,8 @@ async function fetchRotoLineups(sportKey) {
       _lineupCache.set(sportKey, { ts: Date.now(), games });
       return games;
     }
-    console.warn(`[Basketball Research] RotoWire page had no parseable lineup blocks: ${url}`);
+    const classes = [...new Set([...page.matchAll(/class="(lineup[^"]*)"/g)].map((m) => m[1]))].slice(0, 10);
+    console.warn(`[Basketball Research] RotoWire page had no parseable lineup blocks: ${url} (lineup classes: ${classes.join(' | ') || 'none'})`);
   }
   return [];
 }
