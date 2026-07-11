@@ -2,6 +2,12 @@
 // Markets are sport-aware — basketball markets for NBA, football for NFL, etc.
 
 import { getRequestTier, isProTier } from './_auth.js';
+import {
+  fetchSportsGameOddsEvents,
+  isSportsGameOddsEnabled,
+  leagueIdForOddsSport,
+  transformSgoEventToProps,
+} from './_sportsgameodds.js';
 
 const cache = {};
 const TTL = 60 * 1000;             // 1 minute for live prop boards
@@ -61,10 +67,11 @@ export default async function handler(req, res) {
   const tierInfo = await getRequestTier(req);
   const isPro = isProTier(tierInfo);
   const API_KEY = process.env.ODDS_API_KEY;
+  const useSportsGameOdds = isSportsGameOddsEnabled() && leagueIdForOddsSport(sport);
 
-  if (!API_KEY) return res.status(500).json({ error: 'API key not configured' });
+  if (!API_KEY && !useSportsGameOdds) return res.status(500).json({ error: 'API key not configured' });
 
-  const cacheKey = `props-${sport}`;
+  const cacheKey = `props-${useSportsGameOdds ? 'sgo' : 'oddsapi'}-${sport}`;
   const cached = cache[cacheKey];
   if (cached && Date.now() - cached.ts < (cached.ttl ?? TTL)) {
     res.setHeader('X-Cache', 'HIT');
@@ -91,6 +98,26 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (useSportsGameOdds) {
+      const result = await fetchSportsGameOddsEvents({
+        leagueID: leagueIdForOddsSport(sport),
+        includeAltLines: true,
+        limit: Number(req.query.limit || 100),
+      });
+      if (!result.ok) {
+        console.warn(`SportsGameOdds props fetch failed for ${sport}: ${result.status}`);
+        return serveDegraded(`sportsgameodds-${result.status}`);
+      }
+
+      const allProps = result.data.flatMap(transformSgoEventToProps);
+      const ttl = allProps.length === 0 ? EMPTY_TTL : TTL;
+      cache[cacheKey] = { data: allProps, ts: Date.now(), ttl };
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('X-EdgeFinder-Upstream', 'sportsgameodds');
+      setTierHeaders(res, tierInfo);
+      return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
+    }
+
     const markets = getMarkets(sport);
 
     // Step 1: Get upcoming events for this sport

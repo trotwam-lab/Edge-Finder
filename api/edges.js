@@ -6,6 +6,12 @@
 import { getRequestTier, isProTier } from './_auth.js';
 import { getAdminDb } from './_firebaseAdmin.js';
 import { probIndexKey, updateReceiptsSnapshot } from './_receipts.js';
+import {
+  fetchSportsGameOddsEvents,
+  isSportsGameOddsEnabled,
+  sgoScannableSports,
+  transformSgoEventToOddsApiGame,
+} from './_sportsgameodds.js';
 
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
@@ -300,12 +306,38 @@ export default async function handler(req, res) {
   }
 
   const apiKey = process.env.ODDS_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'ODDS_API_KEY not configured' });
+  const useSportsGameOdds = isSportsGameOddsEnabled();
+    if (!apiKey && !useSportsGameOdds) return res.status(500).json({ error: 'ODDS_API_KEY not configured' });
 
   try {
         const allEdges = [];
         const probIndex = new Map();
 
+      if (useSportsGameOdds) {
+        for (const sport of sgoScannableSports()) {
+          try {
+            const result = await fetchSportsGameOddsEvents({
+              leagueID: sport.title,
+              includeAltLines: true,
+              limit: 100,
+            });
+            if (!result.ok) {
+              console.warn(`SportsGameOdds edge scan failed for ${sport.title}: ${result.status}`);
+              continue;
+            }
+
+            for (const event of result.data) {
+              const game = transformSgoEventToOddsApiGame(event);
+              const start = Date.parse(game.commence_time);
+              if (!Number.isFinite(start) || start <= Date.now()) continue;
+              const edges = findEdges(game, sport, probIndex);
+              allEdges.push(...edges);
+            }
+          } catch (e) {
+            console.warn(`SportsGameOdds edge scan failed for ${sport.title}:`, e.message);
+          }
+        }
+      } else {
       // Scan every in-season game-market sport; fall back to the static
       // list only if the catalog call fails.
       const sportsToScan = (await getScannableSports(apiKey))
@@ -334,6 +366,7 @@ export default async function handler(req, res) {
               } catch (e) {
                         console.warn(`Edge scan failed for ${sport.key}:`, e.message);
               }
+      }
       }
 
       // Sort all edges by EV descending

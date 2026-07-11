@@ -1,5 +1,11 @@
 import { getRequestTier, isProTier } from './_auth.js';
 import { coalescedJson, burstBackoffActive } from './_upstream.js';
+import {
+  fetchSportsGameOddsEvents,
+  isSportsGameOddsEnabled,
+  leagueIdForOddsSport,
+  transformSgoEventToOddsApiGame,
+} from './_sportsgameodds.js';
 
 const cache = {};
 const TTL = 30 * 1000; // 30 seconds - fresher lines for live betting
@@ -23,7 +29,8 @@ export default async function handler(req, res) {
   const { sport = 'basketball_nba', markets = 'h2h,spreads,totals' } = req.query;
   const tierInfo = await getRequestTier(req);
   const isPro = isProTier(tierInfo);
-  const cacheKey = `odds-${sport}-${markets}-${ODDS_REGIONS}`;
+  const useSportsGameOdds = isSportsGameOddsEnabled() && leagueIdForOddsSport(sport);
+  const cacheKey = `odds-${useSportsGameOdds ? 'sgo' : 'oddsapi'}-${sport}-${markets}-${ODDS_REGIONS}`;
   const cached = cache[cacheKey];
 
   if (cached && Date.now() - cached.ts < (cached.ttl ?? TTL)) {
@@ -33,7 +40,7 @@ export default async function handler(req, res) {
   }
 
   const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
+  if (!apiKey && !useSportsGameOdds) return res.status(500).json({ error: 'API key not configured' });
 
   // Stale lines beat an error page; the client keeps polling and heals itself.
   const serveDegraded = (reason) => {
@@ -51,6 +58,28 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (useSportsGameOdds) {
+      const result = await fetchSportsGameOddsEvents({
+        leagueID: leagueIdForOddsSport(sport),
+        includeAltLines: markets.includes('alternate') || req.query.includeAltLines === 'true',
+        limit: Number(req.query.limit || 100),
+      });
+      if (!result.ok) {
+        console.warn(`sportsgameodds upstream ${result.status} for ${sport}: ${result.error || 'unknown error'}`);
+        return serveDegraded(`sportsgameodds-${result.status}`);
+      }
+
+      const data = result.data
+        .map(transformSgoEventToOddsApiGame)
+        .filter(game => game.bookmakers?.length);
+      const ttl = data.length === 0 ? EMPTY_TTL : TTL;
+      cache[cacheKey] = { data, ts: Date.now(), ttl };
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('X-EdgeFinder-Upstream', 'sportsgameodds');
+      setTierHeaders(res, tierInfo);
+      return res.status(200).json(isPro ? data : buildFreeOddsPreview(data));
+    }
+
     const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds?apiKey=${apiKey}&regions=${ODDS_REGIONS}&markets=${markets}&oddsFormat=american`;
     const result = await coalescedJson(url);
     if (!result.ok) {
