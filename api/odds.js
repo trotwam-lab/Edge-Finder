@@ -12,6 +12,8 @@ const TTL = 30 * 1000; // 30 seconds - fresher lines for live betting
 const EMPTY_TTL = 10 * 60 * 1000; // off-season sports: stop re-asking every 30s
 const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
 const ODDS_REGIONS = 'us,us2';
+const SGO_DEFAULT_EVENT_LIMIT = 30;
+const SGO_MAX_EVENT_LIMIT = 80;
 
 function buildFreeOddsPreview(data = []) {
   return data.map(game => ({
@@ -25,12 +27,21 @@ function setTierHeaders(res, tierInfo) {
   res.setHeader('X-EdgeFinder-Tier-Source', tierInfo?.source || 'unknown');
 }
 
+function clampInt(value, fallback, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.floor(parsed), max);
+}
+
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', markets = 'h2h,spreads,totals' } = req.query;
   const tierInfo = await getRequestTier(req);
   const isPro = isProTier(tierInfo);
   const useSportsGameOdds = isSportsGameOddsEnabled() && leagueIdForOddsSport(sport);
-  const cacheKey = `odds-${useSportsGameOdds ? 'sgo' : 'oddsapi'}-${sport}-${markets}-${ODDS_REGIONS}`;
+  const eventLimit = useSportsGameOdds
+    ? clampInt(req.query.limit, SGO_DEFAULT_EVENT_LIMIT, SGO_MAX_EVENT_LIMIT)
+    : null;
+  const cacheKey = `odds-${useSportsGameOdds ? `sgo-${eventLimit}` : 'oddsapi'}-${sport}-${markets}-${ODDS_REGIONS}`;
   const cached = cache[cacheKey];
 
   if (cached && Date.now() - cached.ts < (cached.ttl ?? TTL)) {
@@ -62,7 +73,7 @@ export default async function handler(req, res) {
       const result = await fetchSportsGameOddsEvents({
         leagueID: leagueIdForOddsSport(sport),
         includeAltLines: markets.includes('alternate') || req.query.includeAltLines === 'true',
-        limit: Number(req.query.limit || 100),
+        limit: eventLimit,
       });
       if (!result.ok) {
         console.warn(`sportsgameodds upstream ${result.status} for ${sport}: ${result.error || 'unknown error'}`);

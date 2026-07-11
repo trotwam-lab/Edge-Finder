@@ -122,6 +122,8 @@ const MAX_EV_THRESHOLD = 15.0;
 // Minimum books required to calculate consensus (2 is enough for spreads/totals)
 const MIN_BOOKS = 2;
 const FREE_EDGE_PREVIEW_LIMIT = 3;
+const SGO_EDGE_EVENT_LIMIT = 20;
+const EDGE_LOOKAHEAD_DAYS = Number(process.env.EDGE_LOOKAHEAD_DAYS || 14);
 
 function buildFreeEdgesPreview(edges = []) {
   return edges.slice(0, FREE_EDGE_PREVIEW_LIMIT).map(edge => ({
@@ -134,6 +136,12 @@ function buildFreeEdgesPreview(edges = []) {
     preview: true,
     message: 'Upgrade to Pro to unlock the exact book, line, fair probability, and full edge board.',
   }));
+}
+
+function isNearTermPregame(commenceTime) {
+  const start = Date.parse(commenceTime);
+  if (!Number.isFinite(start) || start <= Date.now()) return false;
+  return start - Date.now() <= EDGE_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000;
 }
 
 // ============================================================
@@ -319,7 +327,7 @@ export default async function handler(req, res) {
             const result = await fetchSportsGameOddsEvents({
               leagueID: sport.title,
               includeAltLines: true,
-              limit: 100,
+              limit: SGO_EDGE_EVENT_LIMIT,
             });
             if (!result.ok) {
               console.warn(`SportsGameOdds edge scan failed for ${sport.title}: ${result.status}`);
@@ -328,8 +336,7 @@ export default async function handler(req, res) {
 
             for (const event of result.data) {
               const game = transformSgoEventToOddsApiGame(event);
-              const start = Date.parse(game.commence_time);
-              if (!Number.isFinite(start) || start <= Date.now()) continue;
+              if (!isNearTermPregame(game.commence_time)) continue;
               const edges = findEdges(game, sport, probIndex);
               allEdges.push(...edges);
             }
@@ -358,8 +365,7 @@ export default async function handler(req, res) {
                                     // that is already gone. Skipping live games here also keeps
                                     // live numbers out of the receipts probIndex, so a stored
                                     // edge's "closing line" is always the last PREGAME price.
-                                    const start = Date.parse(game.commence_time);
-                                    if (!Number.isFinite(start) || start <= Date.now()) continue;
+                                    if (!isNearTermPregame(game.commence_time)) continue;
                                     const edges = findEdges(game, sport, probIndex);
                                     allEdges.push(...edges);
                         }

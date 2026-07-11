@@ -262,7 +262,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   const fetchPlayerProps = useCallback(async (sport) => {
         try {
                 const headers = await getAuthHeaders();
-                const res = await fetch(`/api/props?sport=${sport}`, { headers });
+                const res = await fetch(`/api/props?sport=${sport}&limit=4&maxProps=1200`, { headers });
                 if (!res.ok) return [];
                 const allProps = await res.json();
                 return Array.isArray(allProps) ? allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey })) : [];
