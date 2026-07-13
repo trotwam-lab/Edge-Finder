@@ -760,7 +760,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
             {[
               {
                 label: 'Net P/L',
-                value: `${stats.netPL >= 0 ? '+' : ''}${formatMoney(stats.netPL)}`,
+                value: formatMoney(stats.netPL),
                 sub: `on ${formatMoney(stats.totalWagered)} wagered`,
                 color: stats.netPL >= 0 ? '#22c55e' : '#ef4444',
               },
@@ -1489,7 +1489,7 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
                 fontSize: '12px', fontWeight: 700,
                 color: bet.profit >= 0 ? '#22c55e' : '#ef4444',
               }}>
-                {bet.profit > 0 ? '+' : ''}{formatMoney(bet.profit)}
+                {formatMoney(bet.profit)}
               </div>
               <div style={{
                 fontSize: '10px', padding: '2px 6px',
