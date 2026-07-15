@@ -42,11 +42,14 @@ function getMarkets(sport) {
 }
 
 function buildFreePropsPreview(props = []) {
+  return propsPreviewForBooks(props, FREE_BOOKS) || propsPreviewForBooks(props);
+}
+
+function propsPreviewForBooks(props = [], allowedBooks = null) {
   const visiblePlayers = new Set();
   const preview = [];
-
   for (const prop of props) {
-    if (!FREE_BOOKS.has(prop.bookKey)) continue;
+    if (allowedBooks && !allowedBooks.has(prop.bookKey)) continue;
     if (!visiblePlayers.has(prop.player)) {
       if (visiblePlayers.size >= FREE_PLAYER_LIMIT) continue;
       visiblePlayers.add(prop.player);
@@ -54,7 +57,7 @@ function buildFreePropsPreview(props = []) {
     preview.push(prop);
   }
 
-  return preview;
+  return preview.length ? preview : null;
 }
 
 function setTierHeaders(res, tierInfo) {

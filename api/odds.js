@@ -18,8 +18,13 @@ const SGO_MAX_EVENT_LIMIT = 80;
 function buildFreeOddsPreview(data = []) {
   return data.map(game => ({
     ...game,
-    bookmakers: (game.bookmakers || []).filter(book => FREE_BOOKS.has(book.key)),
+    bookmakers: previewBooks(game.bookmakers || []),
   }));
+}
+
+function previewBooks(bookmakers = []) {
+  const preferred = bookmakers.filter(book => FREE_BOOKS.has(book.key));
+  return (preferred.length ? preferred : bookmakers).slice(0, 3);
 }
 
 function setTierHeaders(res, tierInfo) {
