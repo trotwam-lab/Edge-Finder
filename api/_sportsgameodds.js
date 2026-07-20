@@ -119,6 +119,34 @@ function addOutcome(bookmakers, bookKey, marketKey, outcome) {
   if (!existing) market.outcomes.push(outcome);
 }
 
+// SportsGameOdds occasionally returns a single bookmaker's two moneyline
+// selections on the wrong participants. A reversed favorite/underdog pair
+// creates an enormous but unplayable arb, so discard that book's h2h market
+// when BOTH sides oppose a strong SGO fair line. Requiring both signs to be
+// reversed and a >= 2/1 fair favorite keeps normal price movement intact.
+function isReversedStrongMoneyline(market) {
+  if (market?.key !== 'h2h' || market.outcomes?.length !== 2) return false;
+
+  const pairs = market.outcomes.map(outcome => ({
+    offered: toNumber(outcome.price),
+    fair: toNumber(outcome.sgo?.fairOdds),
+  }));
+  if (pairs.some(pair => pair.offered === undefined || pair.fair === undefined)) return false;
+  if (!pairs.some(pair => Math.abs(pair.fair) >= 200)) return false;
+
+  return pairs.every(pair => Math.sign(pair.offered) === -Math.sign(pair.fair));
+}
+
+function removeReversedMoneylines(bookmakers, eventID) {
+  bookmakers.forEach(bookmaker => {
+    const rejected = bookmaker.markets.filter(isReversedStrongMoneyline);
+    if (!rejected.length) return;
+
+    bookmaker.markets = bookmaker.markets.filter(market => !rejected.includes(market));
+    console.warn(`Dropped reversed SGO moneyline for ${eventID} at ${bookmaker.key}`);
+  });
+}
+
 export function transformSgoEventToOddsApiGame(event) {
   const bookmakers = new Map();
   const home = teamName(event, 'home');
@@ -153,6 +181,8 @@ export function transformSgoEventToOddsApiGame(event) {
       });
     });
   });
+
+  removeReversedMoneylines(bookmakers, event.eventID);
 
   return {
     id: event.eventID,
