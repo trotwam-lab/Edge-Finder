@@ -2,12 +2,6 @@
 // Markets are sport-aware — basketball markets for NBA, football for NFL, etc.
 
 import { getRequestTier, isProTier } from './_auth.js';
-import {
-  fetchSportsGameOddsEvents,
-  isSportsGameOddsEnabled,
-  leagueIdForOddsSport,
-  transformSgoEventToProps,
-} from './_sportsgameodds.js';
 
 const cache = {};
 const TTL = 60 * 1000;             // 1 minute for live prop boards
@@ -17,10 +11,6 @@ let quotaBackoffUntil = 0;
 const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
 const FREE_PLAYER_LIMIT = 3;
 const ODDS_REGIONS = 'us,us2';
-const SGO_DEFAULT_EVENT_LIMIT = 4;
-const SGO_MAX_EVENT_LIMIT = 12;
-const SGO_DEFAULT_PROP_LIMIT = 1200;
-const SGO_MAX_PROP_LIMIT = 2500;
 
 // Sport-specific prop markets supported by the Odds API
 const MARKETS_BY_SPORT = {
@@ -65,12 +55,6 @@ function setTierHeaders(res, tierInfo) {
   res.setHeader('X-EdgeFinder-Tier-Source', tierInfo?.source || 'unknown');
 }
 
-function clampInt(value, fallback, max) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.min(Math.floor(parsed), max);
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -80,17 +64,9 @@ export default async function handler(req, res) {
   const tierInfo = await getRequestTier(req);
   const isPro = isProTier(tierInfo);
   const API_KEY = process.env.ODDS_API_KEY;
-  const useSportsGameOdds = isSportsGameOddsEnabled() && leagueIdForOddsSport(sport);
+  if (!API_KEY) return res.status(500).json({ error: 'API key not configured' });
 
-  if (!API_KEY && !useSportsGameOdds) return res.status(500).json({ error: 'API key not configured' });
-
-  const eventLimit = useSportsGameOdds
-    ? clampInt(req.query.limit, SGO_DEFAULT_EVENT_LIMIT, SGO_MAX_EVENT_LIMIT)
-    : null;
-  const propLimit = useSportsGameOdds
-    ? clampInt(req.query.maxProps, SGO_DEFAULT_PROP_LIMIT, SGO_MAX_PROP_LIMIT)
-    : null;
-  const cacheKey = `props-${useSportsGameOdds ? `sgo-${eventLimit}-${propLimit}` : 'oddsapi'}-${sport}`;
+  const cacheKey = `props-oddsapi-${sport}`;
   const cached = cache[cacheKey];
   if (cached && Date.now() - cached.ts < (cached.ttl ?? TTL)) {
     res.setHeader('X-Cache', 'HIT');
@@ -117,26 +93,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (useSportsGameOdds) {
-      const result = await fetchSportsGameOddsEvents({
-        leagueID: leagueIdForOddsSport(sport),
-        includeAltLines: true,
-        limit: eventLimit,
-      });
-      if (!result.ok) {
-        console.warn(`SportsGameOdds props fetch failed for ${sport}: ${result.status}`);
-        return serveDegraded(`sportsgameodds-${result.status}`);
-      }
-
-      const allProps = result.data.flatMap(transformSgoEventToProps).slice(0, propLimit);
-      const ttl = allProps.length === 0 ? EMPTY_TTL : TTL;
-      cache[cacheKey] = { data: allProps, ts: Date.now(), ttl };
-      res.setHeader('X-Cache', 'MISS');
-      res.setHeader('X-EdgeFinder-Upstream', 'sportsgameodds');
-      setTierHeaders(res, tierInfo);
-      return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
-    }
-
     const markets = getMarkets(sport);
 
     // Step 1: Get upcoming events for this sport
