@@ -118,7 +118,9 @@ function addOutcome(bookmakers, bookKey, marketKey, outcome) {
   }
 
   const existing = market.outcomes.find(entry =>
-    entry.name === outcome.name && (entry.point ?? null) === (outcome.point ?? null)
+    entry.name === outcome.name
+      && (entry.point ?? null) === (outcome.point ?? null)
+      && (entry.side ?? null) === (outcome.side ?? null)
   );
   if (!existing) market.outcomes.push(outcome);
 }
@@ -210,6 +212,44 @@ export function transformSgoEventToOddsApiGame(event) {
           oddID,
           fairOdds: odd.fairOdds,
           fairSpread: odd.fairSpread,
+          deeplink: bookOdd.deeplink,
+        },
+      });
+    });
+  });
+
+  // Expose actionable MLB derivative markets with their real book price and
+  // line so alerting clients can track ROI and closing-line movement.
+  Object.entries(event?.odds || {}).forEach(([oddID, odd]) => {
+    if (!odd?.byBookmaker) return;
+    const participant = odd.statEntityID || (oddID.includes('-home-') ? 'home' : oddID.includes('-away-') ? 'away' : 'all');
+    const isTeamTotal = odd.periodID === 'game'
+      && odd.betTypeID === 'ou'
+      && ['home', 'away'].includes(participant)
+      && ['over', 'under'].includes(odd.sideID);
+    const isNrfi = odd.periodID === '1i'
+      && participant === 'all'
+      && ((odd.betTypeID === 'yn' && odd.sideID === 'no')
+        || (odd.betTypeID === 'ou' && odd.sideID === 'under'));
+    if (!isTeamTotal && !isNrfi) return;
+
+    Object.entries(odd.byBookmaker).forEach(([bookKey, bookOdd]) => {
+      if (!bookOdd?.available) return;
+      const price = toNumber(bookOdd.odds);
+      if (price === undefined) return;
+      const point = toNumber(bookOdd.overUnder ?? odd.bookOverUnder);
+      if (isTeamTotal && point === undefined) return;
+
+      addOutcome(bookmakers, bookKey, isTeamTotal ? 'team_totals' : 'nrfi', {
+        name: isNrfi ? 'NRFI' : participant === 'home' ? home : away,
+        price,
+        ...(point !== undefined ? { point } : {}),
+        side: odd.sideID,
+        last_update: bookOdd.lastUpdatedAt,
+        sgo: {
+          oddID,
+          fairOdds: odd.fairOdds,
+          fairOverUnder: odd.fairOverUnder,
           deeplink: bookOdd.deeplink,
         },
       });
