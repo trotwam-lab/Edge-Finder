@@ -27,6 +27,10 @@ const CORE_ODD_IDS = {
     ['points-home-game-sp-home', 'home'],
     ['points-away-game-sp-away', 'away'],
   ],
+  f5_spreads: [
+    ['runs-home-1ix5-sp-home', 'home'],
+    ['runs-away-1ix5-sp-away', 'away'],
+  ],
   totals: [
     ['points-all-game-ou-over', 'Over'],
     ['points-all-game-ou-under', 'Under'],
@@ -163,7 +167,9 @@ export function transformSgoEventToOddsApiGame(event) {
         if (price === undefined) return;
 
         let point;
-        if (marketKey === 'spreads') point = toNumber(bookOdd.spread ?? odd.bookSpread);
+        if (marketKey === 'spreads' || marketKey === 'f5_spreads') {
+          point = toNumber(bookOdd.spread ?? odd.bookSpread);
+        }
         if (marketKey === 'totals') point = toNumber(bookOdd.overUnder ?? odd.bookOverUnder);
 
         addOutcome(bookmakers, bookKey, marketKey, {
@@ -178,6 +184,34 @@ export function transformSgoEventToOddsApiGame(event) {
             deeplink: bookOdd.deeplink,
           },
         });
+      });
+    });
+  });
+
+  // Baseball F5 IDs vary across books and alternate-line payloads. Detect
+  // them from canonical market metadata instead of relying on one oddID.
+  Object.entries(event?.odds || {}).forEach(([oddID, odd]) => {
+    if (odd?.periodID !== '1ix5' || odd?.betTypeID !== 'sp') return;
+    const side = odd.sideID || (oddID.includes('-home-') ? 'home' : oddID.includes('-away-') ? 'away' : '');
+    if (!['home', 'away'].includes(side) || !odd?.byBookmaker) return;
+
+    Object.entries(odd.byBookmaker).forEach(([bookKey, bookOdd]) => {
+      if (!bookOdd?.available) return;
+      const price = toNumber(bookOdd.odds);
+      const point = toNumber(bookOdd.spread ?? odd.bookSpread);
+      if (price === undefined || point === undefined) return;
+
+      addOutcome(bookmakers, bookKey, 'f5_spreads', {
+        name: side === 'home' ? home : away,
+        price,
+        point,
+        last_update: bookOdd.lastUpdatedAt,
+        sgo: {
+          oddID,
+          fairOdds: odd.fairOdds,
+          fairSpread: odd.fairSpread,
+          deeplink: bookOdd.deeplink,
+        },
       });
     });
   });
