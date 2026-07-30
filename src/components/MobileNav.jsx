@@ -5,7 +5,7 @@ import { NAV_TABS } from '../constants.js';
 
 const TAB_ICONS = { Home, Target, Users, Wrench, FileText, TrendingUp, Settings };
 
-export default function MobileNav({ activeTab, setActiveTab }) {
+function MobileNav({ activeTab, setActiveTab }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
 
@@ -69,3 +69,5 @@ export default function MobileNav({ activeTab, setActiveTab }) {
     </nav>
   );
 }
+
+export default React.memo(MobileNav);

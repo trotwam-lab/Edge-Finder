@@ -6,7 +6,7 @@ import { useAuth } from '../AuthGate.jsx';
 // sport_key -> our short label (e.g. 'baseball_mlb' -> 'MLB'), for counts.
 const NAME_BY_KEY = Object.fromEntries(Object.entries(SPORTS).map(([name, key]) => [key, name]));
 
-export default function SportFilter({ filter, setFilter, searchTerm, setSearchTerm, enabledSports, games = [] }) {
+function SportFilter({ filter, setFilter, searchTerm, setSearchTerm, enabledSports, games = [] }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
   const stripRef = useRef(null);
@@ -125,3 +125,5 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
     </div>
   );
 }
+
+export default React.memo(SportFilter);

@@ -142,7 +142,7 @@ function EmptyState({ message, hint, onRefresh, onBrowse, browseLabel = 'Try ano
   );
 }
 
-export default function HomeDashboard({
+function HomeDashboard({
   games = [],
   playerProps = [],
   loading = false,
@@ -594,3 +594,7 @@ export default function HomeDashboard({
     </main>
   );
 }
+
+// Memoized: the dashboard derives per-game market context for the whole
+// slate, so it should only re-render when the feed or user prefs change.
+export default React.memo(HomeDashboard);

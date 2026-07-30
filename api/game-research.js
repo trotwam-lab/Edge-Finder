@@ -268,6 +268,21 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
   return getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
 }
 
+// Assembled research is expensive (multiple upstream ESPN/MLB/odds calls per
+// request) but changes slowly, so cache finished payloads per matchup. Warm
+// lambda instances answer repeat expands instantly instead of re-fanning out.
+const _researchCache = new Map();
+const RESEARCH_TTL = 2 * 60 * 1000;
+const RESEARCH_CACHE_MAX = 300;
+
+function cacheResearch(key, data) {
+  if (_researchCache.size >= RESEARCH_CACHE_MAX) {
+    const oldest = _researchCache.keys().next().value;
+    if (oldest !== undefined) _researchCache.delete(oldest);
+  }
+  _researchCache.set(key, { data, ts: Date.now() });
+}
+
 // Vercel serverless handler
 export default async function handler(req, res) {
   if (req.method && req.method !== 'GET') {
@@ -297,7 +312,22 @@ export default async function handler(req, res) {
       ? new Date(commenceTime).toISOString().split('T')[0]
       : new Date().toISOString().split('T')[0];
 
+    // Research is tier-independent, so it's safe to cache at the CDN edge too:
+    // repeat expands of the same matchup are served without touching the
+    // function at all, and stale-while-revalidate keeps responses instant
+    // while a background revalidation refreshes the entry.
+    res.setHeader('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
+
+    const cacheKey = `${sport}|${homeTeam}|${awayTeam}|${gameDate}`;
+    const hit = _researchCache.get(cacheKey);
+    if (hit && Date.now() - hit.ts < RESEARCH_TTL) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(hit.data);
+    }
+
     const data = await getGameResearch(homeTeam, awayTeam, sport, gameDate);
+    cacheResearch(cacheKey, data);
+    res.setHeader('X-Cache', 'MISS');
     return res.status(200).json(data);
   } catch (error) {
     console.error('Game research API error:', error);
