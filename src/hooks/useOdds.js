@@ -526,15 +526,32 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
   // Auto-refresh. The interval only reads a ref each second — no state is
   // touched until a refresh actually fires, so the app doesn't re-render on
-  // every tick.
+  // every tick. Hidden tabs skip refreshes entirely: a backgrounded browser
+  // tab polling every sport is pure quota burn with zero one watching —
+  // likely the largest single share of upstream API spend.
   useEffect(() => {
         const interval = setInterval(() => {
+                if (document.visibilityState === 'hidden') return;
                 if (Date.now() >= nextRefreshRef.current) {
                           armNextRefresh(refreshInterval);
                           loadData(false);
                 }
         }, 1000);
         return () => clearInterval(interval);
+  }, [refreshInterval, loadData, armNextRefresh]);
+
+  // When a hidden tab comes back, refresh immediately if one was due — the
+  // user returns to a current board instead of one frozen since they left.
+  useEffect(() => {
+        const onVisibilityChange = () => {
+                if (document.visibilityState !== 'visible') return;
+                if (Date.now() >= nextRefreshRef.current) {
+                          armNextRefresh(refreshInterval);
+                          loadData(false);
+                }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [refreshInterval, loadData, armNextRefresh]);
 
   const manualRefresh = useCallback(() => {
