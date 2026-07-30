@@ -16,7 +16,7 @@ EdgeFinder is a live sports-betting intelligence dashboard: it compares odds acr
 | Free | Board with 3 sportsbooks, props preview, bet tracker, watchlist, **Parlay Builder**, **Yesterday's Receipts** (the fully public, auto-graded record of yesterday's edges vs their closing lines) |
 | Pro ($12.99/mo) | Today's live edge board, Daily Pro Report, **Arbitrage & Low-Hold Scanner**, steam tracker, all sportsbooks, unlimited props, EV/Kelly calculators |
 
-The receipts pipeline snapshots each day's flagged edges (Firestore collection `edge_receipts`, one doc per ET date) as a side effect of the `/api/edges` scan, keeps observing their no-vig consensus until game start, and `/api/edge-receipts` serves the graded record publicly — it is the product's proof-of-work and requires the Firebase Admin env vars below.
+The receipts pipeline snapshots each day's flagged edges (Firestore collection `edge_receipts`, one doc per ET date) as a side effect of the `/api/edges` scan, keeps observing their no-vig consensus until game start, and `/api/edge-receipts` serves the graded record publicly — it is the product's proof-of-work and requires the Firebase Admin env vars below. The graded record is also served as a shareable, login-free page at `/receipts` for marketing.
 
 ## Local development
 1. Install dependencies:
@@ -38,8 +38,11 @@ The exact production values should be managed outside the repo (Vercel env setti
 ### Serverless / Vercel
 - `ODDS_API_KEY`
 - `STRIPE_SECRET_KEY`
-- `STRIPE_PRICE_ID`
+- `STRIPE_PRICE_ID` *(monthly plan)*
+- `STRIPE_PRICE_ID_ANNUAL` *(optional annual plan — checkout falls back to monthly if unset)*
+- `STRIPE_TRIAL_DAYS` *(optional, default 7 — monthly free-trial length; set 0 to disable)*
 - `STRIPE_WEBHOOK_SECRET`
+- `DISCORD_WEBHOOK_URL` *(optional — edge scan posts fresh strong edges to a Discord room)*
 
 ### Firebase (subscription tier checks)
 Use one of these setups:

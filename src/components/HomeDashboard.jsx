@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, FileText, Flame, Lock, RefreshCw, Star, Users, Zap } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import { auth } from '../firebase.js';
+import { useCheckout } from '../hooks/useCheckout.js';
 import ProBanner from './ProBanner.jsx';
 import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
 import { getMarketDisplayName, formatOdds } from '../utils/props.js';
@@ -13,6 +14,7 @@ import {
 } from '../utils/odds-math.js';
 import { getSportVisual } from '../utils/team-logos.js';
 import { getGameStatus, formatStartTime } from '../utils/live-status.js';
+import { BookLink } from '../utils/affiliates.jsx';
 import GameTicker from './GameTicker.jsx';
 import EdgeReceipts from './EdgeReceipts.jsx';
 
@@ -156,6 +158,7 @@ function HomeDashboard({
 }) {
   const { tier, user } = useAuth();
   const isPro = tier === 'pro';
+  const { startCheckout, isCheckingOut } = useCheckout();
   const [edges, setEdges] = useState([]);
   const [edgesLoading, setEdgesLoading] = useState(true);
   const [edgesError, setEdgesError] = useState(null);
@@ -363,7 +366,8 @@ function HomeDashboard({
                   </div>
                   <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>{edge.edge}</div>
                   <div style={{ fontSize: '10px', color: '#818cf8', marginTop: '3px' }}>
-                    {edge.book} · {edge.confidence} confidence · fair win chance {edge.fairProbability}%
+                    <BookLink book={edge.bookKey || edge.book} title="Bet this edge">{edge.book}</BookLink>
+                    {' '}· {edge.confidence} confidence · fair win chance {edge.fairProbability}%
                   </div>
                 </div>
               ))}
@@ -395,7 +399,22 @@ function HomeDashboard({
                   ))}
                 </div>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Lock size={22} color="#818cf8" />
+                  {/* The blurred rows are the highest-intent tap in the app —
+                      go straight to checkout, not to a settings detour. */}
+                  <button
+                    onClick={() => startCheckout('monthly')}
+                    disabled={isCheckingOut}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '8px',
+                      padding: '10px 18px', borderRadius: '10px', border: 'none',
+                      background: 'var(--ef-gradient)', color: '#fff',
+                      fontSize: '12px', fontWeight: 800, cursor: isCheckingOut ? 'not-allowed' : 'pointer',
+                      fontFamily: '"JetBrains Mono", monospace', opacity: isCheckingOut ? 0.7 : 1,
+                      boxShadow: '0 8px 24px rgba(99,102,241,0.35)',
+                    }}
+                  >
+                    <Lock size={14} /> {isCheckingOut ? 'Loading...' : 'Unlock every edge — try Pro free'}
+                  </button>
                 </div>
               </div>
               <div style={{ fontSize: '11px', color: '#94a3b8', margin: '10px 0', lineHeight: 1.5 }}>

@@ -5,6 +5,7 @@ import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
 import { getGameStatus, formatStartTime } from '../utils/live-status.js';
+import { BookLink } from '../utils/affiliates.jsx';
 
 function TeamLogo({ name, url, size = 26 }) {
   const [fallback, setFallback] = useState(!url);
@@ -382,7 +383,10 @@ function GameCard({
                 color: '#2dd4bf',
                 fontWeight: 700
               }}>
-                Shop {lineShopping.label}: {topShop.label} {formatOdds(topShop.best.price)} at {BOOKMAKERS[topShop.best.book] || topShop.best.bookTitle} saves {topShop.centsSaved}c
+                Shop {lineShopping.label}: {topShop.label} {formatOdds(topShop.best.price)} at{' '}
+                <BookLink book={topShop.best.book} title="Bet this price">
+                  {BOOKMAKERS[topShop.best.book] || topShop.best.bookTitle}
+                </BookLink>{' '}saves {topShop.centsSaved}c
               </span>
             )}
             {tier !== 'pro' && topShop && (

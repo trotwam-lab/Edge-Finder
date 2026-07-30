@@ -4,6 +4,7 @@ import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { americanToDecimal, formatOdds } from '../utils/odds-math.js';
 import { getGameStatus } from '../utils/live-status.js';
+import { BookLink } from '../utils/affiliates.jsx';
 
 // Arbitrage & Low-Hold Scanner — Pro tool.
 // Scans every game already on the board for outcome sets where taking the
@@ -94,7 +95,7 @@ function StakeSplit({ opportunity, totalStake }) {
         const stake = total * (imp / opportunity.implied);
         return (
           <div key={side.name} className="ef-mono" style={{ fontSize: '11px', color: 'var(--ef-text-muted)', display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-            <span>${stake.toFixed(2)} on {side.name} {formatOdds(side.price)} at {side.book}</span>
+            <span>${stake.toFixed(2)} on {side.name} {formatOdds(side.price)} at <BookLink book={side.book} title="Place this side">{side.book}</BookLink></span>
             <span style={{ color: 'var(--ef-text-dim)' }}>returns ${guaranteed.toFixed(2)}</span>
           </div>
         );

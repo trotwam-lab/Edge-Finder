@@ -223,6 +223,20 @@ function HeroSection({ onSignIn }) {
           }}>
             Preview Signals
           </a>
+          {/* The public graded ledger is the trust wedge — link it before
+              asking anyone to sign up, so skeptics can verify first. */}
+          <a href="/receipts" style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 13,
+            letterSpacing: 1,
+            padding: "12px 18px",
+            borderRadius: 8,
+            border: `1px solid ${COLORS.borderActive}`,
+            color: COLORS.text,
+            textDecoration: "none",
+          }}>
+            See Our Receipts
+          </a>
         </div>
 
         <div className="hero-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, maxWidth: 600, marginTop: 34 }}>

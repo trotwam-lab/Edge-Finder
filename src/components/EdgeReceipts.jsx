@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Receipt, Lock } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
+import { useCheckout } from '../hooks/useCheckout.js';
 import { formatOdds } from '../utils/odds-math.js';
 
 // Yesterday's Receipts — the public, auto-graded track record.
@@ -33,6 +34,10 @@ function GradeBadge({ edge }) {
 export default function EdgeReceipts({ onNavigate = () => {} }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
+  // Logged-in users go straight to Stripe from this button — the receipts
+  // card is the moment of maximum belief, so don't detour through Settings.
+  // Logged-out visitors (the public /receipts page) fall back to onNavigate.
+  const { startCheckout, isCheckingOut, canCheckout } = useCheckout();
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
 
@@ -130,14 +135,17 @@ export default function EdgeReceipts({ onNavigate = () => {} }) {
             : 'Rolling 7 and 30-day stats build automatically as days grade out.'}
         </div>
         {!isPro && data.todayCount > 0 && (
-          <button onClick={() => onNavigate('SETTINGS')} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            padding: '7px 14px', borderRadius: '8px', border: 'none',
-            background: 'var(--ef-gradient)', color: '#fff',
-            fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-            fontFamily: 'var(--ef-font-body)',
-          }}>
-            <Lock size={12} /> {data.todayCount} edge{data.todayCount === 1 ? ' is' : 's are'} live today — unlock Pro
+          <button
+            onClick={() => (canCheckout ? startCheckout('monthly') : onNavigate('SETTINGS'))}
+            disabled={isCheckingOut}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '8px', border: 'none',
+              background: 'var(--ef-gradient)', color: '#fff',
+              fontSize: '11px', fontWeight: 700, cursor: isCheckingOut ? 'not-allowed' : 'pointer',
+              fontFamily: 'var(--ef-font-body)', opacity: isCheckingOut ? 0.7 : 1,
+            }}>
+            <Lock size={12} /> {isCheckingOut ? 'Loading...' : `${data.todayCount} edge${data.todayCount === 1 ? ' is' : 's are'} live today — try Pro free`}
           </button>
         )}
       </div>

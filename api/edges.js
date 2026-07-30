@@ -5,6 +5,7 @@
 
 import { getRequestTier, isProTier } from './_auth.js';
 import { getAdminDb } from './_firebaseAdmin.js';
+import { postEdgesToDiscord } from './_discord.js';
 import { probIndexKey, updateReceiptsSnapshot } from './_receipts.js';
 import {
   fetchSportsGameOddsEvents,
@@ -385,6 +386,14 @@ export default async function handler(req, res) {
             await updateReceiptsSnapshot(getAdminDb(), allEdges, probIndex);
       } catch (e) {
             console.warn('Receipts snapshot failed:', e.message);
+      }
+
+      // Announce fresh strong edges to the Discord community (no-op without
+      // DISCORD_WEBHOOK_URL). Best-effort: never blocks or breaks the feed.
+      try {
+            await postEdgesToDiscord(allEdges);
+      } catch (e) {
+            console.warn('Discord edge post failed:', e.message);
       }
 
       cache.data = allEdges;
