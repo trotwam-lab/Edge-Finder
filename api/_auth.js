@@ -26,6 +26,7 @@ const FRIEND_EMAILS = [
   'ferencgary@yahoo.com',
   'dutchboyfresh702@gmail.com',
   'ocean.jackson@gmail.com',
+  'wmchapmanfernandez@gmail.com',
 ];
 
 function normalizeEmail(email) {
