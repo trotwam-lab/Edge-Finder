@@ -4,21 +4,17 @@ import { useAuth } from '../AuthGate.jsx';
 import { NAV_TABS } from '../constants.js';
 import AlertsBell from './AlertsBell.jsx';
 import Logo from './Logo.jsx';
+import { HeaderStatusText } from './RefreshCountdown.jsx';
 
 const TAB_ICONS = { Home, Target, Users, Wrench, FileText, TrendingUp, Settings };
 
 export default function Header({
   activeTab, setActiveTab, games, playerProps,
-  isConnected, injuries, loading, countdown,
+  isConnected, injuries, loading, nextRefreshAt,
   onRefresh, lastUpdate, sportLastUpdated, alertsApi
 }) {
   const { user, tier, logout } = useAuth();
   const isPro = tier === 'pro';
-
-  // "Last updated X seconds ago"
-  const lastUpdatedText = lastUpdate
-    ? `Updated ${Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago`
-    : '';
 
   const tabCounts = { GAMES: games.length, PROPS: playerProps.length };
 
@@ -114,7 +110,7 @@ export default function Header({
             {isConnected ? 'LIVE' : 'OFFLINE'}
           </div>
           <div className="ef-mono" style={{ fontSize: '11px', color: 'var(--ef-text-dim)' }}>
-            {loading ? 'Updating...' : lastUpdatedText || `${countdown}s`}
+            <HeaderStatusText lastUpdate={lastUpdate} nextRefreshAt={nextRefreshAt} loading={loading} />
           </div>
           <button
             onClick={onRefresh}

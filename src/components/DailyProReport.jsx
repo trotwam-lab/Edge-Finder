@@ -5,6 +5,7 @@ import { auth } from '../firebase.js';
 import ProBanner from './ProBanner.jsx';
 import { getMarketDisplayName, formatOdds } from '../utils/props.js';
 import { buildLineShoppingOpportunities, buildMarketDisagreement, getSpreadMoveSignal } from '../utils/odds-math.js';
+import { BookLink } from '../utils/affiliates.jsx';
 
 async function getAuthHeaders() {
   const user = auth.currentUser;
@@ -385,7 +386,9 @@ export default function DailyProReport({
                     <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: 800 }}>{edge.evDisplay}</div>
                   </div>
                   <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: 1.45 }}>{edge.edge}</div>
-                  <div style={{ fontSize: '10px', color: '#818cf8', marginTop: '3px' }}>{edge.book} · {edge.confidence} confidence</div>
+                  <div style={{ fontSize: '10px', color: '#818cf8', marginTop: '3px' }}>
+                    <BookLink book={edge.bookKey || edge.book} title="Bet this edge">{edge.book}</BookLink> · {edge.confidence} confidence
+                  </div>
                   <RowDivider isLast={idx === topEdges.length - 1} />
                 </div>
               ))}
@@ -457,7 +460,9 @@ export default function DailyProReport({
                     <div style={{ fontSize: '11px', color: '#2dd4bf', fontWeight: 800, whiteSpace: 'nowrap' }}>+{opp.centsSaved}c better</div>
                   </div>
                   <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
-                    {opp.label}: {formatOdds(opp.best.price)} at {opp.best.bookTitle} vs {formatOdds(opp.worst.price)} at {opp.worst.bookTitle}
+                    {opp.label}: {formatOdds(opp.best.price)} at{' '}
+                    <BookLink book={opp.best.book || opp.best.bookTitle} title="Bet the best price">{opp.best.bookTitle}</BookLink>{' '}
+                    vs {formatOdds(opp.worst.price)} at {opp.worst.bookTitle}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '3px' }}>
                     <div style={{ fontSize: '10px', color: '#64748b' }}>{opp.bookCount} books compared</div>

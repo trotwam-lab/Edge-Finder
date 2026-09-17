@@ -118,7 +118,13 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [error, setError] = useState(null);
     const [lastUpdate, setLastUpdate] = useState(null);
     const [isConnected, setIsConnected] = useState(true);
-    const [countdown, setCountdown] = useState(defaultInterval);
+    // When the next auto-refresh fires. A timestamp (not a ticking counter) so
+    // the app only re-renders once per refresh cycle — the old per-second
+    // countdown state re-rendered the ENTIRE app every second, and every
+    // un-memoized game card re-ran its odds math with it. Components that
+    // display a live countdown derive it locally from this timestamp.
+    const [nextRefreshAt, setNextRefreshAt] = useState(() => Date.now() + defaultInterval * 1000);
+    const nextRefreshRef = useRef(Date.now() + defaultInterval * 1000);
     const [sportLastUpdated, setSportLastUpdated] = useState({});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
@@ -488,7 +494,6 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           setLastUpdate(new Date());
                                            setIsConnected(true);
-                                           setCountdown(refreshInterval);
                                    } catch (err) {
                                            setError(err.message);
                                            setIsConnected(false);
@@ -504,33 +509,55 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const armNextRefresh = useCallback((seconds) => {
+        const at = Date.now() + seconds * 1000;
+        nextRefreshRef.current = at;
+        setNextRefreshAt(at);
+  }, []);
+
   // Fetch immediately when the user changes sport filters/settings. Previously
   // the page waited for the 60-120s countdown, so clicking MMA/Boxing/Tennis
   // could show an empty state even while the API had games.
   useEffect(() => {
         if (!hasCompletedInitialLoadRef.current) return;
         loadData(false);
-        setCountdown(refreshInterval);
+        armNextRefresh(refreshInterval);
   }, [filter, enabledSports]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Countdown + auto-refresh
+  // Auto-refresh. The interval only reads a ref each second — no state is
+  // touched until a refresh actually fires, so the app doesn't re-render on
+  // every tick. Hidden tabs skip refreshes entirely: a backgrounded browser
+  // tab polling every sport is pure quota burn with zero one watching —
+  // likely the largest single share of upstream API spend.
   useEffect(() => {
         const interval = setInterval(() => {
-                setCountdown(prev => {
-                          if (prev <= 1) {
-                                      loadData(false);
-                                      return refreshInterval;
-                          }
-                          return prev - 1;
-                });
+                if (document.visibilityState === 'hidden') return;
+                if (Date.now() >= nextRefreshRef.current) {
+                          armNextRefresh(refreshInterval);
+                          loadData(false);
+                }
         }, 1000);
         return () => clearInterval(interval);
-  }, [refreshInterval, loadData]);
+  }, [refreshInterval, loadData, armNextRefresh]);
+
+  // When a hidden tab comes back, refresh immediately if one was due — the
+  // user returns to a current board instead of one frozen since they left.
+  useEffect(() => {
+        const onVisibilityChange = () => {
+                if (document.visibilityState !== 'visible') return;
+                if (Date.now() >= nextRefreshRef.current) {
+                          armNextRefresh(refreshInterval);
+                          loadData(false);
+                }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [refreshInterval, loadData, armNextRefresh]);
 
   const manualRefresh = useCallback(() => {
         loadData(false);
-        setCountdown(refreshInterval);
-  }, [loadData, refreshInterval]);
+        armNextRefresh(refreshInterval);
+  }, [loadData, refreshInterval, armNextRefresh]);
 
   return {
         games,
@@ -541,7 +568,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         error,
         lastUpdate,
         isConnected,
-        countdown,
+        nextRefreshAt,
         gameLineHistory,
         // Prop history has no writer anymore; keep the field so consumers'
         // prop types stay stable, but never load the old blob into memory.

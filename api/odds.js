@@ -9,7 +9,24 @@ import {
 
 const cache = {};
 const TTL = 30 * 1000; // 30 seconds - fresher lines for live betting
+const IDLE_TTL = 5 * 60 * 1000; // nothing live or starting soon: lines move slowly
 const EMPTY_TTL = 10 * 60 * 1000; // off-season sports: stop re-asking every 30s
+
+// Quota discipline: a 30s TTL is only worth paying for when a game is live or
+// about to start. A slate that's hours away moves slowly — caching it for
+// 5 minutes cuts upstream spend ~10x on quiet boards, which is what ran the
+// monthly quota out mid-cycle.
+function ttlForGames(data) {
+  if (!Array.isArray(data) || data.length === 0) return EMPTY_TTL;
+  const now = Date.now();
+  const hasActionSoon = data.some(game => {
+    const t = Date.parse(game.commence_time);
+    if (!Number.isFinite(t)) return false;
+    // Started within the last ~6h (likely in progress) or starts within 1h.
+    return (t <= now && now - t < 6 * 60 * 60 * 1000) || (t > now && t - now < 60 * 60 * 1000);
+  });
+  return hasActionSoon ? TTL : IDLE_TTL;
+}
 const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
 const ODDS_REGIONS = 'us,us2';
 const SGO_DEFAULT_EVENT_LIMIT = 30;
@@ -88,8 +105,7 @@ export default async function handler(req, res) {
       const data = result.data
         .map(transformSgoEventToOddsApiGame)
         .filter(game => game.bookmakers?.length);
-      const ttl = data.length === 0 ? EMPTY_TTL : TTL;
-      cache[cacheKey] = { data, ts: Date.now(), ttl };
+      cache[cacheKey] = { data, ts: Date.now(), ttl: ttlForGames(data) };
       res.setHeader('X-Cache', 'MISS');
       res.setHeader('X-EdgeFinder-Upstream', 'sportsgameodds');
       setTierHeaders(res, tierInfo);
@@ -103,8 +119,7 @@ export default async function handler(req, res) {
       return serveDegraded(`upstream-${result.status}`);
     }
     const data = result.data;
-    const ttl = Array.isArray(data) && data.length === 0 ? EMPTY_TTL : TTL;
-    cache[cacheKey] = { data, ts: Date.now(), ttl };
+    cache[cacheKey] = { data, ts: Date.now(), ttl: ttlForGames(data) };
     res.setHeader('X-Cache', 'MISS');
     setTierHeaders(res, tierInfo);
     return res.status(200).json(isPro ? data : buildFreeOddsPreview(data));

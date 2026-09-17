@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useDeferredValue, startTransition } from 'react';
 import { Activity, AlertTriangle, BarChart3, Loader, X } from 'lucide-react';
 import { SPORTS, BOOKMAKERS, FREE_BOOKS } from './constants.js';
 import { useAuth } from './AuthGate.jsx';
@@ -15,6 +15,7 @@ import MobileNav from './components/MobileNav.jsx';
 import OnboardingCoach from './components/OnboardingCoach.jsx';
 import HomeDashboard from './components/HomeDashboard.jsx';
 import FirstRunSetup from './components/FirstRunSetup.jsx';
+import { RefreshCountdownSeconds } from './components/RefreshCountdown.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 import { isGameLive, getGameStatus } from './utils/live-status.js';
 
@@ -49,7 +50,9 @@ function TabFallback({ label = 'Loading...' }) {
   );
 }
 
-function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
+// Memoized: this section only depends on refresh-cycle data, so it should not
+// re-render while the user types in search or toggles cards.
+const MarketSummary = React.memo(function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
   const liveGames = games.filter(isGameLive).length;
   const injuryCount = Object.values(injuries || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
   const bookCount = games.reduce((max, game) => Math.max(max, game.bookmakers?.length || 0), 0);
@@ -126,11 +129,18 @@ function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
       </div>
     </section>
   );
-}
+});
 
 export default function BettingApp() {
   const { user, tier, refreshTier } = useAuth();
-  const [activeTab, setActiveTab] = useState('HOME');
+  const [activeTab, setActiveTabRaw] = useState('HOME');
+  // Tab switches run as React transitions: the current tab stays interactive
+  // while the next tab's lazy chunk loads and renders, so switching never
+  // flashes a blank fallback or blocks the tap. Stable identity so memoized
+  // children (Header, MobileNav, dashboards) skip re-renders.
+  const setActiveTab = useCallback((tab) => {
+    startTransition(() => setActiveTabRaw(tab));
+  }, []);
   const [showCheckoutToast, setShowCheckoutToast] = useState(false);
   const [showCancelToast, setShowCancelToast] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
@@ -154,20 +164,6 @@ export default function BettingApp() {
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [expandedGame, setExpandedGame] = useState(null);
   const [pendingBet, setPendingBet] = useState(null);
-  // Enrich incoming bet with the historic opener price (if one was captured
-  // when we first saw this game), so CLV can be computed automatically.
-  const handleSetPendingBet = (bet) => {
-    let openingOdds = null;
-    try {
-      const opener = bet.gameId ? historicOdds?.[bet.gameId] : null;
-      if (opener && bet.marketKey === 'h2h' && bet.outcomeName) {
-        const match = opener.h2h?.find(o => o.name === bet.outcomeName);
-        if (match?.price != null) openingOdds = match.price;
-      }
-    } catch {}
-    setPendingBet({ ...bet, openingOdds });
-    setActiveTab('TRACKER');
-  };
 
   const [watchlist, setWatchlist] = usePersistentState('edgefinder_watchlist', []);
   const [manualOpeners, setManualOpeners] = usePersistentState('edgefinder_manual_openers', {});
@@ -230,8 +226,23 @@ export default function BettingApp() {
 
   const {
     games, playerProps, injuries, historicOdds, loading, error, lastUpdate,
-    isConnected, countdown, gameLineHistory, propHistory, sportLastUpdated, manualRefresh,
+    isConnected, nextRefreshAt, gameLineHistory, propHistory, sportLastUpdated, manualRefresh,
   } = useOdds({ filter, enabledSports });
+
+  // Enrich incoming bet with the historic opener price (if one was captured
+  // when we first saw this game), so CLV can be computed automatically.
+  const handleSetPendingBet = useCallback((bet) => {
+    let openingOdds = null;
+    try {
+      const opener = bet.gameId ? historicOdds?.[bet.gameId] : null;
+      if (opener && bet.marketKey === 'h2h' && bet.outcomeName) {
+        const match = opener.h2h?.find(o => o.name === bet.outcomeName);
+        if (match?.price != null) openingOdds = match.price;
+      }
+    } catch {}
+    setPendingBet({ ...bet, openingOdds });
+    setActiveTab('TRACKER');
+  }, [historicOdds, setActiveTab]);
 
   // Bets live at app level (not inside BetTracker) so the closing-line
   // auto-capture below keeps observing the odds feed on EVERY tab. When this
@@ -240,19 +251,23 @@ export default function BettingApp() {
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
   useClosingLineCapture(bets, setBets, games, historicOdds);
 
-  const toggleWatchlist = (id) => {
+  const toggleWatchlist = useCallback((id) => {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
+  }, [setWatchlist]);
+
+  const handleToggleGame = useCallback((id) => {
+    setExpandedGame(prev => (prev === id ? null : id));
+  }, []);
 
   // Open a specific game (from the ticker / game-of-the-day) on the board,
   // expanded. Reset filter+search so the game is guaranteed to be visible.
-  const handleSelectGame = (game) => {
+  const handleSelectGame = useCallback((game) => {
     if (!game?.id) return;
     setFilter('ALL');
     setSearchTerm('');
     setExpandedGame(game.id);
     setActiveTab('GAMES');
-  };
+  }, [setActiveTab]);
 
   const alertsApi = useAlerts({ games, watchlist, gameLineHistory, historicOdds, tier });
 
@@ -339,10 +354,14 @@ export default function BettingApp() {
       return { hasLive, earliest };
     };
 
-    // Within each sport: live games first, then soonest start time.
+    // Within each sport: live games first, finished games last, and the
+    // remaining upcoming games by soonest start time. Without the isFinal
+    // check, finished games (whose start times are in the past) sorted ABOVE
+    // every upcoming game and cluttered the top of each sport group.
     buckets.forEach(list => list.sort((a, b) => {
       const sa = statusOf.get(a.id), sb = statusOf.get(b.id);
       if (!!sa?.isLive !== !!sb?.isLive) return sa?.isLive ? -1 : 1;
+      if (!!sa?.isFinal !== !!sb?.isFinal) return sa?.isFinal ? 1 : -1;
       return (Date.parse(a.commence_time) || Infinity) - (Date.parse(b.commence_time) || Infinity);
     }));
 
@@ -370,6 +389,10 @@ export default function BettingApp() {
       tabLoaders.PropsView();
       tabLoaders.BetTracker();
       tabLoaders.ProTools();
+      // Expanding a game card suspends on this chunk (recharts included), so
+      // warming it makes the first card expansion instant instead of showing
+      // the "Loading game details..." fallback.
+      tabLoaders.GameDetails();
     };
     if ('requestIdleCallback' in window) {
       const idleId = window.requestIdleCallback(warmTabs, { timeout: 2500 });
@@ -423,7 +446,7 @@ export default function BettingApp() {
         isConnected={isConnected}
         injuries={injuries}
         loading={loading}
-        countdown={countdown}
+        nextRefreshAt={nextRefreshAt}
         onRefresh={manualRefresh}
         lastUpdate={lastUpdate}
         sportLastUpdated={sportLastUpdated}
@@ -506,7 +529,7 @@ export default function BettingApp() {
                           <GameCard
                             game={game}
                             expanded={expandedGame === game.id}
-                            onToggle={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
+                            onToggle={handleToggleGame}
                             watchlist={watchlist}
                             onToggleWatchlist={toggleWatchlist}
                             injuries={injuries}
@@ -641,7 +664,7 @@ export default function BettingApp() {
             <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Live games refresh every 60s. Non-live every 120s.</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '12px', color: isConnected ? '#10b981' : '#ef4444' }}>{isConnected ? 'Connected' : 'Disconnected'}</span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>| Next refresh in {countdown}s</span>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>| Next refresh in <RefreshCountdownSeconds nextRefreshAt={nextRefreshAt} />s</span>
             </div>
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>

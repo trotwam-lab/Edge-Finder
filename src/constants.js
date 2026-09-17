@@ -154,6 +154,9 @@ export const NAV_TABS = [
 // PRO_FEATURES ★ What you get with EdgeFinder Pro ($12.99/mo)
 export const PRO_FEATURES = {
   price: '$12.99/mo',
+  priceAnnual: '$99/yr',
+  annualSavings: 'save 36%',
+  trialText: '7-day free trial',
   headline: 'Tell me where to look today.',
   subheadline: 'Pro opens with a Daily Report that does the scanning for you, then backs it up with an arbitrage scanner, full edge board, and every sportsbook we track.',
   features: [

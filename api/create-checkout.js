@@ -35,14 +35,33 @@ export default async function handler(req, res) {
     const userId = caller.uid;
     const email = caller.email;
 
-    // Create a Stripe Checkout Session
-    // Trim the price ID to remove any accidental whitespace/newlines
-    const priceId = process.env.STRIPE_PRICE_ID?.trim();
-    
+    // Plan selection: 'annual' uses STRIPE_PRICE_ID_ANNUAL when configured
+    // (falls back to monthly so the toggle can ship before the price exists).
+    // Anything else — including no body at all — is the monthly plan.
+    let plan = 'monthly';
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      if (body?.plan === 'annual') plan = 'annual';
+    } catch {}
+
+    // Trim the price IDs to remove any accidental whitespace/newlines
+    const monthlyPriceId = process.env.STRIPE_PRICE_ID?.trim();
+    const annualPriceId = process.env.STRIPE_PRICE_ID_ANNUAL?.trim();
+    const priceId = plan === 'annual' ? (annualPriceId || monthlyPriceId) : monthlyPriceId;
+
     if (!priceId) {
       return res.status(500).json({ error: 'STRIPE_PRICE_ID not configured' });
     }
-    
+
+    // Free trial: monthly plans start with a trial so users see a winning
+    // edge before the first charge. STRIPE_TRIAL_DAYS=0 disables it. Annual
+    // checkouts skip the trial — the discount is the incentive there.
+    const trialDays = Math.max(0, parseInt(process.env.STRIPE_TRIAL_DAYS ?? '7', 10) || 0);
+    const subscriptionData = { metadata: { firebaseUID: userId } };
+    if (plan === 'monthly' && trialDays > 0) {
+      subscriptionData.trial_period_days = trialDays;
+    }
+
     const session = await stripe.checkout.sessions.create({
             line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
@@ -50,8 +69,8 @@ export default async function handler(req, res) {
       cancel_url: 'https://www.edgefinderdaily.com/?checkout=cancel',
       client_reference_id: userId,
       customer_email: email,
-              metadata: { firebaseUID: userId },
-              subscription_data: { metadata: { firebaseUID: userId } },
+              metadata: { firebaseUID: userId, plan },
+              subscription_data: subscriptionData,
     });
 
     return res.status(200).json({ url: session.url });

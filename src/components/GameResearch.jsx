@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Activity, History, TrendingUp, AlertCircle, RefreshCw, CheckCircle, BarChart3, CloudSun, UserRound } from 'lucide-react';
 
 function getTrendColor(confidence) {
@@ -235,6 +235,7 @@ function H2HPanel({ games, homeTeam, awayTeam }) {
   let homeW = 0, awayW = 0;
   games.forEach(g => {
     const hs = parseInt(g.homeScore) || 0, as = parseInt(g.awayScore) || 0;
+    if (hs === as) return; // draws don't count toward either side
     const isHomeTeamHome = g.homeTeam?.includes(homeLast);
     if (hs > as) isHomeTeamHome ? homeW++ : awayW++;
     else isHomeTeamHome ? awayW++ : homeW++;
@@ -476,18 +477,55 @@ function HockeyExtras({ data }) {
   );
 }
 
+// Session cache: research (recent form, probables, lineups) changes on the
+// order of hours, but collapsing and re-expanding a game card unmounts this
+// component. Without a cache every expand refetched the whole research
+// payload — the server fans out to several upstream feeds, so that meant a
+// multi-second spinner each time. Cached data renders instantly.
+const researchCache = new Map();
+const RESEARCH_TTL = 5 * 60 * 1000;
+const RESEARCH_CACHE_MAX = 150;
+
+function readResearchCache(key) {
+  const hit = researchCache.get(key);
+  return hit && Date.now() - hit.ts < RESEARCH_TTL ? hit.data : null;
+}
+
+function writeResearchCache(key, data) {
+  if (researchCache.size >= RESEARCH_CACHE_MAX) {
+    // Maps iterate in insertion order — drop the oldest entry.
+    const oldest = researchCache.keys().next().value;
+    if (oldest !== undefined) researchCache.delete(oldest);
+  }
+  researchCache.set(key, { data, ts: Date.now() });
+}
+
 export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commenceTime }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${gameId || ''}|${sport || ''}|${homeTeam || ''}|${awayTeam || ''}`;
+  const [data, setData] = useState(() => readResearchCache(cacheKey));
+  const [loading, setLoading] = useState(() => !readResearchCache(cacheKey));
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('form');
+  // Guards against out-of-order responses: only the latest request may write
+  // state, so a slow older fetch can't overwrite fresher data.
+  const requestSeq = useRef(0);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     if (!homeTeam || !awayTeam) {
       setLoading(false);
       setError('Missing team information');
       return;
     }
+    if (!force) {
+      const cached = readResearchCache(cacheKey);
+      if (cached) {
+        setData(cached);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -497,14 +535,17 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const payload = await res.json();
       if (payload?.error) throw new Error(payload.error);
+      if (seq !== requestSeq.current) return;
+      writeResearchCache(cacheKey, payload);
       setData(payload);
     } catch (e) {
       console.error('GameResearch fetch error:', e);
+      if (seq !== requestSeq.current) return;
       setError(e.message);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [gameId, homeTeam, awayTeam, sport, commenceTime]);
+  }, [gameId, homeTeam, awayTeam, sport, commenceTime, cacheKey]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -533,7 +574,7 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
             </span>
           )}
         </div>
-        <button onClick={fetchData} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px', display: 'flex', alignItems: 'center', borderRadius: '4px' }} title="Refresh">
+        <button onClick={() => fetchData(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px', display: 'flex', alignItems: 'center', borderRadius: '4px' }} title="Refresh">
           <RefreshCw size={13} />
         </button>
       </div>
@@ -557,7 +598,7 @@ export default function GameResearch({ gameId, sport, homeTeam, awayTeam, commen
         <div style={{ padding: '16px', textAlign: 'center' }}>
           <AlertCircle size={20} color="#ef4444" style={{ marginBottom: '6px' }} />
           <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>{error}</div>
-          <button onClick={fetchData} style={{ padding: '5px 12px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '5px', color: '#818cf8', fontSize: '11px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          <button onClick={() => fetchData(true)} style={{ padding: '5px 12px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.4)', borderRadius: '5px', color: '#818cf8', fontSize: '11px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
             <RefreshCw size={11} /> Retry
           </button>
         </div>

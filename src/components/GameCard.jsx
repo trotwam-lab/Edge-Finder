@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Star, ChevronDown, ChevronUp, Share2, Lock, Target } from 'lucide-react';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, americanToImplied, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
 import { getGameStatus, formatStartTime } from '../utils/live-status.js';
+import { BookLink } from '../utils/affiliates.jsx';
 
 function TeamLogo({ name, url, size = 26 }) {
   const [fallback, setFallback] = useState(!url);
@@ -52,7 +53,11 @@ function HoldBadge({ hold }) {
   );
 }
 
-export default function GameCard({
+// Memoized: the board renders dozens of these and each one runs real odds
+// math (consensus fair lines, best-price scans, edge score). With stable
+// callbacks from App, a card only re-renders when its own data changes —
+// expanding one card or typing in search no longer recomputes every card.
+function GameCard({
   game, expanded, onToggle, watchlist, onToggleWatchlist,
   injuries, gameLineHistory, setPendingBet, logoMap = {},
 }) {
@@ -97,35 +102,29 @@ export default function GameCard({
   };
   const sportLabel = sportVisual.short;
 
-  // Consensus fair odds for spreads
-  const spreadFair = getConsensusFairOdds(game.bookmakers, 'spreads');
-  const h2hFair = getConsensusFairOdds(game.bookmakers, 'h2h');
-  const totalFair = getConsensusFairOdds(game.bookmakers, 'totals');
-
-  // Best odds across books
-  const bestSpreadHome = findBestOdds(game.bookmakers, 'spreads', game.home_team);
-  const bestSpreadAway = findBestOdds(game.bookmakers, 'spreads', game.away_team);
-  const bestH2hHome = findBestOdds(game.bookmakers, 'h2h', game.home_team);
-  const bestH2hAway = findBestOdds(game.bookmakers, 'h2h', game.away_team);
-  const bestTotalOver = findBestOdds(game.bookmakers, 'totals', 'Over');
-  const bestTotalUnder = findBestOdds(game.bookmakers, 'totals', 'Under');
-  const lineShopping = getLineShoppingScore(game.bookmakers);
+  // All the derived odds math in one memo so a re-render that doesn't change
+  // the game data (parent state churn, expand/collapse) costs nothing.
+  const history = historyEntries;
+  const derived = useMemo(() => ({
+    spreadFair: getConsensusFairOdds(game.bookmakers, 'spreads'),
+    h2hFair: getConsensusFairOdds(game.bookmakers, 'h2h'),
+    bestH2hHome: findBestOdds(game.bookmakers, 'h2h', game.home_team),
+    lineShopping: getLineShoppingScore(game.bookmakers),
+    spreadMoveSignal: getSpreadMoveSignal(game, history),
+    disagreement: buildMarketDisagreement(game),
+  }), [game, history]);
+  const { spreadFair, h2hFair, bestH2hHome, lineShopping, spreadMoveSignal, disagreement } = derived;
   const topShop = lineShopping.top;
 
-  // Line movement
-  const history = gameLineHistory[game.id] || [];
-  const hasMovement = history.length > 1;
-  const start = history[0]?.spread;
-  const current = history[history.length - 1]?.spread;
-  const move = hasMovement ? current - start : 0;
-  const spreadMoveSignal = getSpreadMoveSignal(game, history);
-  const disagreement = buildMarketDisagreement(game);
-
-  // Injury counts
+  // Injury counts. Prefer the sport-prefixed keys so same-nicknamed teams in
+  // different leagues (e.g. Eagles in NFL vs college) don't cross-match.
+  const sportPrefix = game.sport_key?.split('_')[0] || '';
   const awayKey = game.away_team?.split(' ')?.pop()?.toLowerCase();
   const homeKey = game.home_team?.split(' ')?.pop()?.toLowerCase();
-  const awayInjuries = injuries[game.away_team?.toLowerCase()] || injuries[awayKey] || [];
-  const homeInjuries = injuries[game.home_team?.toLowerCase()] || injuries[homeKey] || [];
+  const awayInjuries = injuries[`${sportPrefix}:${game.away_team}`.toLowerCase()] || injuries[`${sportPrefix}:${awayKey}`]
+    || injuries[game.away_team?.toLowerCase()] || injuries[awayKey] || [];
+  const homeInjuries = injuries[`${sportPrefix}:${game.home_team}`.toLowerCase()] || injuries[`${sportPrefix}:${homeKey}`]
+    || injuries[game.home_team?.toLowerCase()] || injuries[homeKey] || [];
 
   const firstBook = game.bookmakers?.[0];
   const homeSpread = firstBook?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team);
@@ -145,7 +144,7 @@ export default function GameCard({
   return (
     <div>
       {/* Clickable card header */}
-      <div onClick={onToggle} className="game-card-header" style={{
+      <div onClick={() => onToggle(game.id)} className="game-card-header" style={{
         padding: '14px 18px',
         background: expanded ? 'rgba(20, 184, 166, 0.12)' : 'rgba(15, 23, 42, 0.72)',
         border: `1px solid ${expanded ? 'rgba(45, 212, 191, 0.34)' : 'rgba(100, 116, 139, 0.18)'}`,
@@ -384,7 +383,10 @@ export default function GameCard({
                 color: '#2dd4bf',
                 fontWeight: 700
               }}>
-                Shop {lineShopping.label}: {topShop.label} {formatOdds(topShop.best.price)} at {BOOKMAKERS[topShop.best.book] || topShop.best.bookTitle} saves {topShop.centsSaved}c
+                Shop {lineShopping.label}: {topShop.label} {formatOdds(topShop.best.price)} at{' '}
+                <BookLink book={topShop.best.book} title="Bet this price">
+                  {BOOKMAKERS[topShop.best.book] || topShop.best.bookTitle}
+                </BookLink>{' '}saves {topShop.centsSaved}c
               </span>
             )}
             {tier !== 'pro' && topShop && (
@@ -442,3 +444,5 @@ export default function GameCard({
     </div>
   );
 }
+
+export default React.memo(GameCard);

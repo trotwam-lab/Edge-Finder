@@ -59,6 +59,10 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Fully public data — let the CDN absorb traffic from the shareable
+  // /receipts page (and social embeds) without waking the function.
+  res.setHeader('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
+
   if (cache.data && Date.now() - cache.ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
     return res.status(200).json(cache.data);

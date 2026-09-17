@@ -51,7 +51,7 @@ function TickerChip({ entry, onSelect }) {
   );
 }
 
-export default function GameTicker({ games = [], onSelect }) {
+function GameTicker({ games = [], onSelect }) {
   const featured = useMemo(() => buildFeaturedEvents(games, { maxTicker: 14 }), [games]);
   const { gameOfDay, ticker, liveCount } = featured;
 
@@ -154,3 +154,7 @@ export default function GameTicker({ games = [], onSelect }) {
     </section>
   );
 }
+
+// Memoized: ranks/sorts the whole slate; only needs to run when the games
+// feed itself changes, not on every parent state change.
+export default React.memo(GameTicker);

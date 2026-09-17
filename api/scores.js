@@ -8,7 +8,21 @@ import { coalescedJson, burstBackoffActive } from './_upstream.js';
 
 const cache = {};
 const TTL = 2 * 60 * 1000;             // fresh window for live scores
+const IDLE_TTL = 5 * 60 * 1000;        // nothing live or imminent: scores can't change
 const EMPTY_TTL = 10 * 60 * 1000;      // off-season sports: don't re-ask every 2min
+
+// Scores only move while a game is in progress. If everything returned is
+// final or still hours away, a longer cache costs nothing and saves quota.
+function ttlForScores(data) {
+  if (!Array.isArray(data) || data.length === 0) return EMPTY_TTL;
+  const hasAction = data.some(game => {
+    if (game.completed) return false;
+    const t = Date.parse(game.commence_time);
+    // In progress, or starts within 30 minutes.
+    return Number.isFinite(t) && t - Date.now() < 30 * 60 * 1000;
+  });
+  return hasAction ? TTL : IDLE_TTL;
+}
 
 export default async function handler(req, res) {
   const { sport = 'basketball_nba', daysFrom = '1' } = req.query;
@@ -45,8 +59,7 @@ export default async function handler(req, res) {
       return serveDegraded(`upstream-${result.status}`);
     }
     const data = result.data;
-    const ttl = Array.isArray(data) && data.length === 0 ? EMPTY_TTL : TTL;
-    cache[cacheKey] = { data, ts: Date.now(), ttl };
+    cache[cacheKey] = { data, ts: Date.now(), ttl: ttlForScores(data) };
     res.setHeader('X-Cache', 'MISS');
     return res.status(200).json(data);
   } catch (e) {

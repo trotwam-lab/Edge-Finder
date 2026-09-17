@@ -4,6 +4,7 @@ import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveCont
 import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { buildPremiumGameSummary } from '../utils/game-summary.js';
+import { BookLink } from '../utils/affiliates.jsx';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import GameResearch from './GameResearch.jsx';
@@ -333,7 +334,9 @@ export default function GameDetails({
                   <div>
                     <div style={{ color: '#64748b', fontSize: '10px', marginBottom: '2px' }}>Best price</div>
                     <div style={{ color: '#2dd4bf', fontWeight: 800 }}>
-                      {BOOKMAKERS[item.best.book] || item.best.bookTitle} {formatOdds(item.best.price)}
+                      <BookLink book={item.best.book} title="Bet this price">
+                        {BOOKMAKERS[item.best.book] || item.best.bookTitle}
+                      </BookLink> {formatOdds(item.best.price)}
                     </div>
                   </div>
                   <div>
@@ -407,7 +410,11 @@ export default function GameDetails({
                 alignItems: 'center', padding: '8px 12px',
                 background: 'rgba(30, 41, 59, 0.5)', borderRadius: '6px', fontSize: '12px'
               }}>
-                <span style={{ fontWeight: 600 }}>{BOOKMAKERS[book.key] || book.title}</span>
+                <span style={{ fontWeight: 600 }}>
+                  <BookLink book={book.key} title={`Open ${BOOKMAKERS[book.key] || book.title}`}>
+                    {BOOKMAKERS[book.key] || book.title}
+                  </BookLink>
+                </span>
 
                 {/* Moneyline ★ clickable! Tap any odds to send to Bet Tracker */}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

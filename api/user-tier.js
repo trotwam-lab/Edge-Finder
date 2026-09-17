@@ -60,16 +60,19 @@ async function getTierFromStripe(email) {
   }
 
   const customer = customers.data[0];
+  // 'trialing' counts as Pro — a free-trial user must get the product they
+  // started a trial for, or the trial converts nobody.
   const subscriptions = await stripe.subscriptions.list({
     customer: customer.id,
-    status: 'active',
-    limit: 1,
+    status: 'all',
+    limit: 10,
   });
+  const live = subscriptions.data.find(s => s.status === 'active' || s.status === 'trialing');
 
-  if (subscriptions.data.length > 0) {
+  if (live) {
     return {
       tier: 'pro',
-      subscriptionId: subscriptions.data[0].id,
+      subscriptionId: live.id,
       source: 'stripe-fallback',
     };
   }
