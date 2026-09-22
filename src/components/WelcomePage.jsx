@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase";
 import { LogoMark } from "./Logo.jsx";
+import { PRO_FEATURES } from "../constants.js";
+import { getSeasonBoard } from "../utils/season-calendar.js";
 
 const COLORS = {
   bg: "#0d1117",
@@ -28,9 +30,9 @@ const COLORS = {
 
 function HeroPreviewPanel() {
   const books = [
-    { name: "FanDuel", line: "Knicks +3.5", price: "-108", tag: "Best", color: "#22c55e" },
-    { name: "DraftKings", line: "Knicks +3", price: "-112", tag: "Hold", color: COLORS.textMuted },
-    { name: "BetMGM", line: "Knicks +2.5", price: "-110", tag: "Weak", color: COLORS.amber },
+    { name: "FanDuel", line: "Bills -2.5", price: "-108", tag: "Best", color: "#22c55e" },
+    { name: "DraftKings", line: "Bills -3", price: "-110", tag: "Hold", color: COLORS.textMuted },
+    { name: "BetMGM", line: "Bills -3.5", price: "-105", tag: "Weak", color: COLORS.amber },
   ];
   const signals = [
     { label: "Steam", value: "HIGH", color: COLORS.accent },
@@ -54,9 +56,9 @@ function HeroPreviewPanel() {
       }}>
         <div>
           <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.accent, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 5 }}>
-            Market Intelligence
+            Sample · NFL Sunday
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text }}>Knicks @ Celtics</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text }}>Bills @ Dolphins</div>
         </div>
         <div style={{ textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>
           <div style={{ fontSize: 22, fontWeight: 700, color: "#22c55e" }}>82</div>
@@ -93,7 +95,7 @@ function HeroPreviewPanel() {
             <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
               Market Move
             </div>
-            <div style={{ marginTop: 6, color: COLORS.text, fontSize: 14, fontWeight: 600 }}>+2.5 to +3.5 against public pressure</div>
+            <div style={{ marginTop: 6, color: COLORS.text, fontSize: 14, fontWeight: 600 }}>-2 to -3 as sharp money lands</div>
           </div>
           <div style={{ width: 96, height: 38 }}>
             <svg viewBox="0 0 120 46" style={{ width: "100%", height: "100%", display: "block" }}>
@@ -123,7 +125,7 @@ function HeroPreviewPanel() {
   );
 }
 
-function HeroSection({ onSignIn }) {
+function HeroSection({ onSignUp }) {
   // Live, verifiable proof: the 30-day close-beat rate from the public
   // graded track record (/api/edge-receipts). Falls back to static copy
   // until enough days have graded out.
@@ -193,11 +195,11 @@ function HeroSection({ onSignIn }) {
           fontSize: "clamp(16px, 2vw, 20px)",
           lineHeight: 1.55,
         }}>
-          Compare books, track steam, spot public traps, and protect closing line value from one clean board.
+          Compare books, track steam, rank player props, and protect closing line value from one clean board — NFL, college football, MLB, NHL and more.
         </p>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 30 }}>
-          <button onClick={onSignIn} style={{
+          <button onClick={onSignUp} style={{
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 13,
             letterSpacing: 1,
@@ -209,9 +211,9 @@ function HeroSection({ onSignIn }) {
             cursor: "pointer",
             fontWeight: 700,
           }}>
-            Open The Board
+            Start Free
           </button>
-          <a href="#preview" style={{
+          <a href="#in-season" style={{
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 13,
             letterSpacing: 1,
@@ -221,7 +223,18 @@ function HeroSection({ onSignIn }) {
             color: COLORS.text,
             textDecoration: "none",
           }}>
-            Preview Signals
+            What's In Season
+          </a>
+          <a href="#preview" style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 13,
+            letterSpacing: 1,
+            padding: "12px 18px",
+            borderRadius: 8,
+            color: COLORS.textMuted,
+            textDecoration: "none",
+          }}>
+            Try the demo →
           </a>
         </div>
 
@@ -246,13 +259,28 @@ function HeroSection({ onSignIn }) {
 }
 
 // ─── SIGN IN POPUP ────────────────────────────────
-function SignInPopup({ open, onClose }) {
-  const [tab, setTab] = useState("signin");
+function SignInPopup({ open, onClose, initialTab = "signin" }) {
+  const [tab, setTab] = useState(initialTab);
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Each open starts on the tab the CTA asked for ("Start Free" → sign up).
+  useEffect(() => {
+    if (!open) return;
+    setTab(initialTab);
+    setError("");
+    setNotice("");
+  }, [open, initialTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -309,7 +337,7 @@ function SignInPopup({ open, onClose }) {
           zIndex: 999, animation: "fadeIn 0.25s ease",
         }}
       />
-      <div className="welcome-signin-popup" style={{
+      <div className="welcome-signin-popup" role="dialog" aria-modal="true" aria-label={tab === "signin" ? "Sign in" : "Create account"} style={{
         position: "fixed", top: 72, right: 28, width: 360,
         background: COLORS.surface, border: `1px solid ${COLORS.border}`,
         borderRadius: 16, zIndex: 1000, overflow: "hidden",
@@ -322,7 +350,7 @@ function SignInPopup({ open, onClose }) {
               <LogoMark size={28} />
               <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: COLORS.text }}>EdgeFinder</span>
             </div>
-            <button onClick={onClose} style={{
+            <button onClick={onClose} aria-label="Close" style={{
               background: "none", border: "none", color: COLORS.textMuted,
               fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1,
             }}>✕</button>
@@ -333,7 +361,7 @@ function SignInPopup({ open, onClose }) {
             marginLeft: -28, marginRight: -28, paddingLeft: 28, paddingRight: 28,
           }}>
             {[["signin", "Sign In"], ["signup", "Create Account"]].map(([key, label]) => (
-              <button key={key} onClick={() => setTab(key)} style={{
+              <button key={key} type="button" onClick={() => { setTab(key); setError(""); setNotice(""); }} style={{
                 fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 500,
                 padding: "10px 0", marginRight: 24, background: "none", border: "none",
                 borderBottom: `2px solid ${tab === key ? COLORS.accent : "transparent"}`,
@@ -349,6 +377,7 @@ function SignInPopup({ open, onClose }) {
             textTransform: "uppercase", color: COLORS.textMuted, display: "block", marginBottom: 8,
           }}>Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            required autoComplete="email" aria-label="Email"
             placeholder="you@email.com"
             style={{
               width: "100%", padding: "11px 14px", borderRadius: 8,
@@ -364,6 +393,8 @@ function SignInPopup({ open, onClose }) {
             textTransform: "uppercase", color: COLORS.textMuted, display: "block", marginBottom: 8,
           }}>Password</label>
           <input type="password" value={pass} onChange={(e) => setPass(e.target.value)}
+            required minLength={6} aria-label="Password"
+            autoComplete={tab === "signin" ? "current-password" : "new-password"}
             placeholder="••••••••"
             style={{
               width: "100%", padding: "11px 14px", borderRadius: 8,
@@ -427,7 +458,7 @@ function SignInPopup({ open, onClose }) {
           )}
           {tab === "signup" && (
             <p style={{ textAlign: "center", margin: "16px 0 0", fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, color: COLORS.textDim, lineHeight: 1.5 }}>
-              Free plan includes 3 sports, daily alerts, and basic prop screen.
+              Free plan includes 3 sportsbooks, the props preview, Parlay Builder, bet tracker, and Yesterday's Receipts.
             </p>
           )}
         </form>
@@ -537,17 +568,18 @@ function QualifierBlock() {
 }
 
 // ─── LIVE SIGNAL STRIP ────────────────────────────
+// Sample feed items — in-season sports so the strip matches the live board.
 const SIGNALS = [
-  { type: "line", text: "Line move: MIA Heat -3 → -2.5", sport: "NBA", time: "2m ago", color: COLORS.accent },
-  { type: "prop", text: "Prop edge: Jalen Brunson O 24.5 pts", sport: "NBA", time: "4m ago", color: COLORS.blue },
-  { type: "injury", text: "Injury alert: Joel Embiid questionable", sport: "NBA", time: "6m ago", color: COLORS.amber },
-  { type: "line", text: "Line move: KC Chiefs -1.5 → -2.5", sport: "NFL", time: "8m ago", color: COLORS.accent },
-  { type: "prop", text: "Prop edge: Saquon Barkley O 82.5 rush yds", sport: "NFL", time: "11m ago", color: COLORS.blue },
-  { type: "injury", text: "News alert: Lakers starting lineup confirmed", sport: "NBA", time: "13m ago", color: COLORS.amber },
-  { type: "line", text: "Line move: BOS Celtics -6 → -5.5", sport: "NBA", time: "15m ago", color: COLORS.accent },
-  { type: "prop", text: "Prop edge: Tyrese Maxey O 5.5 ast", sport: "NBA", time: "18m ago", color: COLORS.blue },
-  { type: "line", text: "Reverse line move: NYK Knicks +2 → +3", sport: "NBA", time: "20m ago", color: COLORS.accent },
-  { type: "injury", text: "Injury alert: Luka Dončić out tonight", sport: "NBA", time: "22m ago", color: COLORS.amber },
+  { type: "line", text: "Line move: Bills -2 → -3", sport: "NFL", time: "2m ago", color: COLORS.accent },
+  { type: "prop", text: "Prop edge: Josh Allen O 245.5 pass yds", sport: "NFL", time: "4m ago", color: COLORS.blue },
+  { type: "injury", text: "Injury report: WR questionable (hamstring)", sport: "NFL", time: "6m ago", color: COLORS.amber },
+  { type: "line", text: "Total move: Ohio State @ Michigan 47.5 → 45.5", sport: "NCAAF", time: "8m ago", color: COLORS.accent },
+  { type: "prop", text: "Prop edge: Aaron Judge O 1.5 total bases", sport: "MLB", time: "11m ago", color: COLORS.blue },
+  { type: "injury", text: "Lineup confirmed: Yankees starting nine posted", sport: "MLB", time: "13m ago", color: COLORS.amber },
+  { type: "line", text: "Steam: Liberty -4.5 → -6 in the playoffs", sport: "WNBA", time: "15m ago", color: COLORS.accent },
+  { type: "prop", text: "Prop edge: Saquon Barkley O 82.5 rush yds", sport: "NFL", time: "18m ago", color: COLORS.blue },
+  { type: "line", text: "Reverse line move: Chiefs -3.5 → -3", sport: "NFL", time: "20m ago", color: COLORS.accent },
+  { type: "line", text: "Puck line move: Rangers -1.5 (+165) → (+150)", sport: "NHL", time: "22m ago", color: COLORS.accent },
 ];
 
 function LiveSignalStrip() {
@@ -621,33 +653,35 @@ const TABS = [
     id: "odds", label: "Odds Movement", icon: "⟋",
     description: "Track where lines are shifting across books in real time.",
     game: {
-      away: "Miami Heat", home: "Charlotte Hornets",
-      awayEmoji: "🔥", homeEmoji: "🐝",
+      away: "Buffalo Bills", home: "Miami Dolphins",
+      awayEmoji: "🦬", homeEmoji: "🐬",
       badges: [
-        { text: "NBA", color: COLORS.accent },
+        { text: "NFL", color: COLORS.accent },
         { text: "HOT 🔥", color: "#ff4466" },
         { text: "MOVING", color: COLORS.amber },
         { text: "FADE", color: COLORS.accentPurple },
       ],
-      hold: "4.4%",
-      fairML: "-239 / +239",
-      mlHold: "4.3%",
-      totalHold: "4.7%",
-      currentSpread: "7.5",
-      currentTotal: "228.5",
-      gameTime: "4:10 PM",
+      hold: "4.3%",
+      fairML: "-145 / +145",
+      fairSpread: "-101 / +101",
+      fairTotal: "-100 / +100",
+      mlHold: "4.1%",
+      totalHold: "4.8%",
+      currentSpread: "3",
+      currentTotal: "48.5",
+      gameTime: "1:00 PM",
       books: [
-        { name: "FanDuel",    awayML: "-295", homeML: "+240", homeBest: true, spread: "-7.5 (-106)", spreadAlt: "+7.5 (-114)", total: "Over 228.5 (-112)", totalAlt: "Under 228.5 (-108)" },
-        { name: "BetOnline",  awayML: "-280", homeML: "+230", homeBest: false, spread: "-7 (-115)", spreadAlt: "+7 (-105)", total: "Over 229 (-110)", totalAlt: "Under 229 (-110)" },
-        { name: "DraftKings", awayML: "-285", homeML: "+230", homeBest: false, spread: "-7.5 (-105)", spreadAlt: "+7.5 (-115)", spreadBest: true, total: "Over 228.5 (-115)", totalAlt: "Under 228.5 (-113)", totalAltBest: true },
-        { name: "BetRivers",  awayML: "-240", homeML: "+188", homeBest: false, awayBest: true, spread: "-6 (-113)", spreadAlt: "+6 (-110)", total: "Over 228.5 (-110)", totalAlt: "Under 228.5 (-113)" },
-        { name: "BetMGM",     awayML: "-295", homeML: "+230", homeBest: false, spread: "-7.5 (-105)", spreadAlt: "+7.5 (-115)", total: "Over 229.5 (-105)", totalBest: true, totalAlt: "Under 229.5 (-115)" },
-        { name: "Bovada",     awayML: "-280", homeML: "+230", homeBest: false, spread: "-7 (-115)", spreadAlt: "+7 (-105)", total: "Over 228.5 (-110)", totalAlt: "Under 228.5 (-110)" },
+        { name: "FanDuel",    awayML: "-155", homeML: "+130", homeBest: false, awayBest: true, spread: "-3 (-108)", spreadAlt: "+3 (-112)", spreadBest: true, total: "Over 48.5 (-110)", totalAlt: "Under 48.5 (-110)" },
+        { name: "BetOnline",  awayML: "-160", homeML: "+135", homeBest: false, spread: "-3 (-110)", spreadAlt: "+3 (-110)", total: "Over 49 (-110)", totalAlt: "Under 49 (-110)", totalAltBest: true },
+        { name: "DraftKings", awayML: "-162", homeML: "+136", homeBest: false, spread: "-3 (-112)", spreadAlt: "+3 (-108)", total: "Over 48.5 (-112)", totalAlt: "Under 48.5 (-108)" },
+        { name: "BetRivers",  awayML: "-165", homeML: "+140", homeBest: true, spread: "-3.5 (+100)", spreadAlt: "+3.5 (-120)", total: "Over 48.5 (-110)", totalAlt: "Under 48.5 (-110)" },
+        { name: "BetMGM",     awayML: "-160", homeML: "+135", homeBest: false, spread: "-3 (-110)", spreadAlt: "+3 (-110)", total: "Over 48 (-105)", totalBest: true, totalAlt: "Under 48 (-115)" },
+        { name: "Bovada",     awayML: "-160", homeML: "+135", homeBest: false, spread: "-3 (-115)", spreadAlt: "+3 (-105)", total: "Over 48.5 (-110)", totalAlt: "Under 48.5 (-110)" },
       ],
-      lineMovement: { opener: "-6", change: "-1.5", current: "-7.5", totalRange: "228.5 → 228.5" },
-      fadingNote: "Line fading Charlotte Hornets",
-      sparklinePoints: [6, 6, 6.5, 6.5, 6.5, 7, 7, 7, 7, 7.5, 7.5, 7.5],
-      historyPoints: [6, 6, 6, 6.5, 6.5, 6.5, 6.5, 7, 7, 7, 7, 7, 7, 7, 7.5, 7.5],
+      lineMovement: { opener: "-2", change: "-1", current: "-3", totalRange: "50.5 → 48.5" },
+      fadingNote: "Line moving toward Buffalo Bills",
+      sparklinePoints: [2, 2, 2, 2.5, 2.5, 2.5, 2.5, 3, 3, 3, 3, 3],
+      historyPoints: [2, 2, 2, 2, 2.5, 2.5, 2.5, 2.5, 2.5, 3, 3, 3, 3, 3, 3, 3],
     },
   },
   {
@@ -657,35 +691,34 @@ const TABS = [
     source: "ESPN",
     teams: [
       {
-        name: "Charlotte Hornets",
-        homeRec: "3-3", awayRec: "4-0",
-        last10: "7-3", streak: "W6", streakColor: "#22c55e",
+        name: "Miami Dolphins",
+        homeRec: "4-1", awayRec: "2-3",
+        last10: "6-4", streak: "W2", streakColor: "#22c55e",
         games: [
-          { result: "W", opp: "@BOS" }, { result: "W", opp: "vsDAL" }, { result: "W", opp: "vsPOR" },
-          { result: "W", opp: "@IND" }, { result: "W", opp: "@CHI" }, { result: "W", opp: "@WSH" },
-          { result: "L", opp: "vsCLE" }, { result: "L", opp: "vsHOU" }, { result: "W", opp: "vsATL" },
-          { result: "L", opp: "vsDET" },
+          { result: "W", opp: "vsNE" }, { result: "W", opp: "@NYJ" }, { result: "L", opp: "vsBUF" },
+          { result: "W", opp: "@TEN" }, { result: "L", opp: "@HOU" }, { result: "W", opp: "vsSF" },
+          { result: "L", opp: "@CLE" }, { result: "W", opp: "vsNYJ" }, { result: "W", opp: "@NE" },
+          { result: "L", opp: "vsKC" },
         ],
       },
       {
-        name: "Miami Heat",
-        homeRec: "4-1", awayRec: "3-2",
-        last10: "7-3", streak: "W3", streakColor: "#22c55e",
+        name: "Buffalo Bills",
+        homeRec: "5-0", awayRec: "3-2",
+        last10: "8-2", streak: "W4", streakColor: "#22c55e",
         games: [
-          { result: "W", opp: "vsBKN" }, { result: "W", opp: "vsBKN" }, { result: "W", opp: "vsHOU" },
-          { result: "L", opp: "@PHI" }, { result: "L", opp: "@MIL" }, { result: "W", opp: "vsMEM" },
-          { result: "W", opp: "@ATL" }, { result: "W", opp: "@IND" }, { result: "L", opp: "vsUTA" },
-          { result: "W", opp: "@WSH" },
+          { result: "W", opp: "vsBAL" }, { result: "W", opp: "@NYJ" }, { result: "W", opp: "vsMIA" },
+          { result: "W", opp: "@NE" }, { result: "L", opp: "@KC" }, { result: "W", opp: "vsLAC" },
+          { result: "W", opp: "vsNYJ" }, { result: "L", opp: "@DEN" }, { result: "W", opp: "vsPIT" },
+          { result: "W", opp: "@CIN" },
         ],
       },
     ],
-    timestamp: "10:46:43 PM · ESPN",
+    timestamp: "10:46:43 AM · ESPN",
     injuries: [
-      { player: "Simone Fontecchio", team: "Heat", status: "Out", reason: "Groin" },
-      { player: "Nikola Jovic", team: "Heat", status: "Out", reason: "Back" },
-      { player: "Norman Powell", team: "Heat", status: "Out", reason: "Groin" },
-      { player: "Terry Rozier", team: "Heat", status: "Out", reason: "Not Injury Related" },
-      { player: "Tidjane Salaun", team: "Hornets", status: "Out", reason: "Calf" },
+      { player: "WR (starter)", team: "Dolphins", status: "Questionable", reason: "Hamstring" },
+      { player: "LB (rotation)", team: "Dolphins", status: "Out", reason: "Knee" },
+      { player: "CB (starter)", team: "Bills", status: "Questionable", reason: "Ankle" },
+      { player: "OL (reserve)", team: "Bills", status: "Out", reason: "Illness" },
     ],
   },
   {
@@ -693,31 +726,31 @@ const TABS = [
     description: "Surface player prop edges backed by market movement.",
     players: [
       {
-        name: "Karl-Anthony Towns",
-        game: "New York Knicks @ Denver Nuggets",
+        name: "Josh Allen",
+        game: "Buffalo Bills @ Miami Dolphins",
         marketCount: 4,
         markets: [
           {
-            stat: "PTS", line: 17.5, books: ["BetO", "Csr", "FD"],
-            over:  [{ odds: -127, best: true }, { odds: -134, best: false }, { odds: -132, best: false }],
-            under: [{ odds: -102, best: false }, { odds: +100, best: true }, { odds: +100, best: true }],
+            stat: "PASS YDS", line: 245.5, books: ["BetO", "Csr", "FD"],
+            over:  [{ odds: -110, best: false }, { odds: -115, best: false }, { odds: +100, best: true }],
+            under: [{ odds: -110, best: false }, { odds: -105, best: true }, { odds: -120, best: false }],
           },
           {
-            stat: "REB", line: 11.5, books: ["BetO", "Csr", "FD"],
-            over:  [{ odds: -118, best: true }, { odds: -122, best: false }, { odds: -125, best: false }],
-            under: [{ odds: -110, best: false }, { odds: -108, best: false }, { odds: -106, best: true }],
+            stat: "RUSH YDS", line: 32.5, books: ["BetO", "Csr", "FD"],
+            over:  [{ odds: -118, best: false }, { odds: -112, best: true }, { odds: -125, best: false }],
+            under: [{ odds: -110, best: false }, { odds: -112, best: false }, { odds: -106, best: true }],
           },
         ],
       },
       {
-        name: "Jalen Brunson",
-        game: "New York Knicks @ Denver Nuggets",
+        name: "James Cook",
+        game: "Buffalo Bills @ Miami Dolphins",
         marketCount: 3,
         markets: [
           {
-            stat: "PTS", line: 24.5, books: ["BetO", "Csr", "FD"],
-            over:  [{ odds: -115, best: true }, { odds: -125, best: false }, { odds: -120, best: false }],
-            under: [{ odds: -105, best: false }, { odds: +105, best: true }, { odds: +100, best: false }],
+            stat: "RUSH YDS", line: 64.5, books: ["BetO", "Csr", "FD"],
+            over:  [{ odds: -115, best: false }, { odds: -110, best: true }, { odds: -120, best: false }],
+            under: [{ odds: -105, best: false }, { odds: -110, best: false }, { odds: +100, best: true }],
           },
         ],
       },
@@ -918,8 +951,8 @@ function OddsView({ tab }) {
               <span style={{ color: COLORS.accentPurple }}>⚡</span> Fair Line
               <span style={{ marginLeft: 8, color: COLORS.textDim }}>ML: {g.fairML}</span>
             </span>
-            <span>Spread: -181 / +181</span>
-            <span>Total: -100 / +100</span>
+            <span>Spread: {g.fairSpread}</span>
+            <span>Total: {g.fairTotal}</span>
           </div>
 
           {/* Book rows */}
@@ -938,7 +971,7 @@ function OddsView({ tab }) {
               <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                 <span>
                   {book.awayBest ? (
-                    <span style={{ background: "rgba(0,200,255,0.15)", color: COLORS.accent, padding: "3px 8px", borderRadius: 4, fontWeight: 600 }}>{book.awayML}</span>
+                    <span style={{ background: "rgba(0,200,255,0.15)", color: COLORS.accent, padding: "3px 8px", borderRadius: 4, fontWeight: 600 }}>{g.away.split(" ").pop()} {book.awayML}</span>
                   ) : (
                     <span>{g.away.split(" ").pop()} {book.awayML}</span>
                   )}
@@ -1838,12 +1871,331 @@ function CommunityProof() {
   );
 }
 
+// ─── NAVIGATION ───────────────────────────────────
+const NAV_LINKS = [
+  ["in-season", "In Season"],
+  ["features", "Features"],
+  ["preview", "Preview"],
+  ["pricing", "Pricing"],
+];
+
+function WelcomeNav({ onSignIn, onSignUp }) {
+  const linkStyle = {
+    fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1,
+    color: COLORS.textMuted, textDecoration: "none", padding: "8px 10px", borderRadius: 8,
+    whiteSpace: "nowrap",
+  };
+  return (
+    <header className="welcome-header" style={{
+      position: "sticky", top: 0, zIndex: 50,
+      background: "rgba(13,17,23,0.88)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+      margin: "0 calc(-1 * clamp(20px, 4vw, 48px))", padding: "14px clamp(20px, 4vw, 48px)",
+      borderBottom: `1px solid ${COLORS.border}`, marginBottom: 20,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <a href="#top" aria-label="EdgeFinder home" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
+          <LogoMark size={30} />
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: COLORS.text, letterSpacing: -0.5 }}>EdgeFinder</span>
+        </a>
+        <nav className="welcome-nav-links" aria-label="Page sections" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {NAV_LINKS.map(([id, label]) => (
+            <a key={id} href={`#${id}`} style={linkStyle}>{label}</a>
+          ))}
+        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={onSignIn} style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1,
+            padding: "8px 16px", borderRadius: 8, border: `1px solid ${COLORS.borderActive}`,
+            background: "transparent", color: COLORS.text, cursor: "pointer", fontWeight: 600,
+          }}>Sign In</button>
+          <button className="welcome-nav-cta" onClick={onSignUp} style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1,
+            padding: "8px 16px", borderRadius: 8, border: "none",
+            background: COLORS.gradient, color: "#fff", cursor: "pointer", fontWeight: 700,
+            boxShadow: `0 0 20px rgba(0,200,255,0.1)`,
+          }}>Start Free</button>
+        </div>
+      </div>
+      <nav className="welcome-nav-mobile" aria-label="Page sections" style={{ display: "none", gap: 4, overflowX: "auto", marginTop: 10 }}>
+        {NAV_LINKS.map(([id, label]) => (
+          <a key={id} href={`#${id}`} style={{ ...linkStyle, border: `1px solid ${COLORS.border}`, fontSize: 11 }}>{label}</a>
+        ))}
+      </nav>
+    </header>
+  );
+}
+
+function SectionHeading({ eyebrow, title, subtitle }) {
+  return (
+    <div style={{ textAlign: "center", marginBottom: 40 }}>
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: 4, textTransform: "uppercase",
+        background: COLORS.gradientText, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+        display: "block", marginBottom: 16,
+      }}>{eyebrow}</span>
+      <h2 style={{
+        fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(28px, 4vw, 42px)",
+        fontWeight: 600, color: COLORS.text, margin: "0 0 8px 0", lineHeight: 1.2,
+      }}>{title}</h2>
+      {subtitle && <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, color: COLORS.textMuted, margin: "0 auto", maxWidth: 640, lineHeight: 1.5 }}>{subtitle}</p>}
+    </div>
+  );
+}
+
+// ─── IN SEASON NOW ────────────────────────────────
+const SEASON_STATE_STYLES = {
+  live: { label: "In season", color: "#22c55e" },
+  soon: { label: "Starting soon", color: COLORS.amber },
+  off: { label: "Off-season", color: COLORS.textDim },
+};
+
+function formatShortDate(date) {
+  return date ? date.toLocaleDateString([], { month: "short", day: "numeric" }) : "";
+}
+
+function InSeasonSection({ onSignUp }) {
+  const board = getSeasonBoard(new Date());
+  // /api/sports is quota-free and lists which odds boards are live right now;
+  // the calendar alone covers the case where it is unreachable.
+  const [activeKeys, setActiveKeys] = useState(null);
+  const [showOff, setShowOff] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/sports")
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => {
+        if (cancelled || !Array.isArray(json)) return;
+        setActiveKeys(new Set(json.map(sport => sport.key)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const inSeason = board.filter(sport => sport.status.state !== "off");
+  const offSeason = board.filter(sport => sport.status.state === "off");
+  const visible = showOff ? board : inSeason;
+  const month = new Date().toLocaleDateString([], { month: "long" });
+
+  return (
+    <section id="in-season" className="welcome-section" style={{ padding: "64px 0", scrollMarginTop: 90 }}>
+      <SectionHeading
+        eyebrow="In Season Now"
+        title={`What's on the board this ${month}.`}
+        subtitle="Live odds, line movement, and research for every sport below — player props where books post them."
+      />
+      <div className="season-grid" style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 250px), 1fr))",
+        gap: 12, maxWidth: 980, margin: "0 auto",
+      }}>
+        {visible.map(sport => {
+          const state = SEASON_STATE_STYLES[sport.status.state];
+          const boardLive = activeKeys?.has(sport.key);
+          const detail = sport.status.state === "live"
+            ? sport.status.phase
+            : sport.status.state === "soon"
+              ? `${sport.status.phase} starts ${sport.status.daysUntil <= 1 ? "tomorrow" : `in ${sport.status.daysUntil} days`}`
+              : `${sport.status.phase} returns ${formatShortDate(sport.status.startsOn)}`;
+          return (
+            <div key={sport.key} style={{
+              background: COLORS.surface, border: `1px solid ${sport.status.state === "live" ? `${state.color}33` : COLORS.border}`,
+              borderRadius: 12, padding: "16px 18px", opacity: sport.status.state === "off" ? 0.65 : 1,
+              display: "flex", flexDirection: "column", gap: 10,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <span style={{ fontSize: 22 }} aria-hidden="true">{sport.icon}</span>
+                  <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 600, color: COLORS.text }}>{sport.label}</span>
+                </div>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: 1, fontWeight: 700,
+                  textTransform: "uppercase", color: state.color, background: `${state.color}14`,
+                  padding: "4px 8px", borderRadius: 100,
+                }}>
+                  {sport.status.state === "live" && <span style={{ width: 6, height: 6, borderRadius: "50%", background: state.color, animation: "pulse 2s ease-in-out infinite" }} />}
+                  {state.label}
+                </span>
+              </div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: COLORS.textMuted }}>{detail}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {["Odds", sport.props ? "Props" : null, "Research"].filter(Boolean).map(tag => (
+                  <span key={tag} style={{
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.text,
+                    border: `1px solid ${COLORS.border}`, padding: "3px 8px", borderRadius: 4,
+                  }}>{tag}</span>
+                ))}
+                {boardLive && (
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.accent,
+                    background: COLORS.accentDim, padding: "3px 8px", borderRadius: 4, fontWeight: 700,
+                  }}>Board live</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", marginTop: 24 }}>
+        {offSeason.length > 0 && (
+          <button onClick={() => setShowOff(v => !v)} style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1,
+            padding: "10px 18px", borderRadius: 8, border: `1px solid ${COLORS.borderActive}`,
+            background: "transparent", color: COLORS.textMuted, cursor: "pointer",
+          }}>{showOff ? "Hide off-season" : `Show off-season (${offSeason.length})`}</button>
+        )}
+        <button onClick={onSignUp} style={{
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1,
+          padding: "10px 18px", borderRadius: 8, border: "none",
+          background: COLORS.gradient, color: "#fff", cursor: "pointer", fontWeight: 700,
+        }}>See today's board</button>
+      </div>
+      <p style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim, margin: "16px 0 0", letterSpacing: 0.5 }}>
+        Season windows are typical dates; "Board live" means sportsbooks are posting odds right now.
+      </p>
+    </section>
+  );
+}
+
+// ─── FEATURES ─────────────────────────────────────
+const FEATURES = [
+  { icon: "📝", title: "Daily Pro Report", tier: "Pro", isNew: true, text: "Top edges, steam moves, best books, and games to avoid — one morning screen that does the scanning for you." },
+  { icon: "🧾", title: "Yesterday's Receipts", tier: "Free", isNew: true, text: "Every edge we flagged yesterday, auto-graded against the closing line. A public track record, not screenshots." },
+  { icon: "⚖️", title: "Arbitrage & Low-Hold Scanner", tier: "Pro", isNew: true, text: "Guaranteed-profit and near-free markets across books, with the stake split computed for you." },
+  { icon: "⚡", title: "Best Props ranking", tier: "Free preview", isNew: true, text: "Props scored on price edge vs no-vig fair value, book depth, and line disagreement — best number first." },
+  { icon: "🚨", title: "Prop alerts", tier: "Free preview", isNew: true, text: "Flags props where a book's price beats the no-vig fair line — tap one to jump straight to that market." },
+  { icon: "🎯", title: "Live edge board", tier: "Pro", text: "Exact book, line, EV, and fair probability for every flagged edge across every sportsbook we track." },
+  { icon: "🔥", title: "Steam & line movement", tier: "Pro", text: "See where lines opened, where they are now, and which books moved first." },
+  { icon: "🔎", title: "Game research", tier: "Free", text: "Recent form, head-to-head, trends, and injury reports next to the odds." },
+  { icon: "🧩", title: "Parlay Builder", tier: "Free", text: "Build legs from the board and see the true combined price before you place it." },
+  { icon: "📈", title: "Bet Tracker with CLV", tier: "Free", text: "W/L, ROI, units, streaks, and closing-line grading on every bet you log — synced across devices." },
+  { icon: "🧮", title: "EV & Kelly calculators", tier: "Pro", text: "Size stakes to the edge instead of the gut feeling." },
+];
+
+function FeatureGrid() {
+  return (
+    <section id="features" className="welcome-section" style={{ padding: "64px 0", scrollMarginTop: 90 }}>
+      <SectionHeading
+        eyebrow="What's Inside"
+        title="Everything you need to bet the better number."
+        subtitle="New this season: the Daily Pro Report, graded Receipts, the arbitrage scanner, and ranked props."
+      />
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))",
+        gap: 12, maxWidth: 980, margin: "0 auto",
+      }}>
+        {FEATURES.map(feature => (
+          <div key={feature.title} style={{
+            background: COLORS.surface, border: `1px solid ${feature.isNew ? `${COLORS.accent}33` : COLORS.border}`,
+            borderRadius: 12, padding: "18px 20px",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 20 }} aria-hidden="true">{feature.icon}</span>
+              <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, fontWeight: 600, color: COLORS.text }}>{feature.title}</span>
+              {feature.isNew && (
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: 1, fontWeight: 700,
+                  color: COLORS.accent, background: COLORS.accentDim, padding: "2px 7px", borderRadius: 4,
+                }}>NEW</span>
+              )}
+            </div>
+            <p style={{ margin: "0 0 12px", fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, color: COLORS.textMuted, lineHeight: 1.55 }}>{feature.text}</p>
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: 1, textTransform: "uppercase",
+              color: feature.tier === "Pro" ? COLORS.accentPurple : "#22c55e",
+            }}>{feature.tier}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── PRICING ──────────────────────────────────────
+const FREE_PLAN = [
+  "Odds board with FanDuel, DraftKings & BetMGM",
+  "Player props preview + Best Props top 3",
+  "Game research: form, head-to-head, and injuries",
+  "Parlay Builder and Yesterday's Receipts",
+  "Bet Tracker with CLV grading",
+];
+
+function PricingSection({ onSignUp }) {
+  const cardBase = { borderRadius: 16, padding: 28, display: "flex", flexDirection: "column", gap: 16 };
+  const listItem = (text, color) => (
+    <li key={text} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, color: COLORS.text, lineHeight: 1.5 }}>
+      <span style={{ color, flexShrink: 0 }}>✓</span><span>{text}</span>
+    </li>
+  );
+  return (
+    <section id="pricing" className="welcome-section" style={{ padding: "64px 0", scrollMarginTop: 90 }}>
+      <SectionHeading eyebrow="Pricing" title="Start free. Upgrade when it pays for itself." subtitle={PRO_FEATURES.subheadline} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16, maxWidth: 880, margin: "0 auto" }}>
+        <div style={{ ...cardBase, background: COLORS.surface, border: `1px solid ${COLORS.border}` }}>
+          <div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: COLORS.textMuted }}>Free</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: COLORS.text, marginTop: 6 }}>$0</div>
+          </div>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            {FREE_PLAN.map(text => listItem(text, "#22c55e"))}
+          </ul>
+          <button onClick={onSignUp} style={{
+            marginTop: "auto", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, letterSpacing: 1,
+            padding: "12px 0", borderRadius: 8, border: `1px solid ${COLORS.borderActive}`,
+            background: "transparent", color: COLORS.text, cursor: "pointer", fontWeight: 700,
+          }}>Create Free Account</button>
+        </div>
+        <div style={{ ...cardBase, background: "linear-gradient(160deg, rgba(123,92,255,0.12), rgba(0,200,255,0.06))", border: `1px solid ${COLORS.accentPurple}55` }}>
+          <div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: COLORS.accent }}>Pro</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 34, fontWeight: 700, color: COLORS.text, marginTop: 6 }}>{PRO_FEATURES.price}</div>
+          </div>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            {PRO_FEATURES.features.map(({ text }) => listItem(text, COLORS.accent))}
+          </ul>
+          <button onClick={onSignUp} style={{
+            marginTop: "auto", fontFamily: "'JetBrains Mono', monospace", fontSize: 13, letterSpacing: 1,
+            padding: "12px 0", borderRadius: 8, border: "none",
+            background: COLORS.gradient, color: "#fff", cursor: "pointer", fontWeight: 700,
+          }}>Start Free, Upgrade In-App</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WelcomeFooter() {
+  return (
+    <footer style={{
+      borderTop: `1px solid ${COLORS.border}`, padding: "28px 0 40px",
+      display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", alignItems: "center",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <LogoMark size={22} />
+        <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, fontWeight: 600, color: COLORS.textMuted }}>EdgeFinder</span>
+      </div>
+      <nav aria-label="Footer" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        {NAV_LINKS.map(([id, label]) => (
+          <a key={id} href={`#${id}`} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.textMuted, textDecoration: "none" }}>{label}</a>
+        ))}
+      </nav>
+      <p style={{ width: "100%", margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, color: COLORS.textDim, lineHeight: 1.6 }}>
+        EdgeFinder is an odds-comparison and analytics tool — not a sportsbook, and not a picks service. Must be 21+ and in a jurisdiction where sports betting is legal. Gambling problem? Call 1-800-GAMBLER.
+      </p>
+    </footer>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────
 export default function EdgeFinderSections() {
   const [signInOpen, setSignInOpen] = useState(false);
+  const [signInTab, setSignInTab] = useState("signin");
+  const openAuth = (tab) => { setSignInTab(tab); setSignInOpen(true); };
+  const openSignIn = () => openAuth("signin");
+  const openSignUp = () => openAuth("signup");
+  const closeAuth = useCallback(() => setSignInOpen(false), []);
 
   return (
-    <div className="welcome-shell" style={{
+    <div id="top" className="welcome-shell" style={{
       background: COLORS.bg, minHeight: "100vh",
       padding: "0 clamp(20px, 4vw, 48px)", fontFamily: "'Space Grotesk', sans-serif",
     }}>
@@ -1861,18 +2213,29 @@ export default function EdgeFinderSections() {
         ::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 4px; }
         input::placeholder { color: ${COLORS.textDim}; }
 
+        .welcome-nav-links a:hover { color: ${COLORS.text} !important; background: ${COLORS.surfaceHover}; }
+        .welcome-nav-mobile::-webkit-scrollbar { display: none; }
+
+        @media (max-width: 860px) {
+          .welcome-nav-links { display: none !important; }
+          .welcome-nav-mobile { display: flex !important; }
+        }
+
         @media (max-width: 640px) {
           .welcome-shell {
             width: min(100%, 390px) !important;
             padding-left: max(14px, env(safe-area-inset-left, 0px)) !important;
             padding-right: max(14px, env(safe-area-inset-right, 0px)) !important;
-            overflow-x: hidden;
+            overflow-x: clip;
           }
 
           .welcome-header {
-            padding-top: calc(14px + env(safe-area-inset-top, 0px)) !important;
-            padding-bottom: 16px !important;
-            gap: 12px;
+            padding-top: calc(12px + env(safe-area-inset-top, 0px)) !important;
+            padding-bottom: 12px !important;
+            padding-left: max(14px, env(safe-area-inset-left, 0px)) !important;
+            padding-right: max(14px, env(safe-area-inset-right, 0px)) !important;
+            margin-left: calc(-1 * max(14px, env(safe-area-inset-left, 0px))) !important;
+            margin-right: calc(-1 * max(14px, env(safe-area-inset-right, 0px))) !important;
           }
 
           .welcome-header button {
@@ -1961,33 +2324,26 @@ export default function EdgeFinderSections() {
         }
       `}</style>
 
-      <SignInPopup open={signInOpen} onClose={() => setSignInOpen(false)} />
+      <SignInPopup open={signInOpen} onClose={closeAuth} initialTab={signInTab} />
 
-      <header className="welcome-header" style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "24px 0", borderBottom: `1px solid ${COLORS.border}`, marginBottom: 20,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <LogoMark size={30} />
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: COLORS.text, letterSpacing: -0.5 }}>EdgeFinder</span>
-        </div>
-        <button onClick={() => setSignInOpen(true)} style={{
-          fontFamily: "'JetBrains Mono', monospace", fontSize: 12, letterSpacing: 1,
-          padding: "8px 20px", borderRadius: 8, border: "none",
-          background: COLORS.gradient, color: "#fff", cursor: "pointer", fontWeight: 600,
-          boxShadow: `0 0 20px rgba(0,200,255,0.1)`,
-        }}>Sign In</button>
-      </header>
+      <WelcomeNav onSignIn={openSignIn} onSignUp={openSignUp} />
 
-      <HeroSection onSignIn={() => setSignInOpen(true)} />
-      <QualifierBlock />
-      <div style={{ height: 1, background: COLORS.border, margin: "0 -48px" }} />
-      <LiveSignalStrip />
-      <div style={{ height: 1, background: COLORS.border, margin: "0 -48px" }} />
-      <div id="preview">
+      <HeroSection onSignUp={openSignUp} />
+      <Divider />
+      <InSeasonSection onSignUp={openSignUp} />
+      <Divider />
+      <FeatureGrid />
+      <Divider />
+      <div id="preview" style={{ scrollMarginTop: 90 }}>
         <FeaturePreview />
       </div>
-      <div style={{ height: 1, background: COLORS.border, margin: "0 -48px" }} />
+      <Divider />
+      <LiveSignalStrip />
+      <Divider />
+      <PricingSection onSignUp={openSignUp} />
+      <Divider />
+      <QualifierBlock />
+      <Divider />
       <CommunityProof />
 
       <section style={{ textAlign: "center", padding: "80px 0 60px" }}>
@@ -2001,13 +2357,18 @@ export default function EdgeFinderSections() {
         <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: COLORS.textMuted, margin: "0 0 32px 0" }}>
           Join the bettors who find value before the line moves.
         </p>
-        <button onClick={() => setSignInOpen(true)} style={{
+        <button onClick={openSignUp} style={{
           fontFamily: "'JetBrains Mono', monospace", fontSize: 14, letterSpacing: 1,
           padding: "14px 36px", borderRadius: 10, border: "none",
           background: COLORS.gradient, color: "#fff", cursor: "pointer", fontWeight: 600,
           boxShadow: `0 0 30px rgba(0,200,255,0.15)`,
         }}>Create Free Account</button>
       </section>
+      <WelcomeFooter />
     </div>
   );
+}
+
+function Divider() {
+  return <div style={{ height: 1, background: COLORS.border, margin: "0 calc(-1 * clamp(20px, 4vw, 48px))" }} />;
 }
