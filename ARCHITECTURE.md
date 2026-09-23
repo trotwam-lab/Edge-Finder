@@ -46,8 +46,14 @@ This repo is being standardised around the working Firebase login/subscriber flo
 - adding a sport = adding a registry entry; see `research/README.md`
 - Python tooling only — not part of the Vite build or Vercel functions
 
+- `api/_http.js` — CORS allowlist + per-IP rate limit for every public route
+- `api/_sharedCache.js` — cross-instance Firestore cache for odds/props upstream calls
+- `api/revoke-sessions.js` — "sign out of all devices"
+- `src/utils/bets.js` — bet dates, CLV, grading and settlement (unit tested)
+- `src/utils/storage.js` — throw-safe localStorage helpers; resets never touch bets
+- `src/components/welcome/` — signed-out landing page sections
+
 ## Known debt
 - `src/hooks/useOdds.js` is oversized and mixes fetch, merge, polling, cache, and history logic
-- `src/App.jsx` is still a large orchestration component
+- `src/App.jsx` and `src/components/BetTracker.jsx` are still large components; most styling is inline
 - bundle size is too large and needs code-splitting later
-- CI / lint / test baseline still missing

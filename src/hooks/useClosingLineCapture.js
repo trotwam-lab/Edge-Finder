@@ -3,16 +3,46 @@ import { useEffect } from 'react';
 // Find the current live quote for a bet's market/outcome in the games feed.
 // Returns null if anything is missing. We match line markets by outcome name
 // first so a moved spread/total can still be captured as CLV.
-function findLiveQuote(games, bet) {
+const normBook = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Player props live in the props feed, not on the game. Match the bet's
+// player, market, side and book; prefer the exact line bet, else the book's
+// nearest line so a moved number still yields a closing line.
+export function findPropQuote(playerProps, bet) {
+  if (!Array.isArray(playerProps) || !bet?.player || !bet?.marketKey || !bet?.outcomeName) return null;
+  const books = [bet.bookKey, bet.book].filter(Boolean).map(normBook);
+  const candidates = playerProps.filter(prop => (
+    prop.gameId === bet.gameId
+    && prop.player === bet.player
+    && prop.market === bet.marketKey
+    && prop.outcome === bet.outcomeName
+    && prop.price != null
+    && (!books.length || [prop.bookKey, prop.book, prop.bookTitle].some(b => books.includes(normBook(b))))
+  ));
+  if (!candidates.length) return null;
+  const target = bet.outcomePoint;
+  const pick = target == null
+    ? candidates[0]
+    : [...candidates].sort((a, b) => Math.abs((a.line ?? target) - target) - Math.abs((b.line ?? target) - target))[0];
+  return { price: pick.price ?? null, point: pick.line ?? null, book: pick.bookKey ?? pick.book ?? null, capturedAt: Date.now() };
+}
+
+export function findLiveQuote(games, bet, playerProps) {
   if (!bet?.gameId || !bet?.marketKey || !bet?.outcomeName) return null;
+  if (bet.type === 'Player Prop' || bet.player) return findPropQuote(playerProps, bet);
   const game = games?.find(g => g.id === bet.gameId);
   if (!game) return null;
-  const book = bet.book
-    ? game.bookmakers?.find(b => b.key === bet.book) || game.bookmakers?.[0]
-    : game.bookmakers?.[0];
+  // Prefer the book the bet was placed at. Bets store its key (bookKey) or
+  // a display name (book), so match either before falling back.
+  const wanted = [bet.bookKey, bet.book].filter(Boolean).map(v => String(v).toLowerCase());
+  const book = (wanted.length
+    ? game.bookmakers?.find(b => wanted.includes(String(b.key).toLowerCase()) || wanted.includes(String(b.title).toLowerCase()))
+    : null) || game.bookmakers?.[0];
   const market = book?.markets?.find(m => m.key === bet.marketKey);
   if (!market) return null;
-  const outcome = market.outcomes?.find(o => o.name === bet.outcomeName);
+  const outcome = market.outcomes?.find(o => (
+    o.name === bet.outcomeName && (bet.outcomeSide == null || o.side === bet.outcomeSide)
+  ));
   if (!outcome) return null;
   return {
     price: outcome.price ?? null,
@@ -35,7 +65,7 @@ function findLiveQuote(games, bet) {
  * game kicked off, the close was never captured. Running it here, off the same
  * odds feed the whole app shares, captures closes no matter which tab is open.
  */
-export function useClosingLineCapture(bets, setBets, games, historicOdds) {
+export function useClosingLineCapture(bets, setBets, games, historicOdds, playerProps = []) {
   useEffect(() => {
     if (!games?.length || !bets?.length) return;
     const now = Date.now();
@@ -55,7 +85,7 @@ export function useClosingLineCapture(bets, setBets, games, historicOdds) {
       }
 
       if ((bet.closingOdds == null || bet.closingPoint == null) && bet.status === 'pending') {
-        const liveQuote = findLiveQuote(games, bet);
+        const liveQuote = findLiveQuote(games, bet, playerProps);
         const commence = bet.commenceTime ? new Date(bet.commenceTime).getTime() : null;
         const gameStillListed = games.some(g => g.id === bet.gameId);
 
@@ -114,7 +144,7 @@ export function useClosingLineCapture(bets, setBets, games, historicOdds) {
     // odds refresh from the render-fresh closure, and depending on `bets`
     // would re-run the effect on its own writes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, historicOdds]);
+  }, [games, historicOdds, playerProps]);
 }
 
 export default useClosingLineCapture;

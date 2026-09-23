@@ -8,6 +8,7 @@
 // and surface a "Game of the Day" ticker.
 
 import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
+import { guardRequest } from './_http.js';
 
 const TTL = 20 * 1000; // 20s — live status needs to stay fresh during games
 const ERROR_TTL = 5 * 60 * 1000; // 5min — don't re-hammer a path ESPN is rejecting
@@ -32,11 +33,6 @@ const MARQUEE_RULES = [
   { re: /all-?star/i, label: 'ALL-STAR', weight: 66 },
   { re: /opening day/i, label: 'OPENING DAY', weight: 64 },
 ];
-
-function sendCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-}
 
 function detectMarquee(event, competition) {
   const notes = (competition?.notes || []).map(n => n?.headline || n?.text || '').join(' ');
@@ -132,8 +128,7 @@ async function fetchScoreboard(sportPath) {
 }
 
 export default async function handler(req, res) {
-  sendCors(res);
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (guardRequest(req, res, { route: 'live-status' })) return;
 
   const { sport = 'basketball_nba' } = req.query || {};
   const sportPath = SPORT_PATHS[sport];

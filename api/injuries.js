@@ -1,7 +1,10 @@
+import { guardRequest } from './_http.js';
+
 const cache = {};
 const TTL = 5 * 60 * 1000; // 5 min for injuries
 
 export default async function handler(req, res) {
+  if (guardRequest(req, res, { route: 'injuries', rateLimit: 300 })) return;
   const { sport = 'basketball/nba' } = req.query;
   const cacheKey = `injuries-${sport}`;
 

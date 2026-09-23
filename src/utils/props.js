@@ -388,6 +388,40 @@ export function createPropMarketKey(prop) {
   return [prop.sport, prop.gameId, prop.player, prop.market].join('::');
 }
 
+// Records one snapshot per prop outcome per refresh, only when its price or
+// line changed, so movement signals have something to compare against.
+// Outcomes that disappear from a refreshed sport are dropped; sports that
+// weren't refreshed this cycle keep their history untouched.
+export function appendPropHistory(prevHistory = {}, props = [], {
+  now = Date.now(),
+  refreshedSports = null,
+  maxEntries = 12,
+} = {}) {
+  const next = {};
+  const seen = new Set();
+  const refreshed = refreshedSports ? new Set(refreshedSports) : null;
+  Object.entries(prevHistory).forEach(([key, entries]) => {
+    const sport = key.split('::')[0];
+    if (refreshed && !refreshed.has(sport)) next[key] = entries;
+  });
+  props.forEach(prop => {
+    if (!prop?.player || !prop.market || prop.price == null) return;
+    const key = createPropHistoryKey(prop);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const entries = prevHistory[key] || [];
+    const last = entries[entries.length - 1];
+    const line = prop.line ?? null;
+    const price = Number(prop.price);
+    if (last && last.price === price && last.line === line) {
+      next[key] = entries;
+      return;
+    }
+    next[key] = [...entries, { price, line, capturedAt: now }].slice(-maxEntries);
+  });
+  return next;
+}
+
 export function summarizeHistory(entries = []) {
   if (!entries.length) return null;
   const first = entries[0];

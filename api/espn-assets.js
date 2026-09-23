@@ -2,6 +2,8 @@
 // ESPN's site API does not consistently send browser CORS headers, so the
 // React app must fetch teams/rosters through our own API route.
 
+import { guardRequest } from './_http.js';
+
 const ESPN_SITE_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 const TTL = 6 * 60 * 60 * 1000; // 6 hours; logos/rosters do not need minute-by-minute refreshes
 const cache = new Map();
@@ -58,12 +60,6 @@ const ALLOWED_PATHS = new Set([
   'football/cfl',
 ]);
 
-function sendCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
 function fromCache(key) {
   const hit = cache.get(key);
   if (!hit || Date.now() - hit.ts > TTL) return null;
@@ -75,8 +71,7 @@ function saveCache(key, data) {
 }
 
 export default async function handler(req, res) {
-  sendCors(res);
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (guardRequest(req, res, { route: 'espn-assets', rateLimit: 600 })) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const { path, type = 'teams', teamId } = req.query;

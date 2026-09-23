@@ -1,33 +1,8 @@
 import Stripe from 'stripe';
 import { getAdminDb } from './_firebaseAdmin.js';
-import { getVerifiedUser } from './_auth.js';
+import { ADMIN_EMAILS, FRIEND_EMAILS, getVerifiedUser } from './_auth.js';
+import { guardRequest } from './_http.js';
 
-const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
-const FRIEND_EMAILS = [
-  'mrxprofit@gmail.com',
-  'diajdaley@gmail.com',
-  'wb_sportstalk@yahoo.com',
-  'darryljrice@gmail.com',
-  'rcabang@gmail.com',
-  'jimmythebag@hotmail.com',
-  'jeremyahthompson00@gmail.com',
-  'bobano350@gmail.com',
-  'razorsharppicksllc@yahoo.com',
-  'btrainbrizbane@gmail.com',
-  'sosathelocksmith@gmail.com',
-  'vchterry@gmail.com',
-  'rnegron1105@icloud.com',
-  'merobinson19@gmail.com',
-  'theinleague317@gmail.com',
-  'g5juan3@gmail.com',
-    'dylanmedd2018@gmail.com',
-    'iksnizol1@gmail.com',
-    'domrici57@gmail.com',
-    'ferencgary@yahoo.com',
-    'dutchboyfresh702@gmail.com',
-    'ocean.jackson@gmail.com',
-    'wmchapmanfernandez@gmail.com',
-];
 
 async function getTierFromFirestore(uid) {
   if (!uid) return null;
@@ -78,13 +53,7 @@ async function getTierFromStripe(email) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (guardRequest(req, res, { route: 'user-tier', rateLimit: 60 })) return;
 
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed. Use GET.' });
@@ -98,7 +67,9 @@ export default async function handler(req, res) {
     if (!caller) {
       return res.status(401).json({ error: 'Sign in to check subscription tier.' });
     }
-    const normalizedEmail = caller.email;
+    // Email-based grants only count for an email the caller owns (see
+    // isEmailTrusted in _auth.js); the uid-keyed Firestore record always does.
+    const normalizedEmail = caller.emailTrusted ? caller.email : '';
     const uid = caller.uid;
 
     if (normalizedEmail && ADMIN_EMAILS.includes(normalizedEmail)) {

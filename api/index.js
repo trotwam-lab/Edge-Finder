@@ -1,15 +1,9 @@
 // Vercel serverless function entry point
 import { getGameResearch } from './game-research.js';
+import { guardRequest } from './_http.js';
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (guardRequest(req, res, { route: 'research' })) return;
 
   const { homeTeam, awayTeam, sport, gameDate } = req.query;
 

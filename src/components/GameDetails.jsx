@@ -4,6 +4,7 @@ import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveCont
 import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { buildPremiumGameSummary } from '../utils/game-summary.js';
+import { summarizeExtraMarkets } from '../utils/game-markets.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import GameResearch from './GameResearch.jsx';
@@ -39,6 +40,11 @@ export default function GameDetails({
   const spreadFair = getConsensusFairOdds(game.bookmakers, 'spreads');
   const h2hFair = getConsensusFairOdds(game.bookmakers, 'h2h');
   const totalFair = getConsensusFairOdds(game.bookmakers, 'totals');
+
+  // Extra baseball markets, limited to the books this user can see.
+  const extraMarkets = summarizeExtraMarkets(game, bookKey => (
+    (!enabledBooks || enabledBooks.includes(bookKey)) && (tier === 'pro' || FREE_BOOKS.includes(bookKey))
+  ));
 
   // Best odds
   const bestOddsMap = {};
@@ -426,6 +432,8 @@ export default function GameDetails({
                           date: game.commence_time,
                           gameId: game.id,
                           sportKey: game.sport_key,
+                          book: BOOKMAKERS[book.key] || book.title,
+                          bookKey: book.key,
                           marketKey: 'h2h',
                           outcomeName: o.name,
                           commenceTime: game.commence_time,
@@ -462,6 +470,8 @@ export default function GameDetails({
                           date: game.commence_time,
                           gameId: game.id,
                           sportKey: game.sport_key,
+                          book: BOOKMAKERS[book.key] || book.title,
+                          bookKey: book.key,
                           marketKey: 'spreads',
                           outcomeName: o.name,
                           outcomePoint: o.point,
@@ -499,6 +509,8 @@ export default function GameDetails({
                           date: game.commence_time,
                           gameId: game.id,
                           sportKey: game.sport_key,
+                          book: BOOKMAKERS[book.key] || book.title,
+                          bookKey: book.key,
                           marketKey: 'totals',
                           outcomeName: o.name,
                           outcomePoint: o.point,
@@ -522,6 +534,54 @@ export default function GameDetails({
             );
           })}
         </div>
+
+        {/* MLB extras: first-five run lines, team totals and NRFI from the
+            SportsGameOdds feed, best price per outcome across allowed books. */}
+        {extraMarkets.length > 0 && (
+          <div style={{ marginTop: '14px', display: 'grid', gap: '10px' }}>
+            {extraMarkets.map(market => (
+              <div key={market.key} style={{ padding: '10px 12px', background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px' }}>
+                <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '8px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                  {market.title} · best price
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {market.rows.map(row => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      title="Click to track this bet"
+                      className="clickable-odds"
+                      onClick={() => setPendingBet && setPendingBet({
+                        game: `${game.away_team} vs ${game.home_team}`,
+                        type: market.type,
+                        pick: `${row.label} ${formatOdds(row.price)}`,
+                        odds: row.price,
+                        book: BOOKMAKERS[row.bookKey] || row.bookTitle,
+                        bookKey: row.bookKey,
+                        date: game.commence_time,
+                        gameId: game.id,
+                        sportKey: game.sport_key,
+                        marketKey: market.key,
+                        outcomeName: row.outcome.name,
+                        outcomeSide: row.outcome.side ?? null,
+                        outcomePoint: row.outcome.point,
+                        commenceTime: game.commence_time,
+                      })}
+                      style={{
+                        padding: '5px 9px', borderRadius: '6px', border: '1px solid rgba(71, 85, 105, 0.35)',
+                        background: 'rgba(15, 23, 42, 0.6)', color: '#e2e8f0', fontSize: '11px', cursor: 'pointer',
+                        fontFamily: 'JetBrains Mono, monospace',
+                      }}
+                    >
+                      {row.label} <span style={{ color: row.price > 0 ? '#22c55e' : '#cbd5e1', fontWeight: 700 }}>{formatOdds(row.price)}</span>
+                      <span style={{ color: '#64748b', marginLeft: '4px' }}>{BOOKMAKERS[row.bookKey] || row.bookTitle}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Show upgrade banner for free users who are missing books */}
         {tier === 'free' && (

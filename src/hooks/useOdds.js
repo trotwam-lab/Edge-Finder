@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SPORTS, BOOKMAKERS, SPORT_ESPN_MAP } from '../constants.js';
 import { auth } from '../firebase.js';
 import { isGameLive } from '../utils/live-status.js';
+import { appendPropHistory } from '../utils/props.js';
 
 // ============================================================
 // Persistent state — survives page refreshes via localStorage
@@ -107,14 +108,16 @@ function getTeamScore(scoreData, teamName) {
   return row?.score ?? null;
 }
 
-const EMPTY_PROP_HISTORY = {};
-
 export function useOdds({ filter, enabledSports = null, refreshInterval: defaultInterval = 120 }) {
     const [games, setGames] = useState([]);
     const [playerProps, setPlayerProps] = useState([]);
     // Props load in the background after game odds, so the Props tab needs
     // its own flag to tell "still loading" apart from "no props posted".
     const [propsLoading, setPropsLoading] = useState(true);
+    // Prop price/line snapshots for movement signals. Session memory only:
+    // persisting thousands of outcomes to localStorage was what made phones
+    // janky before, and movement is a same-session signal anyway.
+    const [propHistory, setPropHistory] = useState({});
     const [injuries, setInjuries] = useState({});
     const [historicOdds, setHistoricOdds] = usePersistentState('edgefinder_historic_openers', {});
     const [loading, setLoading] = useState(true);
@@ -132,8 +135,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   // re-serializes the whole blob to localStorage, which is exactly the kind
   // of main-thread work that makes the app feel sluggish on phones.
   useEffect(() => {
-        // Nothing has written prop history for several versions — drop the
-        // stale blob instead of parsing it into memory on every boot.
+        // Prop history now lives in memory only — drop the old persisted
+        // blob instead of parsing it into memory on every boot.
         try { localStorage.removeItem('edgefinder_prop_history'); } catch {}
 
       const pruneMap = (setter, isFresh) => {
@@ -400,8 +403,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           // Fetch player props in the background so the Games tab can render as soon as game odds are ready.
           const refreshProps = async () => {
-            const PROPS_SPORTS = ['basketball_nba', 'basketball_wnba', 'americanfootball_nfl', 'icehockey_nhl', 'baseball_mlb'];
-            const PROPS_NAME_MAP = { basketball_nba: 'NBA', basketball_wnba: 'WNBA', americanfootball_nfl: 'NFL', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
+            const PROPS_SPORTS = ['basketball_nba', 'basketball_wnba', 'americanfootball_nfl', 'americanfootball_ncaaf', 'icehockey_nhl', 'baseball_mlb'];
+            const PROPS_NAME_MAP = { basketball_nba: 'NBA', basketball_wnba: 'WNBA', americanfootball_nfl: 'NFL', americanfootball_ncaaf: 'NCAAF', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
             const propsToFetch = PROPS_SPORTS.filter(s =>
               !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
             );
@@ -423,6 +426,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                 }
               }));
               const allProps = propsBySport.flat();
+              setPropHistory(prev => appendPropHistory(prev, allProps, { refreshedSports: propsToFetch }));
               setPlayerProps(prev =>
                 isInitial
                   ? allProps
@@ -559,9 +563,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         isConnected,
         countdown,
         gameLineHistory,
-        // Prop history has no writer anymore; keep the field so consumers'
-        // prop types stay stable, but never load the old blob into memory.
-        propHistory: EMPTY_PROP_HISTORY,
+        propHistory,
         sportLastUpdated,
         manualRefresh,
         setGameLineHistory,
