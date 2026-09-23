@@ -17,6 +17,7 @@ import HomeDashboard from './components/HomeDashboard.jsx';
 import FirstRunSetup from './components/FirstRunSetup.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 import { isGameLive, getGameStatus } from './utils/live-status.js';
+import { clearCachedData, removeKey } from './utils/storage.js';
 
 const tabLoaders = {
   PropsView: () => import('./components/PropsView.jsx'),
@@ -700,11 +701,11 @@ export default function BettingApp() {
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>Clear Cached Data</div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Reset line history, manual openers, and prop tracking data.</div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Reset line history, manual openers, and cached settings on this device. Your tracked bets are never deleted here.</div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button onClick={() => { if (confirm('Clear all line history?')) { localStorage.removeItem('edgefinder_game_lines'); location.reload(); } }} style={{ padding: '6px 14px', background: 'rgba(249,115,22,0.2)', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '6px', color: '#fb923c', fontSize: '11px', cursor: 'pointer' }}>Clear Line History</button>
+              <button onClick={() => { if (confirm('Clear all line history?')) { removeKey('edgefinder_game_lines'); location.reload(); } }} style={{ padding: '6px 14px', background: 'rgba(249,115,22,0.2)', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '6px', color: '#fb923c', fontSize: '11px', cursor: 'pointer' }}>Clear Line History</button>
               <button onClick={() => { if (confirm('Clear all manual openers?')) setManualOpeners({}); }} style={{ padding: '6px 14px', background: 'rgba(249,115,22,0.2)', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '6px', color: '#fb923c', fontSize: '11px', cursor: 'pointer' }}>Clear Openers</button>
-              <button onClick={() => { if (confirm('Clear ALL local data?')) { localStorage.clear(); location.reload(); } }} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', fontSize: '11px', cursor: 'pointer' }}>Reset Everything</button>
+              <button onClick={() => { if (confirm('Reset cached data and settings on this device? Your bets and bankroll settings are kept.')) { clearCachedData(); location.reload(); } }} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', fontSize: '11px', cursor: 'pointer' }}>Reset Everything</button>
             </div>
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>

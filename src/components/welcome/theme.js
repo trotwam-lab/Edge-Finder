@@ -1,0 +1,23 @@
+// Shared palette for the signed-out welcome page.
+export const COLORS = {
+  bg: "#0d1117",
+  surface: "#151b25",
+  surfaceHover: "#1a2230",
+  border: "#1e2a3a",
+  borderActive: "#2a3a4e",
+  text: "#e2e8f0",
+  textMuted: "#7b8ba3",
+  textDim: "#3d4f65",
+  accent: "#00c8ff",
+  accentMid: "#5b8cff",
+  accentPurple: "#7b5cff",
+  accentDim: "rgba(0,200,255,0.08)",
+  accentGlow: "rgba(0,200,255,0.2)",
+  gradient: "linear-gradient(135deg, #7b5cff, #00c8ff)",
+  gradientText: "linear-gradient(135deg, #7b5cff, #00c8ff)",
+  red: "#ff4466",
+  redDim: "rgba(255,68,102,0.08)",
+  amber: "#ffaa22",
+  amberDim: "rgba(255,170,34,0.08)",
+  blue: "#5b8cff",
+};

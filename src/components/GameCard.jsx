@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Star, ChevronDown, ChevronUp, Share2, Lock, Target } from 'lucide-react';
-import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, americanToImplied, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
+import { getConsensusFairOdds, formatOdds, findBestOdds, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
@@ -100,24 +100,14 @@ export default function GameCard({
   // Consensus fair odds for spreads
   const spreadFair = getConsensusFairOdds(game.bookmakers, 'spreads');
   const h2hFair = getConsensusFairOdds(game.bookmakers, 'h2h');
-  const totalFair = getConsensusFairOdds(game.bookmakers, 'totals');
 
   // Best odds across books
-  const bestSpreadHome = findBestOdds(game.bookmakers, 'spreads', game.home_team);
-  const bestSpreadAway = findBestOdds(game.bookmakers, 'spreads', game.away_team);
   const bestH2hHome = findBestOdds(game.bookmakers, 'h2h', game.home_team);
-  const bestH2hAway = findBestOdds(game.bookmakers, 'h2h', game.away_team);
-  const bestTotalOver = findBestOdds(game.bookmakers, 'totals', 'Over');
-  const bestTotalUnder = findBestOdds(game.bookmakers, 'totals', 'Under');
   const lineShopping = getLineShoppingScore(game.bookmakers);
   const topShop = lineShopping.top;
 
   // Line movement
   const history = gameLineHistory[game.id] || [];
-  const hasMovement = history.length > 1;
-  const start = history[0]?.spread;
-  const current = history[history.length - 1]?.spread;
-  const move = hasMovement ? current - start : 0;
   const spreadMoveSignal = getSpreadMoveSignal(game, history);
   const disagreement = buildMarketDisagreement(game);
 
