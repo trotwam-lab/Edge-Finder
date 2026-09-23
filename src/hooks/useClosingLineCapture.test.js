@@ -32,3 +32,26 @@ describe('findLiveQuote', () => {
     expect(findLiveQuote(games, { gameId: 'g1', marketKey: 'spreads', outcomeName: 'Bills' })).toBeNull();
   });
 });
+
+describe('findLiveQuote for player props', () => {
+  const props = [
+    { gameId: 'g1', player: 'Josh Allen', market: 'passing_yards', outcome: 'Over', line: 245.5, price: -115, book: 'Fanduel', bookKey: 'fanduel' },
+    { gameId: 'g1', player: 'Josh Allen', market: 'passing_yards', outcome: 'Over', line: 249.5, price: -110, book: 'Draftkings', bookKey: 'draftkings' },
+    { gameId: 'g1', player: 'Josh Allen', market: 'passing_yards', outcome: 'Under', line: 249.5, price: -110, book: 'Draftkings', bookKey: 'draftkings' },
+  ];
+  const bet = { type: 'Player Prop', gameId: 'g1', player: 'Josh Allen', marketKey: 'passing_yards', outcomeName: 'Over', outcomePoint: 245.5 };
+
+  it('reads the prop from the props feed at the bet\'s book', () => {
+    expect(findLiveQuote(games, { ...bet, book: 'DraftKings' }, props)).toMatchObject({ price: -110, point: 249.5 });
+    expect(findLiveQuote(games, { ...bet, book: 'FanDuel' }, props)).toMatchObject({ price: -115, point: 245.5 });
+  });
+
+  it('prefers the line that was bet when the book has several', () => {
+    expect(findLiveQuote(games, bet, props)).toMatchObject({ point: 245.5 });
+  });
+
+  it('returns null when the prop is gone', () => {
+    expect(findLiveQuote(games, { ...bet, player: 'Someone Else' }, props)).toBeNull();
+    expect(findLiveQuote(games, bet, [])).toBeNull();
+  });
+});

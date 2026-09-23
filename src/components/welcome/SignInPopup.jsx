@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification } from "firebase/auth";
 import { auth } from "../../firebase";
 import { LogoMark } from "../Logo.jsx";
 import { COLORS } from "./theme.js";
@@ -39,7 +39,10 @@ export default function SignInPopup({ open, onClose, initialTab = "signin" }) {
       if (tab === "signin") {
         await signInWithEmailAndPassword(auth, email, pass);
       } else {
-        await createUserWithEmailAndPassword(auth, email, pass);
+        const credential = await createUserWithEmailAndPassword(auth, email, pass);
+        // Best effort: a failed send must not block sign-up; the in-app
+        // banner offers a resend.
+        try { await sendEmailVerification(credential.user); } catch {}
       }
       onClose();
       setEmail("");

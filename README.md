@@ -32,6 +32,27 @@ The receipts pipeline snapshots each day's flagged edges (Firestore collection `
    npm run build
    ```
 
+## Checks
+| Command | What it does |
+|---------|--------------|
+| `npm run lint` | ESLint (React hooks rules included) |
+| `npm test` | Vitest unit tests (`src/**/*.test.js`, `api/**/*.test.js`) |
+| `npm run test:rules` | Firestore security rules against the emulator (needs Java) |
+| `npm run check` | lint + tests + build — run before pushing |
+
+GitHub Actions runs lint, tests, build and the rules check on every PR.
+
+## Firestore security rules
+`firestore.rules` is **not** deployed by merging to `main` or by Vercel. After changing it, deploy with
+`firebase deploy --only firestore:rules` (or paste it into the Firebase console → Firestore → Rules).
+The `users/{uid}` document holds subscription fields and is read-only to clients; only the Stripe
+webhook (Admin SDK) writes it. Bets live in `users/{uid}/data/bets` and `users/{uid}/bets_snapshots/*`.
+
+## API protections
+- Browser cross-origin access is limited to EdgeFinder's domains, Vercel previews and localhost (`api/_http.js`; add more with `ALLOWED_ORIGINS`).
+- Every public route has a per-IP rate limit.
+- `/api/odds` and `/api/props` share upstream responses across serverless instances through the Firestore `api_cache` collection (Admin SDK only; skipped when Admin credentials are missing).
+
 ## Required environment variables
 The exact production values should be managed outside the repo (Vercel env settings).
 
