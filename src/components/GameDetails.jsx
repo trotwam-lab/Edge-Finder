@@ -5,6 +5,7 @@ import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
 import { getConsensusFairOdds, formatOdds, isPositiveEV, findBestOdds, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { buildPremiumGameSummary } from '../utils/game-summary.js';
 import { summarizeExtraMarkets } from '../utils/game-markets.js';
+import { useGameExtraMarkets } from '../hooks/useGameExtraMarkets.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import GameResearch from './GameResearch.jsx';
@@ -42,7 +43,8 @@ export default function GameDetails({
   const totalFair = getConsensusFairOdds(game.bookmakers, 'totals');
 
   // Extra baseball markets, limited to the books this user can see.
-  const extraMarkets = summarizeExtraMarkets(game, bookKey => (
+  const { game: gameWithExtras, status: extraStatus } = useGameExtraMarkets(game);
+  const extraMarkets = summarizeExtraMarkets(gameWithExtras, bookKey => (
     (!enabledBooks || enabledBooks.includes(bookKey)) && (tier === 'pro' || FREE_BOOKS.includes(bookKey))
   ));
 
@@ -537,6 +539,13 @@ export default function GameDetails({
 
         {/* MLB extras: first-five run lines, team totals and NRFI from the
             SportsGameOdds feed, best price per outcome across allowed books. */}
+        {game.sport_key === 'baseball_mlb' && extraMarkets.length === 0 && (
+          <div style={{ marginTop: '14px', padding: '10px 12px', background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px', fontSize: '11px', color: '#64748b' }}>
+            {extraStatus === 'loading'
+              ? 'Loading first 5 innings, team totals and NRFI…'
+              : 'First 5 innings, team totals and NRFI aren\'t posted for this game yet at your books.'}
+          </div>
+        )}
         {extraMarkets.length > 0 && (
           <div style={{ marginTop: '14px', display: 'grid', gap: '10px' }}>
             {extraMarkets.map(market => (
