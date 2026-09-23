@@ -145,6 +145,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
       outcomePoint: source?.outcomePoint ?? null,
       commenceTime: source?.commenceTime ?? null,
       book: source?.book ?? null,
+      bookKey: source?.bookKey ?? null,
+      outcomeSide: source?.outcomeSide ?? null,
       player: source?.player ?? null,
     };
   }
@@ -192,6 +194,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
             outcomePoint: pendingBet.outcomePoint ?? null,
             commenceTime: pendingBet.commenceTime ?? null,
             book: pendingBet.book ?? null,
+            bookKey: pendingBet?.bookKey ?? null,
+            outcomeSide: pendingBet?.outcomeSide ?? null,
             player: pendingBet.player ?? null,
           };
           setBets(prev => prev.some(b => !b.deleted && b.game === autoBet.game && b.pick === autoBet.pick && b.odds === autoBet.odds && b.wager === autoBet.wager && b.date === autoBet.date) ? prev : [autoBet, ...prev]);

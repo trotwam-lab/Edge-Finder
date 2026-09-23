@@ -17,7 +17,7 @@ export const SEASON_CALENDAR = [
     ],
   },
   {
-    key: 'americanfootball_ncaaf', label: 'College Football', icon: '🏈', props: false,
+    key: 'americanfootball_ncaaf', label: 'College Football', icon: '🏈', props: true,
     phases: [
       { name: 'Regular season', range: [8, 23, 12, 14] },
       { name: 'Bowls & CFP', range: [12, 15, 1, 25] },

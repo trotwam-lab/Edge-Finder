@@ -62,7 +62,7 @@ export function getPointCLV(bet, closingPoint = bet?.closingPoint) {
   const close = Number(closingPoint);
   if (Number.isNaN(placed) || Number.isNaN(close)) return null;
   const marketKey = bet?.marketKey || '';
-  const outcome = String(bet?.outcomeName || bet?.pick || '').toLowerCase();
+  const outcome = String(bet?.outcomeSide || bet?.outcomeName || bet?.pick || '').toLowerCase();
 
   if (marketKey === 'spreads' || bet?.type === 'Spread') {
     return Number((placed - close).toFixed(2));

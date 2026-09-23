@@ -3,16 +3,21 @@ import { useEffect } from 'react';
 // Find the current live quote for a bet's market/outcome in the games feed.
 // Returns null if anything is missing. We match line markets by outcome name
 // first so a moved spread/total can still be captured as CLV.
-function findLiveQuote(games, bet) {
+export function findLiveQuote(games, bet) {
   if (!bet?.gameId || !bet?.marketKey || !bet?.outcomeName) return null;
   const game = games?.find(g => g.id === bet.gameId);
   if (!game) return null;
-  const book = bet.book
-    ? game.bookmakers?.find(b => b.key === bet.book) || game.bookmakers?.[0]
-    : game.bookmakers?.[0];
+  // Prefer the book the bet was placed at. Bets store its key (bookKey) or
+  // a display name (book), so match either before falling back.
+  const wanted = [bet.bookKey, bet.book].filter(Boolean).map(v => String(v).toLowerCase());
+  const book = (wanted.length
+    ? game.bookmakers?.find(b => wanted.includes(String(b.key).toLowerCase()) || wanted.includes(String(b.title).toLowerCase()))
+    : null) || game.bookmakers?.[0];
   const market = book?.markets?.find(m => m.key === bet.marketKey);
   if (!market) return null;
-  const outcome = market.outcomes?.find(o => o.name === bet.outcomeName);
+  const outcome = market.outcomes?.find(o => (
+    o.name === bet.outcomeName && (bet.outcomeSide == null || o.side === bet.outcomeSide)
+  ));
   if (!outcome) return null;
   return {
     price: outcome.price ?? null,

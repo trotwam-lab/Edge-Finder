@@ -23,12 +23,13 @@ import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
 
 const FREE_PLAYERS_LIMIT = 3;
 const MONO = 'JetBrains Mono, monospace';
-// Movement sort is omitted while prop line history has no writer (every
-// market would tie at zero); sortPlayers still supports it.
+// Movement compares prop snapshots taken this session, so it fills in
+// after the first few refreshes.
 const SORT_OPTIONS = [
   { value: 'default', label: 'By game' },
   { value: 'edge', label: 'Best price edge' },
   { value: 'books', label: 'Most books' },
+  { value: 'movement', label: 'Strongest movement' },
   { value: 'markets', label: 'Most markets' },
 ];
 const QUICK_STAKES = [10, 25, 50, 100];

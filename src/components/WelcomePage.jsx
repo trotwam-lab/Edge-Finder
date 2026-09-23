@@ -570,16 +570,16 @@ function QualifierBlock() {
 // ─── LIVE SIGNAL STRIP ────────────────────────────
 // Sample feed items — in-season sports so the strip matches the live board.
 const SIGNALS = [
-  { type: "line", text: "Line move: Bills -2 → -3", sport: "NFL", time: "2m ago", color: COLORS.accent },
-  { type: "prop", text: "Prop edge: Josh Allen O 245.5 pass yds", sport: "NFL", time: "4m ago", color: COLORS.blue },
-  { type: "injury", text: "Injury report: WR questionable (hamstring)", sport: "NFL", time: "6m ago", color: COLORS.amber },
-  { type: "line", text: "Total move: Ohio State @ Michigan 47.5 → 45.5", sport: "NCAAF", time: "8m ago", color: COLORS.accent },
-  { type: "prop", text: "Prop edge: Aaron Judge O 1.5 total bases", sport: "MLB", time: "11m ago", color: COLORS.blue },
-  { type: "injury", text: "Lineup confirmed: Yankees starting nine posted", sport: "MLB", time: "13m ago", color: COLORS.amber },
-  { type: "line", text: "Steam: Liberty -4.5 → -6 in the playoffs", sport: "WNBA", time: "15m ago", color: COLORS.accent },
-  { type: "prop", text: "Prop edge: Saquon Barkley O 82.5 rush yds", sport: "NFL", time: "18m ago", color: COLORS.blue },
-  { type: "line", text: "Reverse line move: Chiefs -3.5 → -3", sport: "NFL", time: "20m ago", color: COLORS.accent },
-  { type: "line", text: "Puck line move: Rangers -1.5 (+165) → (+150)", sport: "NHL", time: "22m ago", color: COLORS.accent },
+  { type: "line", text: "Line move: Bills -2 → -3", sport: "NFL", color: COLORS.accent },
+  { type: "prop", text: "Prop edge: Josh Allen O 245.5 pass yds", sport: "NFL", color: COLORS.blue },
+  { type: "injury", text: "Injury report: WR questionable (hamstring)", sport: "NFL", color: COLORS.amber },
+  { type: "line", text: "Total move: Ohio State @ Michigan 47.5 → 45.5", sport: "NCAAF", color: COLORS.accent },
+  { type: "prop", text: "Prop edge: Aaron Judge O 1.5 total bases", sport: "MLB", color: COLORS.blue },
+  { type: "injury", text: "Lineup confirmed: Yankees starting nine posted", sport: "MLB", color: COLORS.amber },
+  { type: "line", text: "Steam: Liberty -4.5 → -6 in the playoffs", sport: "WNBA", color: COLORS.accent },
+  { type: "prop", text: "Prop edge: Saquon Barkley O 82.5 rush yds", sport: "NFL", color: COLORS.blue },
+  { type: "line", text: "Reverse line move: Chiefs -3.5 → -3", sport: "NFL", color: COLORS.accent },
+  { type: "line", text: "Puck line move: Rangers -1.5 (+165) → (+150)", sport: "NHL", color: COLORS.accent },
 ];
 
 function LiveSignalStrip() {
@@ -601,13 +601,9 @@ function LiveSignalStrip() {
           borderRadius: 100, padding: "6px 16px", marginBottom: 20,
         }}>
           <span style={{
-            width: 7, height: 7, borderRadius: "50%", background: COLORS.accent,
-            boxShadow: `0 0 10px ${COLORS.accent}`, animation: "pulse 2s ease-in-out infinite",
-          }} />
-          <span style={{
             fontFamily: "'JetBrains Mono', monospace", fontSize: 11, letterSpacing: 2,
             textTransform: "uppercase", color: COLORS.accent,
-          }}>Live Feed</span>
+          }}>Sample Signals</span>
         </div>
         <h2 style={{
           fontFamily: "'Space Grotesk', sans-serif", fontSize: "clamp(24px, 3.5vw, 36px)",
@@ -616,6 +612,9 @@ function LiveSignalStrip() {
           The market never stops moving.<br />
           <span style={{ color: COLORS.textMuted }}>Neither does EdgeFinder.</span>
         </h2>
+        <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 14, color: COLORS.textMuted, margin: "12px 0 0" }}>
+          Examples of the line moves, prop edges, and news alerts the board flags.
+        </p>
       </div>
       {[false, true].map((reverse, ri) => (
         <div key={ri} style={{ position: "relative", marginBottom: ri === 0 ? 12 : 0 }}>
@@ -637,7 +636,6 @@ function LiveSignalStrip() {
                   fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim,
                   letterSpacing: 1, textTransform: "uppercase", background: `${signal.color}11`, padding: "3px 8px", borderRadius: 4,
                 }}>{signal.sport}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.textDim }}>{signal.time}</span>
               </div>
             ))}
           </div>
@@ -801,7 +799,7 @@ function FeaturePreview() {
           fontWeight: 600, color: COLORS.text, margin: "0 0 8px 0", lineHeight: 1.2,
         }}>See it before you sign up.</h2>
         <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 16, color: COLORS.textMuted, margin: 0 }}>
-          No login wall. No bait and switch. Explore the actual product.
+          No login wall. Click through the real screens, filled with sample data.
         </p>
       </div>
       <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 32 }}>
