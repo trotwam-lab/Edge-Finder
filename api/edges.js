@@ -12,6 +12,7 @@ import {
   sgoScannableSports,
   transformSgoEventToOddsApiGame,
 } from './_sportsgameodds.js';
+import { guardRequest } from './_http.js';
 
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
@@ -303,6 +304,7 @@ function findEdges(game, sport, probIndex = null) {
 // Handler
 // ============================================================
 export default async function handler(req, res) {
+  if (guardRequest(req, res, { route: 'edges', rateLimit: 60 })) return;
   const tierInfo = await getRequestTier(req);
   const isPro = isProTier(tierInfo);
 

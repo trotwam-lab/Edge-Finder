@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { getAdminDb } from './_firebaseAdmin.js';
 import { getVerifiedUser } from './_auth.js';
+import { guardRequest } from './_http.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -45,13 +46,7 @@ async function getCustomerIdFromStripe(email) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (guardRequest(req, res, { route: 'create-portal-session', methods: ['POST'], rateLimit: 20 })) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
@@ -67,9 +62,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Please sign in again to manage your subscription.' });
     }
 
+    // The email lookup only counts for an email the caller owns — an
+    // unverified account must not reach another customer's portal.
     const customerId =
       (await getCustomerIdFromFirestore(caller.uid)) ||
-      (await getCustomerIdFromStripe(caller.email));
+      (caller.emailTrusted ? await getCustomerIdFromStripe(caller.email) : null);
 
     if (!customerId) {
       return res.status(404).json({ error: 'No Stripe customer found for this account.' });

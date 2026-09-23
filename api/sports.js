@@ -5,10 +5,13 @@
 // requests for out-of-season sports instead of burning a paid request per
 // dead key on every refresh.
 
+import { guardRequest } from './_http.js';
+
 const cache = { data: null, ts: 0 };
 const TTL = 30 * 60 * 1000; // in-season status changes daily at most
 
 export default async function handler(req, res) {
+  if (guardRequest(req, res, { route: 'sports', rateLimit: 120 })) return;
   if (cache.data && Date.now() - cache.ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
     return res.status(200).json(cache.data);

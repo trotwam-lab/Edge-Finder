@@ -16,6 +16,7 @@ import { getMmaGameResearch } from './game-research-mma.js';
 import { getTennisGameResearch } from './game-research-tennis.js';
 import { getKboProbables, getKboRecentForm } from './game-research-kbo.js';
 import { ESPN_SITE_BASE, SPORT_PATHS } from './_espn-paths.js';
+import { guardRequest } from './_http.js';
 
 // ────────────────────────────────────────────────────────────────
 // Generic fallback: last-10 games via ESPN
@@ -270,6 +271,7 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
 
 // Vercel serverless handler
 export default async function handler(req, res) {
+  if (guardRequest(req, res, { route: 'game-research', rateLimit: 120 })) return;
   if (req.method && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed. Use GET.' });
   }

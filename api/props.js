@@ -8,6 +8,8 @@ import {
   leagueIdForOddsSport,
   transformSgoEventToProps,
 } from './_sportsgameodds.js';
+import { guardRequest } from './_http.js';
+import { freshestEntry, isFresh, writeSharedCache } from './_sharedCache.js';
 
 const cache = {};
 const TTL = 60 * 1000;             // 1 minute for live prop boards
@@ -72,11 +74,10 @@ function clampInt(value, fallback, max) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (guardRequest(req, res, { route: 'props', rateLimit: 120 })) return;
 
   const { sport = 'basketball_nba' } = req.query;
+  if (!/^[a-z0-9_]{2,64}$/.test(String(sport))) return res.status(400).json({ error: 'Invalid sport' });
   const tierInfo = await getRequestTier(req);
   const isPro = isProTier(tierInfo);
   const API_KEY = process.env.ODDS_API_KEY;
@@ -91,8 +92,9 @@ export default async function handler(req, res) {
     ? clampInt(req.query.maxProps, SGO_DEFAULT_PROP_LIMIT, SGO_MAX_PROP_LIMIT)
     : null;
   const cacheKey = `props-${useSportsGameOdds ? `sgo-${eventLimit}-${propLimit}` : 'oddsapi'}-${sport}`;
-  const cached = cache[cacheKey];
-  if (cached && Date.now() - cached.ts < (cached.ttl ?? TTL)) {
+  let cached = cache[cacheKey];
+  if (!isFresh(cached, TTL)) cached = await freshestEntry(cache, cacheKey);
+  if (isFresh(cached, TTL)) {
     res.setHeader('X-Cache', 'HIT');
     setTierHeaders(res, tierInfo);
     return res.json(isPro ? cached.data : buildFreePropsPreview(cached.data));
@@ -131,6 +133,7 @@ export default async function handler(req, res) {
       const allProps = result.data.flatMap(transformSgoEventToProps).slice(0, propLimit);
       const ttl = allProps.length === 0 ? EMPTY_TTL : TTL;
       cache[cacheKey] = { data: allProps, ts: Date.now(), ttl };
+      await writeSharedCache(cacheKey, cache[cacheKey]);
       res.setHeader('X-Cache', 'MISS');
       res.setHeader('X-EdgeFinder-Upstream', 'sportsgameodds');
       setTierHeaders(res, tierInfo);
@@ -153,6 +156,7 @@ export default async function handler(req, res) {
     if (!events || events.length === 0) {
       // Off-season/idle sports get a long TTL so they stop draining quota.
       cache[cacheKey] = { data: [], ts: Date.now(), ttl: EMPTY_TTL };
+      await writeSharedCache(cacheKey, cache[cacheKey]);
       setTierHeaders(res, tierInfo);
       return res.json([]);
     }
@@ -216,6 +220,7 @@ export default async function handler(req, res) {
     }
 
     cache[cacheKey] = { data: allProps, ts: Date.now(), ttl: TTL };
+    await writeSharedCache(cacheKey, cache[cacheKey]);
     res.setHeader('X-Cache', 'MISS');
     setTierHeaders(res, tierInfo);
     return res.json(isPro ? allProps : buildFreePropsPreview(allProps));

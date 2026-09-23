@@ -7,6 +7,7 @@
 
 import { getAdminDb } from './_firebaseAdmin.js';
 import { etDateString, summarizeDay } from './_receipts.js';
+import { guardRequest } from './_http.js';
 
 const cache = { data: null, ts: 0 };
 const TTL = 2 * 60 * 1000; // 2 minutes — this data changes slowly
@@ -54,9 +55,7 @@ function rollingStats(docs) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (guardRequest(req, res, { route: 'edge-receipts', rateLimit: 120 })) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   if (cache.data && Date.now() - cache.ts < TTL) {

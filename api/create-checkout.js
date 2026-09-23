@@ -6,18 +6,12 @@
 
 import Stripe from 'stripe';
 import { getVerifiedUser } from './_auth.js';
+import { guardRequest } from './_http.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export default async function handler(req, res) {
-  // --- CORS HEADERS ---
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (guardRequest(req, res, { route: 'create-checkout', methods: ['POST'], rateLimit: 20 })) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });

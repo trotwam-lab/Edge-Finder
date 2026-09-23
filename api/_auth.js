@@ -1,9 +1,9 @@
 import { getAuth } from 'firebase-admin/auth';
-import { getAdminDb, getTokenVerifierApp } from './_firebaseAdmin.js';
+import { getAdminApp, getAdminDb, getTokenVerifierApp } from './_firebaseAdmin.js';
 import Stripe from 'stripe';
 
-const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
-const FRIEND_EMAILS = [
+export const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
+export const FRIEND_EMAILS = [
   'mrxprofit@gmail.com',
   'diajdaley@gmail.com',
   'wb_sportstalk@yahoo.com',
@@ -29,7 +29,41 @@ const FRIEND_EMAILS = [
   'wmchapmanfernandez@gmail.com',
 ];
 
-function normalizeEmail(email) {
+// Email-based grants (admin/friend lists, Stripe lookup by email) must only
+// trust an email the caller actually owns. Firebase password sign-up does not
+// verify addresses, so an unverified account could claim a listed friend's or
+// a subscriber's email. Accounts created before this rule shipped keep their
+// access; newer accounts need a verified email.
+export const EMAIL_TRUST_CUTOFF = Date.parse('2026-09-24T00:00:00Z');
+const creationTimeCache = new Map();
+
+async function getAccountCreatedAt(uid) {
+  if (creationTimeCache.has(uid)) return creationTimeCache.get(uid);
+  const app = getAdminApp();
+  if (!app) return undefined;
+  const user = await getAuth(app).getUser(uid);
+  const createdAt = Date.parse(user?.metadata?.creationTime || '');
+  const value = Number.isFinite(createdAt) ? createdAt : undefined;
+  creationTimeCache.set(uid, value);
+  return value;
+}
+
+export async function isEmailTrusted(decoded, { lookupCreatedAt = getAccountCreatedAt } = {}) {
+  if (!decoded?.email) return false;
+  if (decoded.email_verified === true) return true;
+  try {
+    const createdAt = await lookupCreatedAt(decoded.uid);
+    // No admin credentials to check with: keep the previous behaviour rather
+    // than demoting every existing complimentary/Stripe account.
+    if (createdAt === undefined) return true;
+    return createdAt < EMAIL_TRUST_CUTOFF;
+  } catch (error) {
+    console.warn('Account creation lookup failed:', error.message);
+    return true;
+  }
+}
+
+export function normalizeEmail(email) {
   return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 
@@ -121,7 +155,8 @@ export async function getRequestTier(req) {
     // account's project — those can differ, and a mismatch used to demote
     // every signed-in user (including Pro) to the free tier.
     const decoded = await getAuth(getTokenVerifierApp()).verifyIdToken(token);
-    const email = normalizeEmail(decoded.email);
+    const tokenEmail = normalizeEmail(decoded.email);
+    const email = tokenEmail && await isEmailTrusted(decoded) ? tokenEmail : '';
 
     if (email && ADMIN_EMAILS.includes(email)) {
       return { tier: 'pro', source: 'admin', uid: decoded.uid, email };
@@ -135,7 +170,7 @@ export async function getRequestTier(req) {
     // we still want the verified Stripe lookup below to run.
     try {
       const firestoreTier = await getTierFromFirestore(decoded.uid);
-      if (firestoreTier) return { ...firestoreTier, email };
+      if (firestoreTier) return { ...firestoreTier, email: tokenEmail };
     } catch (firestoreError) {
       console.warn('Firestore tier lookup failed:', firestoreError.message);
     }
@@ -143,7 +178,7 @@ export async function getRequestTier(req) {
     const stripeTier = await getTierFromStripe(email);
     if (stripeTier) return { ...stripeTier, uid: decoded.uid, email };
 
-    return { tier: 'free', source: 'verified-free', uid: decoded.uid, email };
+    return { tier: 'free', source: 'verified-free', uid: decoded.uid, email: tokenEmail };
   } catch (error) {
     // SECURITY: when token verification fails, the X-EdgeFinder-Email header
     // is the only identity left and it is attacker-controlled — recovering
@@ -172,7 +207,8 @@ export async function getVerifiedUser(req) {
   if (!token) return null;
   try {
     const decoded = await getAuth(getTokenVerifierApp()).verifyIdToken(token);
-    return { uid: decoded.uid, email: normalizeEmail(decoded.email) };
+    const email = normalizeEmail(decoded.email);
+    return { uid: decoded.uid, email, emailTrusted: Boolean(email) && await isEmailTrusted(decoded) };
   } catch (error) {
     console.warn('Token verification failed:', error.message);
     return null;
