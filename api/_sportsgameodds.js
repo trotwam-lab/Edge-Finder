@@ -296,8 +296,12 @@ export function transformSgoEventToProps(event) {
   Object.entries(event?.odds || {}).forEach(([oddID, odd]) => {
     if (!shouldIncludeProp(odd)) return;
     const player = event.players?.[odd.playerID]?.name || odd.marketName?.replace(/ Over\/Under$/, '') || odd.statEntityID;
-    const market = odd.statID || odd.marketName || 'player_prop';
     const outcome = propOutcomeName(odd.sideID);
+    // Quarter/half/period props share a statID with the full-game prop, so
+    // key them separately or their lines would merge into one market.
+    const periodID = odd.periodID || String(oddID).split('-')[2];
+    const baseMarket = odd.statID || odd.marketName || 'player_prop';
+    const market = periodID && periodID !== 'game' ? `${baseMarket}_${periodID}` : baseMarket;
 
     Object.entries(odd.byBookmaker || {}).forEach(([bookKey, bookOdd]) => {
       if (!bookOdd?.available) return;

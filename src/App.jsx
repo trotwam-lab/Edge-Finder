@@ -229,7 +229,7 @@ export default function BettingApp() {
   };
 
   const {
-    games, playerProps, injuries, historicOdds, loading, error, lastUpdate,
+    games, playerProps, propsLoading, injuries, historicOdds, loading, error, lastUpdate,
     isConnected, countdown, gameLineHistory, propHistory, sportLastUpdated, manualRefresh,
   } = useOdds({ filter, enabledSports });
 
@@ -541,7 +541,7 @@ export default function BettingApp() {
           )}
         </main>
       )}
-      {activeTab === 'PROPS' && <Suspense fallback={<TabFallback label="Loading props view..." />}><PropsView playerProps={playerProps} games={games} loading={loading} propHistory={propHistory} setPendingBet={handleSetPendingBet} onRefresh={manualRefresh} onNavigate={setActiveTab} /></Suspense>}
+      {activeTab === 'PROPS' && <Suspense fallback={<TabFallback label="Loading props view..." />}><PropsView playerProps={playerProps} games={games} loading={loading || (propsLoading && playerProps.length === 0)} propHistory={propHistory} setPendingBet={handleSetPendingBet} onRefresh={manualRefresh} onNavigate={setActiveTab} /></Suspense>}
       {activeTab === 'PRO_TOOLS' && (
         <Suspense fallback={<TabFallback label="Loading pro tools..." />}>
           <ProTools

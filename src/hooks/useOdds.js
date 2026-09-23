@@ -112,6 +112,9 @@ const EMPTY_PROP_HISTORY = {};
 export function useOdds({ filter, enabledSports = null, refreshInterval: defaultInterval = 120 }) {
     const [games, setGames] = useState([]);
     const [playerProps, setPlayerProps] = useState([]);
+    // Props load in the background after game odds, so the Props tab needs
+    // its own flag to tell "still loading" apart from "no props posted".
+    const [propsLoading, setPropsLoading] = useState(true);
     const [injuries, setInjuries] = useState({});
     const [historicOdds, setHistoricOdds] = usePersistentState('edgefinder_historic_openers', {});
     const [loading, setLoading] = useState(true);
@@ -402,24 +405,35 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
             const propsToFetch = PROPS_SPORTS.filter(s =>
               !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
             );
-            if (propsToFetch.length === 0) return;
-            const propsBySport = await Promise.all(propsToFetch.map(async (sportKey) => {
-              try {
-                return await fetchPlayerProps(sportKey);
-              } catch (e) {
-                console.warn('Props fetch failed for ' + sportKey + ':', e.message);
-                return [];
-              }
-            }));
-            const allProps = propsBySport.flat();
-            setPlayerProps(prev =>
-              isInitial
-                ? allProps
-                : [
-                    ...prev.filter(p => !propsToFetch.some(s => p.sport === s || p.id?.startsWith(s))),
-                    ...allProps,
-                  ]
-            );
+            if (propsToFetch.length === 0) {
+              setPlayerProps([]);
+              setPropsLoading(false);
+              return;
+            }
+            // Only the first load shows a spinner; background refreshes keep
+            // the current board on screen.
+            if (isInitial) setPropsLoading(true);
+            try {
+              const propsBySport = await Promise.all(propsToFetch.map(async (sportKey) => {
+                try {
+                  return await fetchPlayerProps(sportKey);
+                } catch (e) {
+                  console.warn('Props fetch failed for ' + sportKey + ':', e.message);
+                  return [];
+                }
+              }));
+              const allProps = propsBySport.flat();
+              setPlayerProps(prev =>
+                isInitial
+                  ? allProps
+                  : [
+                      ...prev.filter(p => !propsToFetch.some(s => p.sport === s || p.id?.startsWith(s))),
+                      ...allProps,
+                    ]
+              );
+            } finally {
+              setPropsLoading(false);
+            }
           };
           refreshProps();
 
@@ -492,6 +506,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                    } catch (err) {
                                            setError(err.message);
                                            setIsConnected(false);
+                                           setPropsLoading(false);
                                    } finally {
                                            setLoading(false);
                                    }
@@ -535,6 +550,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   return {
         games,
         playerProps,
+        propsLoading,
         injuries,
         historicOdds,
         loading,

@@ -6,8 +6,11 @@ import {
   getMarketDisplayName,
   formatOdds,
   getBookAbbreviation,
+  getBookDisplayName,
   getPlayerInitials,
   scorePropCandidate,
+  formatPropPick,
+  getPropSideLabel,
 } from '../utils/props.js';
 
 const BEST_LIMIT_FREE = 3;
@@ -77,16 +80,24 @@ function PropCard({ candidate, rank, onQuickAdd }) {
   const accentColor = isOver ? '#22c55e' : '#ef4444';
   const accentBg = isOver ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)';
 
+  const pickLabel = formatPropPick(mkt, side);
+
   const handleAdd = () => {
     if (!onQuickAdd || !bestBook || bestPrice == null) return;
     onQuickAdd({
       player: player.name,
       game: player.game,
-      book: bestBook,
+      book: getBookDisplayName(bestBook),
       odds: bestPrice,
-      pick: `${player.name} ${displayMarket} ${isOver ? 'Over' : 'Under'} ${line ?? '—'}`,
+      pick: `${player.name} ${displayMarket} ${pickLabel}`,
       type: 'Player Prop',
       date: new Date().toISOString(),
+      gameId: player.gameId,
+      sportKey: player.sport,
+      marketKey,
+      outcomeName: getPropSideLabel(mkt, side),
+      outcomePoint: line,
+      commenceTime: player.commenceTime,
     });
   };
 
@@ -120,7 +131,7 @@ function PropCard({ candidate, rank, onQuickAdd }) {
         {/* Row 2: pick + best book/price */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '15px', fontWeight: 800, color: accentColor, fontFamily: 'JetBrains Mono, monospace' }}>
-            {isOver ? 'Over' : 'Under'} {line ?? '—'}
+            {pickLabel}
           </span>
           <span style={{ fontSize: '11px', color: '#94a3b8' }}>{displayMarket}</span>
           {bestBook && bestPrice != null && (
@@ -161,7 +172,8 @@ function PropCard({ candidate, rank, onQuickAdd }) {
       {onQuickAdd && bestBook && (
         <button
           onClick={handleAdd}
-          title={`Add ${isOver ? 'Over' : 'Under'} ${line} to Bet Tracker`}
+          title={`Add ${pickLabel} to Bet Tracker`}
+          aria-label={`Add ${player.name} ${displayMarket} ${pickLabel} to Bet Tracker`}
           style={{
             padding: '0 14px', background: 'transparent',
             border: 'none', borderLeft: '1px solid rgba(71,85,105,0.18)',
@@ -202,7 +214,7 @@ export default function BestProps({ players, setPendingBet }) {
   if (players.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
-        No props data loaded yet.
+        No props match the current filters.
       </div>
     );
   }

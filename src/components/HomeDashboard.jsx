@@ -4,7 +4,7 @@ import { useAuth } from '../AuthGate.jsx';
 import { auth } from '../firebase.js';
 import ProBanner from './ProBanner.jsx';
 import { BOOKMAKERS, FREE_BOOKS } from '../constants.js';
-import { getMarketDisplayName, formatOdds } from '../utils/props.js';
+import { getMarketDisplayName, formatOdds, getBookDisplayName } from '../utils/props.js';
 import {
   buildLineShoppingOpportunities,
   buildMarketDisagreement,
@@ -253,7 +253,7 @@ export default function HomeDashboard({
       }
       const item = map.get(key);
       item.books.add(prop.bookTitle || prop.book || prop.bookKey);
-      if (prop.price != null) item.prices.push({ price: prop.price, side: prop.outcome, book: prop.bookTitle || prop.book || prop.bookKey });
+      if (prop.price != null) item.prices.push({ price: prop.price, side: prop.outcome, book: getBookDisplayName(prop.bookTitle || prop.book || prop.bookKey) });
     });
     return Array.from(map.values())
       .map(item => ({ ...item, bookCount: item.books.size, best: item.prices.sort((a, b) => b.price - a.price)[0] }))

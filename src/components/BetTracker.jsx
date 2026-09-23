@@ -12,6 +12,7 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 import { americanToDecimal, americanToImplied } from '../utils/odds-math.js';
+import { getSportMeta } from '../utils/props.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
@@ -48,8 +49,26 @@ function formatMoney(val) {
   return `${sign}$${Math.abs(val).toFixed(2)}`;
 }
 
+// Bet dates are stored as local calendar days (YYYY-MM-DD). toISOString()
+// would use the UTC day, so a bet logged on a US evening landed on tomorrow.
+function toLocalDateStr(value = new Date()) {
+  const date = value instanceof Date ? value : parseBetDate(value);
+  if (Number.isNaN(date.getTime())) return toLocalDateStr(new Date());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function todayStr() {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateStr(new Date());
+}
+
+// new Date('YYYY-MM-DD') parses as UTC midnight, which is the previous
+// evening west of Greenwich — parse bare dates as local days instead.
+function parseBetDate(value) {
+  const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return new Date(value);
 }
 
 function formatOdds(odds) {
@@ -160,7 +179,7 @@ function formatTimingValue(timing) {
 }
 
 function getRelativeDate(dateStr) {
-  const date = new Date(dateStr);
+  const date = parseBetDate(dateStr);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const betDate = new Date(date);
@@ -171,6 +190,17 @@ function getRelativeDate(dateStr) {
   if (diffDays === 1) return 'YESTERDAY';
   if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+}
+
+// Bets added from the board carry their sport key; hand-entered bets fall
+// back to guessing from the game text.
+function getBetSport(bet) {
+  if (bet?.sport) return bet.sport;
+  if (bet?.sportKey) {
+    const meta = getSportMeta(bet.sportKey);
+    if (meta.family !== 'other') return meta.label === 'MMA' ? 'UFC' : meta.label;
+  }
+  return getSportFromGame(bet?.game);
 }
 
 function getSportFromGame(gameStr) {
@@ -274,7 +304,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
       setPick(pendingBet.pick || '');
       setOdds(pendingBet.odds != null ? String(pendingBet.odds) : '');
       setWager(pendingBet.wager != null ? String(pendingBet.wager) : '');
-      setDate(pendingBet.date ? new Date(pendingBet.date).toISOString().split('T')[0] : todayStr());
+      setDate(pendingBet.date ? toLocalDateStr(pendingBet.date) : todayStr());
       setOpeningOdds(pendingBet.openingOdds != null ? String(pendingBet.openingOdds) : '');
       setClosingOdds(pendingBet.closingOdds != null ? String(pendingBet.closingOdds) : '');
       setOpeningPoint(pendingBet.openingPoint != null ? String(pendingBet.openingPoint) : pendingBet.outcomePoint != null ? String(pendingBet.outcomePoint) : '');
@@ -291,7 +321,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
             pick: pendingBet.pick || '',
             odds: Number(pendingBet.odds),
             wager: Number(pendingBet.wager),
-            date: pendingBet.date ? new Date(pendingBet.date).toISOString().split('T')[0] : todayStr(),
+            date: pendingBet.date ? toLocalDateStr(pendingBet.date) : todayStr(),
             status: 'pending',
             profit: null,
             settledDate: null,
@@ -326,7 +356,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
   const detectedSports = useMemo(() => {
     const sports = new Set(['All']);
     bets.forEach(bet => {
-      const sport = getSportFromGame(bet.game);
+      if (bet.deleted) return;
+      const sport = getBetSport(bet);
       if (sport) sports.add(sport);
     });
     return Array.from(sports);
@@ -340,12 +371,12 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
       // Hide soft-deleted tombstones from every view.
       if (bet.deleted) return false;
       if (activeSport !== 'All') {
-        const betSport = getSportFromGame(bet.game);
+        const betSport = getBetSport(bet);
         if (betSport !== activeSport) return false;
       }
       
       if (timeFilter !== 'all') {
-        const betDate = new Date(bet.date);
+        const betDate = parseBetDate(bet.date);
         const now = new Date();
         const daysDiff = (now - betDate) / (1000 * 60 * 60 * 24);
         if (timeFilter === '7days' && daysDiff > 7) return false;
@@ -365,12 +396,12 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
   }, [bets, activeSport, timeFilter, statusFilter, searchQuery]);
   
   const pendingBets = useMemo(() => 
-    filteredBets.filter(b => b.status === 'pending').sort((a, b) => new Date(b.date) - new Date(a.date)),
+    filteredBets.filter(b => b.status === 'pending').sort((a, b) => parseBetDate(b.date) - parseBetDate(a.date)),
     [filteredBets]
   );
   
   const settledBets = useMemo(() => 
-    filteredBets.filter(b => b.status !== 'pending').sort((a, b) => new Date(b.settledDate || b.date) - new Date(a.settledDate || b.date)),
+    filteredBets.filter(b => b.status !== 'pending').sort((a, b) => parseBetDate(b.settledDate || b.date) - parseBetDate(a.settledDate || a.date)),
     [filteredBets]
   );
   
@@ -410,7 +441,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
     // Per-sport breakdown for ROI panel
     const sportBreakdown = {};
     settled.forEach(b => {
-      const sport = (b.sport || getSportFromGame(b.game || '')) || 'Other';
+      const sport = getBetSport(b) || 'Other';
       if (!sportBreakdown[sport]) sportBreakdown[sport] = { wagered: 0, profit: 0, bets: 0 };
       sportBreakdown[sport].wagered += Number(b.wager) || 0;
       sportBreakdown[sport].profit  += Number(b.profit) || 0;
@@ -609,7 +640,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `edgefinder-bets-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `edgefinder-bets-${todayStr()}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

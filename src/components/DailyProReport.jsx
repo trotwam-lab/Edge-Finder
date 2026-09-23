@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarDays, FileText, Flame, Lock, RefreshCw, ShieldOf
 import { useAuth } from '../AuthGate.jsx';
 import { auth } from '../firebase.js';
 import ProBanner from './ProBanner.jsx';
-import { getMarketDisplayName, formatOdds } from '../utils/props.js';
+import { getMarketDisplayName, formatOdds, getBookDisplayName } from '../utils/props.js';
 import { buildLineShoppingOpportunities, buildMarketDisagreement, getSpreadMoveSignal } from '../utils/odds-math.js';
 
 async function getAuthHeaders() {
@@ -273,7 +273,7 @@ export default function DailyProReport({
       }
       const item = map.get(key);
       item.books.add(prop.bookTitle || prop.book || prop.bookKey);
-      if (prop.price != null) item.prices.push({ price: prop.price, side: prop.outcome, book: prop.bookTitle || prop.book || prop.bookKey });
+      if (prop.price != null) item.prices.push({ price: prop.price, side: prop.outcome, book: getBookDisplayName(prop.bookTitle || prop.book || prop.bookKey) });
     });
 
     return Array.from(map.values())

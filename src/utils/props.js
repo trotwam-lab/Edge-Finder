@@ -7,6 +7,17 @@ export const BOOK_ABBREVIATIONS = {
   BetOnline: 'BOL', Bovada: 'BVD', HardRockBet: 'HRB'
 };
 
+// Books arrive as Odds API titles ("FanDuel"), raw keys ("fanduel") or
+// SportsGameOdds titleized keys ("Fanduel", "Hardrockbet"), so abbreviations
+// are also looked up by a case/punctuation-insensitive key.
+const BOOK_ABBREVIATIONS_BY_KEY = {
+  fanduel: 'FD', draftkings: 'DK', betmgm: 'MGM', caesars: 'Csr', williamhill: 'Csr', williamhillus: 'Csr',
+  betrivers: 'BR', pointsbet: 'PB', pointsbetus: 'PB', bet365: 'B365', wynnbet: 'Wynn', unibet: 'Uni',
+  barstool: 'BAR', espnbet: 'ESPN', fanatics: 'Fan', betonline: 'BOL', betonlineag: 'BOL', bovada: 'BVD',
+  hardrockbet: 'HRB', hardrock: 'HRB', lowvig: 'LV', mybookie: 'MYB', mybookieag: 'MYB', betus: 'BetUS',
+  prizepicks: 'PP', underdog: 'UD', pinnacle: 'PIN', ballybet: 'Bally', betparx: 'Parx', fliff: 'Fliff',
+};
+
 export const MARKET_DISPLAY_NAMES = {
   player_points: 'PTS',
   player_rebounds: 'REB',
@@ -64,7 +75,86 @@ export const MARKET_DISPLAY_NAMES = {
   pitcher_outs: 'OUTS',
   pitcher_earned_runs: 'ER',
   pitcher_record_a_win: 'PITCHER WIN',
+  player_shots_on_target: 'SHOTS ON TGT',
+  player_to_score: 'TO SCORE',
+  // SportsGameOdds stat IDs (used as market keys when it is the prop feed)
+  points: 'PTS',
+  rebounds: 'REB',
+  assists: 'AST',
+  steals: 'STL',
+  blocks: 'BLK',
+  turnovers: 'TO',
+  threePointersMade: '3PM',
+  points_rebounds_assists: 'PRA',
+  points_rebounds: 'PR',
+  points_assists: 'PA',
+  rebounds_assists: 'RA',
+  doubleDouble: 'DBL-DBL',
+  tripleDouble: 'TRP-DBL',
+  passing_yards: 'PASS YDS',
+  passing_touchdowns: 'PASS TD',
+  passing_completions: 'COMP',
+  passing_attempts: 'ATT',
+  passing_interceptions: 'INT',
+  passing_longestCompletion: 'LONGEST COMP',
+  rushing_yards: 'RUSH YDS',
+  rushing_attempts: 'RUSH ATT',
+  rushing_touchdowns: 'RUSH TD',
+  rushing_longestRush: 'LONGEST RUSH',
+  receiving_yards: 'REC YDS',
+  receiving_receptions: 'REC',
+  receiving_touchdowns: 'REC TD',
+  receiving_longestReception: 'LONGEST REC',
+  passing_rushing_yards: 'PASS+RUSH YDS',
+  rushing_receiving_yards: 'RUSH+REC YDS',
+  touchdowns: 'TD',
+  firstTouchdown: '1ST TD',
+  lastTouchdown: 'LAST TD',
+  defense_sacks: 'SACKS',
+  defense_tackles: 'TACKLES',
+  kicking_totalPoints: 'KICKING PTS',
+  fieldGoals_made: 'FG MADE',
+  batting_hits: 'HITS',
+  batting_totalBases: 'TB',
+  batting_homeRuns: 'HR',
+  batting_RBI: 'RBI',
+  batting_runs: 'RUNS',
+  batting_singles: '1B',
+  batting_doubles: '2B',
+  batting_triples: '3B',
+  batting_basesOnBalls: 'WALKS',
+  batting_strikeouts: 'K',
+  batting_stolenBases: 'SB',
+  batting_hits_runs_rbi: 'H+R+RBI',
+  pitching_strikeouts: 'PITCHER K',
+  pitching_hits: 'H ALLOWED',
+  pitching_basesOnBalls: 'BB ALLOWED',
+  pitching_outs: 'OUTS',
+  pitching_earnedRuns: 'ER',
+  pitching_win: 'PITCHER WIN',
+  shots_onGoal: 'SOG',
+  blockedShots: 'BLK SHOTS',
+  goals: 'GOALS',
+  powerPlayPoints: 'PP PTS',
+  goalie_saves: 'SAVES',
+  shots: 'SHOTS',
+  shots_onTarget: 'SHOTS ON TGT',
 };
+
+const PERIOD_LABELS = {
+  '1q': '1Q', '2q': '2Q', '3q': '3Q', '4q': '4Q', '1h': '1H', '2h': '2H',
+  '1p': '1P', '2p': '2P', '3p': '3P', '1i': '1ST INN', reg: 'REG', ot: 'OT',
+};
+
+function humanizeMarketKey(market) {
+  return String(market)
+    .replace(/^(player_|batter_|pitcher_)/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replaceAll('_', ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
 
 export const SPORT_META = {
   basketball_nba: { label: 'NBA', icon: '🏀', family: 'basketball', espnPath: 'basketball/nba', logoSport: 'nba' },
@@ -160,8 +250,40 @@ export function getSportMeta(sport) {
   return SPORT_META[sport] || { label: sport?.split('_').slice(-1)[0]?.toUpperCase() || 'Other', icon: '🎯', family: 'other' };
 }
 
-export function getBookAbbreviation(book) { return BOOK_ABBREVIATIONS[book] || book?.slice(0, 4) || '?'; }
-export function getMarketDisplayName(market) { return MARKET_DISPLAY_NAMES[market] || market?.replace(/^(player_|batter_|pitcher_)/, '').replaceAll('_', ' ').toUpperCase() || market; }
+export function getBookAbbreviation(book) {
+  if (!book) return '?';
+  if (BOOK_ABBREVIATIONS[book]) return BOOK_ABBREVIATIONS[book];
+  const key = String(book).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return BOOK_ABBREVIATIONS_BY_KEY[key] || String(book).slice(0, 4);
+}
+
+const BOOK_DISPLAY_NAMES_BY_KEY = {
+  fanduel: 'FanDuel', draftkings: 'DraftKings', betmgm: 'BetMGM', caesars: 'Caesars', williamhill: 'Caesars',
+  williamhillus: 'Caesars', betrivers: 'BetRivers', pointsbet: 'PointsBet', pointsbetus: 'PointsBet', bet365: 'Bet365',
+  espnbet: 'ESPN BET', fanatics: 'Fanatics', betonline: 'BetOnline', betonlineag: 'BetOnline', bovada: 'Bovada',
+  hardrockbet: 'Hard Rock Bet', lowvig: 'LowVig', mybookie: 'MyBookie', mybookieag: 'MyBookie', betus: 'BetUS',
+  prizepicks: 'PrizePicks', underdog: 'Underdog', pinnacle: 'Pinnacle', ballybet: 'Bally Bet', betparx: 'betPARX',
+};
+
+// Readable sportsbook name for any of the title/key spellings above.
+export function getBookDisplayName(book) {
+  if (!book) return book;
+  const key = String(book).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return BOOK_DISPLAY_NAMES_BY_KEY[key] || book;
+}
+
+export function getMarketDisplayName(market) {
+  if (!market) return market;
+  if (MARKET_DISPLAY_NAMES[market]) return MARKET_DISPLAY_NAMES[market];
+  // Period-scoped markets are keyed "<stat>_<period>" (e.g. points_1q).
+  const periodMatch = String(market).match(/^(.+)_(1q|2q|3q|4q|1h|2h|1p|2p|3p|reg|ot|1i|1ix\d+)$/);
+  if (periodMatch) {
+    const [, base, period] = periodMatch;
+    const periodLabel = PERIOD_LABELS[period] || (period.startsWith('1ix') ? `F${period.slice(3)}` : period.toUpperCase());
+    return `${getMarketDisplayName(base)} ${periodLabel}`;
+  }
+  return humanizeMarketKey(market);
+}
 export function formatOdds(price) { return formatAmericanOdds(price).replace('-', '−'); }
 
 export function normalizeMarketFilterLabel(market) {
@@ -280,6 +402,18 @@ export function summarizeHistory(entries = []) {
   };
 }
 
+// American odds jump from -100 to +100, so a raw price difference overstates
+// any edge that straddles even money (+105 vs a -105 fair line is 10 cents,
+// not 210). Map prices onto a continuous "cents" scale before subtracting.
+function toCents(price) {
+  return price >= 0 ? price - 100 : price + 100;
+}
+
+export function priceEdgeCents(price, fairPrice) {
+  if (price == null || fairPrice == null) return null;
+  return toCents(price) - toCents(fairPrice);
+}
+
 export function buildMarketInsights(mkt, propHistory = {}) {
   const overBooks = Object.keys(mkt.over || {}).filter(book => mkt.over[book] != null);
   const underBooks = Object.keys(mkt.under || {}).filter(book => mkt.under[book] != null);
@@ -312,16 +446,22 @@ export function buildMarketInsights(mkt, propHistory = {}) {
   const fairUnderProb = fairCount ? fairUnderProbSum / fairCount : null;
   const fairOverPrice = fairOverProb ? impliedToAmerican(fairOverProb) : null;
   const fairUnderPrice = fairUnderProb ? impliedToAmerican(fairUnderProb) : null;
-  const edgeOver = bestOver != null && fairOverPrice != null ? bestOver - fairOverPrice : null;
-  const edgeUnder = bestUnder != null && fairUnderPrice != null ? bestUnder - fairUnderPrice : null;
+  const edgeOver = priceEdgeCents(bestOver, fairOverPrice);
+  const edgeUnder = priceEdgeCents(bestUnder, fairUnderPrice);
 
-  const allLineEntries = [];
-  Object.entries(mkt._overByLine || {}).forEach(([book, lines]) => {
-    Object.keys(lines || {}).forEach(line => allLineEntries.push(Number(line)));
-  });
-  Object.entries(mkt._underByLine || {}).forEach(([book, lines]) => {
-    Object.keys(lines || {}).forEach(line => allLineEntries.push(Number(line)));
-  });
+  // Line disagreement compares each book's main number. Books can also post
+  // alternate ladders, so every posted line would overstate the spread.
+  const allLineEntries = Array.isArray(mkt.mainLines)
+    ? mkt.mainLines.filter(line => line != null)
+    : [];
+  if (!Array.isArray(mkt.mainLines)) {
+    Object.values(mkt._overByLine || {}).forEach(lines => {
+      Object.keys(lines || {}).forEach(line => allLineEntries.push(Number(line)));
+    });
+    Object.values(mkt._underByLine || {}).forEach(lines => {
+      Object.keys(lines || {}).forEach(line => allLineEntries.push(Number(line)));
+    });
+  }
   const minLine = allLineEntries.length ? Math.min(...allLineEntries) : mkt.line;
   const maxLine = allLineEntries.length ? Math.max(...allLineEntries) : mkt.line;
   const lineRange = minLine != null && maxLine != null ? Number((maxLine - minLine).toFixed(2)) : null;
@@ -346,13 +486,14 @@ export function buildMarketInsights(mkt, propHistory = {}) {
   }
   if (strongestMove) {
     const direction = strongestMove.lineChange > 0 ? 'up' : 'down';
-    summaries.push(`${getBookAbbreviation(strongestMove.book)} moved ${direction} ${Math.abs(strongestMove.lineChange)} on the ${strongestMove.side}.`);
+    summaries.push(`${getBookAbbreviation(strongestMove.book)} moved ${direction} ${Math.abs(strongestMove.lineChange)} on the ${getPropSideLabel(mkt, strongestMove.side).toLowerCase()}.`);
   }
   if (edgeOver != null || edgeUnder != null) {
     const side = (edgeOver ?? -Infinity) >= (edgeUnder ?? -Infinity) ? 'over' : 'under';
     const edge = side === 'over' ? edgeOver : edgeUnder;
     const book = side === 'over' ? bestOverBook : bestUnderBook;
-    if (edge != null && book) summaries.push(`${getBookAbbreviation(book)} shows the best ${side} price at ${formatOdds(side === 'over' ? bestOver : bestUnder)} (${edge > 0 ? '+' : ''}${Math.round(edge)} vs fair).`);
+    const sideLabel = getPropSideLabel(mkt, side).toLowerCase();
+    if (edge != null && book) summaries.push(`${getBookAbbreviation(book)} shows the best ${sideLabel} price at ${formatOdds(side === 'over' ? bestOver : bestUnder)} (${edge > 0 ? '+' : ''}${Math.round(edge)}¢ vs fair).`);
   }
 
   const recommendationScore = Math.max(edgeOver ?? -999, edgeUnder ?? -999);
@@ -376,10 +517,176 @@ export function buildMarketInsights(mkt, propHistory = {}) {
     recommendation,
     summary: summaries[0] || 'Hold for a better read as books fill in.',
     details: summaries.slice(1),
-    sortEdge: Math.max(edgeOver || Number.NEGATIVE_INFINITY, edgeUnder || Number.NEGATIVE_INFINITY),
+    sortEdge: Math.max(edgeOver ?? Number.NEGATIVE_INFINITY, edgeUnder ?? Number.NEGATIVE_INFINITY),
     sortBooks: books.length,
     sortMovement: Math.max(Math.abs(strongestMove?.lineChange || 0), Math.abs(strongestPriceMove?.priceChange || 0) / 100),
   };
+}
+
+// ============================================================
+// Prop market aggregation
+// Collapses the flat per-book/per-outcome feed into one market per
+// player + stat, with a consensus line and per-book prices.
+// ============================================================
+const SIDE_SLOTS = { Over: 'over', Yes: 'over', Under: 'under', No: 'under' };
+const NO_LINE = 'none';
+
+export function getPropSideSlot(outcome) {
+  return SIDE_SLOTS[outcome] || null;
+}
+
+export function getPropSideLabel(mkt, side) {
+  if (mkt?.yesNo) return side === 'over' ? 'Yes' : 'No';
+  return side === 'over' ? 'Over' : 'Under';
+}
+
+// "Over 24.5", "Under 7", or just "Yes" for lineless yes/no markets.
+export function formatPropPick(mkt, side, line = mkt?.line) {
+  const label = getPropSideLabel(mkt, side);
+  return line != null ? `${label} ${line}` : label;
+}
+
+function toLineKey(line) {
+  const num = Number(line);
+  return line == null || line === '' || !Number.isFinite(num) ? NO_LINE : String(num);
+}
+
+function fromLineKey(key) {
+  return key === NO_LINE ? null : Number(key);
+}
+
+function compareLineKeys(a, b) {
+  if (a === b) return 0;
+  if (a === NO_LINE) return 1;
+  if (b === NO_LINE) return -1;
+  return Number(a) - Number(b);
+}
+
+// A book's main number is the line it prices closest to a coin flip; alt
+// ladders sit at lopsided prices. One-sided lines only win when a book has
+// no two-sided line at all.
+function pickMainLineKey(overLines = {}, underLines = {}) {
+  const keys = Array.from(new Set([...Object.keys(overLines), ...Object.keys(underLines)])).sort(compareLineKeys);
+  let bestKey = null;
+  let bestScore = Infinity;
+  keys.forEach(key => {
+    const over = overLines[key];
+    const under = underLines[key];
+    const score = over != null && under != null
+      ? Math.abs((americanToImplied(over) ?? 0) - (americanToImplied(under) ?? 0))
+      : 2;
+    if (score < bestScore) {
+      bestScore = score;
+      bestKey = key;
+    }
+  });
+  return bestKey;
+}
+
+function nearestLineKey(lines = {}, targetKey) {
+  const keys = Object.keys(lines);
+  if (!keys.length) return null;
+  if (lines[targetKey] != null) return targetKey;
+  if (targetKey === NO_LINE) return keys.sort(compareLineKeys)[0];
+  const target = Number(targetKey);
+  return keys
+    .filter(key => key !== NO_LINE)
+    .sort((a, b) => (Math.abs(Number(a) - target) - Math.abs(Number(b) - target)) || (Number(a) - Number(b)))[0]
+    ?? keys[0];
+}
+
+function createEmptyMarket(marketKey) {
+  return {
+    marketKey,
+    line: null,
+    yesNo: false,
+    books: new Set(),
+    pricesByLine: { over: {}, under: {} },
+    historyKeys: { over: {}, under: {} },
+  };
+}
+
+function finalizeMarket(mkt, propHistory) {
+  const bookList = Array.from(mkt.books).sort((a, b) => a.localeCompare(b));
+  const mainLineByBook = {};
+  bookList.forEach(book => {
+    const key = pickMainLineKey(mkt.pricesByLine.over[book], mkt.pricesByLine.under[book]);
+    if (key != null) mainLineByBook[book] = key;
+  });
+
+  const votes = {};
+  Object.values(mainLineByBook).forEach(key => { votes[key] = (votes[key] || 0) + 1; });
+  const consensusKey = Object.keys(votes)
+    .sort((a, b) => (votes[b] - votes[a]) || compareLineKeys(a, b))[0] ?? NO_LINE;
+
+  // over/under hold consensus-line prices only, so best price and fair value
+  // never mix different numbers. cells carries what each book shows,
+  // including an off-consensus line when that is all the book posts.
+  const over = {};
+  const under = {};
+  const cells = { over: {}, under: {} };
+  bookList.forEach(book => {
+    ['over', 'under'].forEach(side => {
+      const lines = mkt.pricesByLine[side][book];
+      const key = nearestLineKey(lines, consensusKey);
+      if (key == null) return;
+      const price = lines[key];
+      const alt = key !== consensusKey;
+      cells[side][book] = { price, line: fromLineKey(key), alt };
+      if (!alt) (side === 'over' ? over : under)[book] = price;
+    });
+  });
+
+  const result = {
+    ...mkt,
+    line: fromLineKey(consensusKey),
+    bookList,
+    over,
+    under,
+    cells,
+    mainLines: Object.values(mainLineByBook).map(fromLineKey).filter(line => line != null),
+  };
+  result.insights = buildMarketInsights(result, propHistory);
+  return result;
+}
+
+// Returns one entry per sport + player with a `markets` map keyed by market.
+export function aggregatePlayerProps(playerProps = [], propHistory = {}) {
+  const players = new Map();
+  playerProps.forEach(prop => {
+    if (!prop?.player || !prop.market) return;
+    const side = getPropSideSlot(prop.outcome);
+    if (!side || prop.price == null || !Number.isFinite(Number(prop.price))) return;
+    const sport = prop.sport || 'unknown';
+    const playerKey = `${sport}::${prop.player}`;
+    if (!players.has(playerKey)) {
+      players.set(playerKey, {
+        key: playerKey,
+        sport,
+        name: prop.player,
+        game: prop.game,
+        gameId: prop.gameId,
+        commenceTime: prop.commence_time,
+        markets: {},
+      });
+    }
+    const player = players.get(playerKey);
+    const mkt = player.markets[prop.market] || (player.markets[prop.market] = createEmptyMarket(prop.market));
+    const book = prop.book || prop.bookTitle || prop.bookKey || 'Unknown';
+    mkt.books.add(book);
+    if (prop.outcome === 'Yes' || prop.outcome === 'No') mkt.yesNo = true;
+    const byBook = mkt.pricesByLine[side][book] || (mkt.pricesByLine[side][book] = {});
+    byBook[toLineKey(prop.line)] = Number(prop.price);
+    mkt.historyKeys[side][book] = createPropHistoryKey(prop);
+  });
+
+  return Array.from(players.values()).map(player => {
+    const markets = {};
+    Object.entries(player.markets).forEach(([marketKey, mkt]) => {
+      markets[marketKey] = finalizeMarket(mkt, propHistory);
+    });
+    return { ...player, markets };
+  });
 }
 
 // ============================================================
@@ -410,8 +717,8 @@ export function scorePropCandidate({ marketKey, mkt, timing }) {
   if (edgeValue != null && edgeValue > 0) {
     const edgePts = Math.min(40, Math.round(edgeValue * 2));
     score += edgePts;
-    if (edgeValue >= 10) reasons.push(`+${Math.round(edgeValue)} vs fair line`);
-    else if (edgeValue >= 5) reasons.push(`+${Math.round(edgeValue)} above fair`);
+    if (edgeValue >= 10) reasons.push(`+${Math.round(edgeValue)}¢ vs fair line`);
+    else if (edgeValue >= 5) reasons.push(`+${Math.round(edgeValue)}¢ above fair`);
   }
 
   // 2. Book depth — more books = more reliable fair model (0-20 pts)
@@ -463,10 +770,11 @@ export function buildPropAlerts(players = [], propHistory = {}, propClosingLines
       const insights = mkt.insights;
       if (!insights) return;
 
-      const edgeSide = (insights.edgeOver ?? -Infinity) >= (insights.edgeUnder ?? -Infinity) ? 'Over' : 'Under';
-      const edgeValue = edgeSide === 'Over' ? insights.edgeOver : insights.edgeUnder;
-      const edgeBook = edgeSide === 'Over' ? insights.bestOverBook : insights.bestUnderBook;
-      const edgePrice = edgeSide === 'Over' ? insights.bestOver : insights.bestUnder;
+      const edgeSlot = (insights.edgeOver ?? -Infinity) >= (insights.edgeUnder ?? -Infinity) ? 'over' : 'under';
+      const edgeValue = edgeSlot === 'over' ? insights.edgeOver : insights.edgeUnder;
+      const edgeBook = edgeSlot === 'over' ? insights.bestOverBook : insights.bestUnderBook;
+      const edgePrice = edgeSlot === 'over' ? insights.bestOver : insights.bestUnder;
+      const marketLabel = getMarketDisplayName(marketKey);
       const movement = insights.strongestMove;
       const priceMove = insights.strongestPriceMove;
       const marketKeyId = `${player.sport}::${player.game}::${player.name}::${marketKey}`;
@@ -477,18 +785,22 @@ export function buildPropAlerts(players = [], propHistory = {}, propClosingLines
         alerts.push({
           id: `${marketKeyId}::value::${edgeBook}`,
           type: 'value',
+          playerKey: player.key,
+          marketKey,
           sport: player.sportMeta?.label || player.sport,
           emoji: player.sportMeta?.icon || '🎯',
           player: player.name,
           game: player.game,
-          market: getMarketDisplayName(marketKey),
-          title: `${player.name} ${marketKey ? getMarketDisplayName(marketKey) : 'Prop'} ${edgeSide} ${mkt.line ?? '—'}`,
-          edge: `${edgeSide} ${mkt.line ?? '—'} at ${getBookAbbreviation(edgeBook)} ${formatOdds(edgePrice)}`,
+          market: marketLabel,
+          side: edgeSlot,
+          price: edgePrice,
+          title: `${player.name} ${marketLabel} ${formatPropPick(mkt, edgeSlot)}`,
+          edge: `${formatPropPick(mkt, edgeSlot)} at ${getBookAbbreviation(edgeBook)} ${formatOdds(edgePrice)}`,
           book: edgeBook,
           confidence: edgeValue >= 18 ? 'HIGH' : edgeValue >= 12 ? 'MEDIUM' : 'LOW',
           note: insights.summary,
           metric: edgeValue,
-          metricDisplay: `${edgeValue > 0 ? '+' : ''}${Math.round(edgeValue)} fair`,
+          metricDisplay: `${edgeValue > 0 ? '+' : ''}${Math.round(edgeValue)}¢ vs fair`,
         });
       }
 
@@ -496,13 +808,15 @@ export function buildPropAlerts(players = [], propHistory = {}, propClosingLines
         alerts.push({
           id: `${marketKeyId}::move::${movement.book}::${movement.side}`,
           type: 'movement',
+          playerKey: player.key,
+          marketKey,
           sport: player.sportMeta?.label || player.sport,
           emoji: player.sportMeta?.icon || '🎯',
           player: player.name,
           game: player.game,
-          market: getMarketDisplayName(marketKey),
-          title: `${player.name} ${getMarketDisplayName(marketKey)} ${movement.side === 'over' ? 'Over' : 'Under'} ${mkt.line ?? '—'}`,
-          edge: `${getBookAbbreviation(movement.book)} moved ${movement.lineChange > 0 ? '+' : ''}${movement.lineChange} on the ${movement.side}`,
+          market: marketLabel,
+          title: `${player.name} ${marketLabel} ${formatPropPick(mkt, movement.side)}`,
+          edge: `${getBookAbbreviation(movement.book)} moved ${movement.lineChange > 0 ? '+' : ''}${movement.lineChange} on the ${getPropSideLabel(mkt, movement.side).toLowerCase()}`,
           book: movement.book,
           confidence: Math.abs(movement.lineChange) >= 1 ? 'HIGH' : 'MEDIUM',
           note: priceMove ? `Price also moved ${priceMove.priceChange > 0 ? '+' : ''}${priceMove.priceChange}.` : insights.summary,
@@ -519,12 +833,14 @@ export function buildPropAlerts(players = [], propHistory = {}, propClosingLines
             alerts.push({
               id: `${marketKeyId}::close::${latestClose.book || 'close'}`,
               type: 'closing',
+              playerKey: player.key,
+              marketKey,
               sport: player.sportMeta?.label || player.sport,
               emoji: player.sportMeta?.icon || '🎯',
               player: player.name,
               game: player.game,
-              market: getMarketDisplayName(marketKey),
-              title: `${player.name} ${getMarketDisplayName(marketKey)} closing-line check`,
+              market: marketLabel,
+              title: `${player.name} ${marketLabel} closing-line check`,
               edge: `${latestClose.side} ${latestClose.firstLine} → ${latestClose.closingLine}`,
               book: latestClose.book || 'Local',
               confidence: Math.abs(clv) >= 1 ? 'HIGH' : 'LOW',
