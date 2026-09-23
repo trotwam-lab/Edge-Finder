@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { DollarSign, Lock, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
@@ -86,12 +86,14 @@ export default function KellyCriterion() {
   const impliedProb = isValid ? americanToImplied(oddsNum) : null;
   const edge = impliedProb ? ((trueProbability - impliedProb) * 100).toFixed(1) : null;
 
-  // Determine risk level for gauge
-  const riskLevel = useMemo(() => {
-    if (fullKelly <= 0.02) return { label: 'Conservative', color: '#22c55e', width: '25%' };
-    if (fullKelly <= 0.05) return { label: 'Moderate', color: '#eab308', width: '50%' };
-    return { label: 'Aggressive', color: '#ef4444', width: '85%' };
-  }, [fullKelly]);
+  // Determine risk level for gauge. Plain code, not a hook: this runs after
+  // the free-tier early return, and a hook here would crash the calculator
+  // when the tier flips to Pro while it is mounted.
+  const riskLevel = fullKelly <= 0.02
+    ? { label: 'Conservative', color: '#22c55e', width: '25%' }
+    : fullKelly <= 0.05
+      ? { label: 'Moderate', color: '#eab308', width: '50%' }
+      : { label: 'Aggressive', color: '#ef4444', width: '85%' };
 
   // --- Shared styles ---
   const cardStyle = {

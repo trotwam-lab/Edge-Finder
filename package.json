@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "ios:sync": "npm run build && npx cap sync ios",
     "ios:open": "npm run ios:sync && npx cap open ios",
-    "ios:copy": "npm run build && npx cap copy ios"
+    "ios:copy": "npm run build && npx cap copy ios",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project demo-edgefinder \"node tests/firestore.rules.test.mjs\"",
+    "check": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "firebase": "^12.9.0",
@@ -25,10 +29,17 @@
     "@capacitor/cli": "^8.3.3",
     "@capacitor/core": "^8.3.3",
     "@capacitor/ios": "^8.3.3",
+    "@eslint/js": "^9.39.5",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
     "dotenv": "^17.3.1",
-    "vite": "^5.0.8"
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.12.0",
+    "vite": "^5.0.8",
+    "vitest": "^2.1.9"
   }
 }
