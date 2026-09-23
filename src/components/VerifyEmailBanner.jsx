@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
 import { sendEmailVerification } from 'firebase/auth';
 import { MailCheck, X } from 'lucide-react';
+import { readJSON, writeJSON } from '../utils/storage.js';
+
+const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+const snoozeKey = (uid) => `edgefinder_verify_email_snooze_${uid}`;
 
 // Nudge for password accounts whose email isn't verified yet. Nothing is
 // blocked; verifying just proves the address belongs to this account, which
 // email-based access (complimentary lists, Stripe lookup) requires for new
 // accounts.
 export default function VerifyEmailBanner({ user }) {
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    const until = user?.uid ? readJSON(snoozeKey(user.uid), 0) : 0;
+    return Number(until) > Date.now();
+  });
   const [status, setStatus] = useState('idle'); // idle | sending | sent | error | verified
 
   if (!user || user.emailVerified || dismissed || status === 'verified') return null;
@@ -53,7 +60,7 @@ export default function VerifyEmailBanner({ user }) {
       <button onClick={recheck} style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid rgba(71,85,105,0.4)', background: 'transparent', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}>
         I've verified
       </button>
-      <button onClick={() => setDismissed(true)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: 2 }}>
+      <button onClick={() => { writeJSON(snoozeKey(user.uid), Date.now() + SNOOZE_MS); setDismissed(true); }} aria-label="Dismiss for a week" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', padding: 2 }}>
         <X size={14} />
       </button>
     </div>

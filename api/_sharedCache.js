@@ -19,6 +19,18 @@ function docId(key) {
   return String(key).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 400);
 }
 
+// A malformed service account makes getAdminDb() throw; treat that like
+// "no shared cache" instead of failing the request.
+function resolveDb(options) {
+  if (options && 'db' in options) return options.db;
+  try {
+    return getAdminDb();
+  } catch (error) {
+    console.warn('Shared cache disabled:', error.message);
+    return null;
+  }
+}
+
 function withTimeout(promise, ms) {
   return Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(null), ms))]);
 }
@@ -36,7 +48,8 @@ export function decodeEntry(doc) {
 }
 
 // Returns { data, ts, ttl } or null. Never throws.
-export async function readSharedCache(key, { db = getAdminDb() } = {}) {
+export async function readSharedCache(key, options) {
+  const db = resolveDb(options);
   if (!db) return null;
   try {
     const snap = await withTimeout(db.collection(COLLECTION).doc(docId(key)).get(), READ_TIMEOUT_MS);
@@ -49,7 +62,8 @@ export async function readSharedCache(key, { db = getAdminDb() } = {}) {
 }
 
 // Stores { data, ts, ttl }. Never throws; skips payloads too large to store.
-export async function writeSharedCache(key, entry, { db = getAdminDb() } = {}) {
+export async function writeSharedCache(key, entry, options) {
+  const db = resolveDb(options);
   if (!db) return false;
   try {
     const encoded = encodeEntry(entry);

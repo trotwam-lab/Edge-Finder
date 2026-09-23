@@ -14,10 +14,9 @@ export default async function handler(req, res) {
   const caller = await getVerifiedUser(req);
   if (!caller) return res.status(401).json({ error: 'Please sign in again.' });
 
-  const app = getAdminApp();
-  if (!app) return res.status(503).json({ error: 'Account service unavailable. Try again later.' });
-
   try {
+    const app = getAdminApp();
+    if (!app) return res.status(503).json({ error: 'Account service unavailable. Try again later.' });
     await getAuth(app).revokeRefreshTokens(caller.uid);
     return res.status(200).json({ ok: true });
   } catch (error) {

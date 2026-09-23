@@ -50,3 +50,15 @@ describe('shared cache', () => {
     expect(isFresh(null, 300)).toBe(false);
   });
 });
+
+describe('shared cache without usable credentials', () => {
+  it('does not throw when the admin database cannot be created', async () => {
+    const { vi } = await import('vitest');
+    vi.resetModules();
+    vi.doMock('./_firebaseAdmin.js', () => ({ getAdminDb: () => { throw new Error('bad key'); } }));
+    const mod = await import('./_sharedCache.js');
+    expect(await mod.readSharedCache('k')).toBeNull();
+    expect(await mod.writeSharedCache('k', { data: [], ts: 1 })).toBe(false);
+    vi.doUnmock('./_firebaseAdmin.js');
+  });
+});
