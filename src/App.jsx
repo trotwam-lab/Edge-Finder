@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
 import { Activity, AlertTriangle, BarChart3, Loader, X } from 'lucide-react';
 import { SPORTS, BOOKMAKERS, FREE_BOOKS } from './constants.js';
 import { useAuth } from './AuthGate.jsx';
@@ -17,6 +17,8 @@ import HomeDashboard from './components/HomeDashboard.jsx';
 import FirstRunSetup from './components/FirstRunSetup.jsx';
 import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
 import { isGameLive, getGameStatus } from './utils/live-status.js';
+import { buildMarketDisagreement } from './utils/odds-math.js';
+import { useNow } from './hooks/useNow.js';
 import { clearCachedData, removeKey } from './utils/storage.js';
 import VerifyEmailBanner from './components/VerifyEmailBanner.jsx';
 import AccountSecurity from './components/AccountSecurity.jsx';
@@ -45,22 +47,65 @@ const BetTracker = lazy(tabLoaders.BetTracker);
 
 function TabFallback({ label = 'Loading...' }) {
   return (
-    <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
+    <div role="status" style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
       <Loader size={28} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
       <div style={{ marginTop: '12px', fontSize: '12px' }}>{label}</div>
     </div>
   );
 }
 
+// Placeholder cards shaped like the real board, so first load reads as
+// "data arriving" instead of a blank spinner.
+function GameBoardSkeleton({ rows = 5 }) {
+  return (
+    <div role="status" aria-label="Loading games" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="ef-skeleton" style={{ height: '74px', borderRadius: '8px', animationDelay: `${i * 90}ms` }} />
+      ))}
+    </div>
+  );
+}
+
+function NextRefreshIn({ nextRefreshAt }) {
+  const now = useNow(1000);
+  return <>{Math.max(0, Math.ceil((nextRefreshAt - now) / 1000))}s</>;
+}
+
+// Same team lookup GameCard uses, so the summary and the cards agree.
+function teamInjuries(injuries, team) {
+  if (!team) return [];
+  const lastWord = team.split(' ').pop()?.toLowerCase();
+  return injuries?.[team.toLowerCase()] || injuries?.[lastWord] || [];
+}
+
+// Only absences that actually move a line count as a flag — most rosters
+// carry a day-to-day name, which would otherwise flag nearly every game.
+const KEY_INJURY_STATUS = /\b(out|doubtful)\b/i;
+function hasKeyInjury(injuries, team) {
+  return teamInjuries(injuries, team).some(inj => KEY_INJURY_STATUS.test(inj?.status || ''));
+}
+
 function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
-  const liveGames = games.filter(isGameLive).length;
-  const injuryCount = Object.values(injuries || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0);
-  const bookCount = games.reduce((max, game) => Math.max(max, game.bookmakers?.length || 0), 0);
-  const trackedMarkets = games.reduce((sum, game) => {
-    const markets = game.bookmakers?.reduce((bookSum, book) => bookSum + (book.markets?.length || 0), 0) || 0;
-    return sum + markets;
-  }, 0);
-  const watchCandidates = Math.min(games.length, Math.max(0, Math.round((games.length || 0) * 0.28) + liveGames));
+  // Derived from real signals (live state, injury flags, book disagreement)
+  // and recomputed only when the board data changes.
+  const { liveGames, injuryGames, bookCount, trackedMarkets, watchCandidates } = useMemo(() => {
+    let live = 0;
+    let injured = 0;
+    let watch = 0;
+    let books = 0;
+    let markets = 0;
+    games.forEach(game => {
+      const isLive = isGameLive(game);
+      const hasInjuries = hasKeyInjury(injuries, game.home_team) || hasKeyInjury(injuries, game.away_team);
+      const booksDisagree = buildMarketDisagreement(game).top?.strength === 'HIGH';
+      if (isLive) live += 1;
+      if (hasInjuries) injured += 1;
+      if (isLive || hasInjuries || booksDisagree) watch += 1;
+      books = Math.max(books, game.bookmakers?.length || 0);
+      markets += game.bookmakers?.reduce((bookSum, book) => bookSum + (book.markets?.length || 0), 0) || 0;
+    });
+    return { liveGames: live, injuryGames: injured, bookCount: books, trackedMarkets: markets, watchCandidates: watch };
+  }, [games, injuries]);
   const updated = lastUpdate
     ? lastUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
     : 'Waiting';
@@ -68,7 +113,7 @@ function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
     { label: 'Games', value: games.length || '--', tone: '#38bdf8' },
     { label: 'Books', value: bookCount || '--', tone: '#2dd4bf' },
     { label: 'Markets', value: trackedMarkets || '--', tone: '#a3e635' },
-    { label: 'Alerts', value: injuryCount + liveGames, tone: injuryCount || liveGames ? '#f59e0b' : '#64748b' },
+    { label: 'Alerts', value: injuryGames + liveGames, tone: injuryGames || liveGames ? '#f59e0b' : '#64748b' },
   ];
   const intelligenceCards = [
     {
@@ -88,8 +133,8 @@ function MarketSummary({ games, injuries, lastUpdate, isConnected, loading }) {
     {
       icon: AlertTriangle,
       label: 'Watchlist',
-      title: `${watchCandidates || '--'} games worth checking first`,
-      note: 'Start with injury flags, live games, and mismatched book prices before browsing the full slate.',
+      title: games.length ? `${watchCandidates} game${watchCandidates === 1 ? '' : 's'} worth checking first` : '-- games worth checking first',
+      note: 'Live games, key absences (out/doubtful), and books split by a wide margin — start here before browsing the full slate.',
       tone: '#f59e0b',
     },
   ];
@@ -137,6 +182,7 @@ export default function BettingApp() {
   const [showCheckoutToast, setShowCheckoutToast] = useState(false);
   const [showCancelToast, setShowCancelToast] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [portalError, setPortalError] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -144,33 +190,29 @@ export default function BettingApp() {
       setShowCheckoutToast(true);
       refreshTier();
       window.history.replaceState({}, '', window.location.pathname);
-      setTimeout(() => setShowCheckoutToast(false), 5000);
     } else if (params.get('checkout') === 'cancel') {
       setShowCancelToast(true);
       window.history.replaceState({}, '', window.location.pathname);
-      setTimeout(() => setShowCancelToast(false), 4000);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-dismiss timers live with the toast state so they're always cleaned up.
+  useEffect(() => {
+    if (!showCheckoutToast) return undefined;
+    const timer = setTimeout(() => setShowCheckoutToast(false), 5000);
+    return () => clearTimeout(timer);
+  }, [showCheckoutToast]);
+  useEffect(() => {
+    if (!showCancelToast) return undefined;
+    const timer = setTimeout(() => setShowCancelToast(false), 4000);
+    return () => clearTimeout(timer);
+  }, [showCancelToast]);
 
   const [filter, setFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [expandedGame, setExpandedGame] = useState(null);
   const [pendingBet, setPendingBet] = useState(null);
-  // Enrich incoming bet with the historic opener price (if one was captured
-  // when we first saw this game), so CLV can be computed automatically.
-  const handleSetPendingBet = (bet) => {
-    let openingOdds = null;
-    try {
-      const opener = bet.gameId ? historicOdds?.[bet.gameId] : null;
-      if (opener && bet.marketKey === 'h2h' && bet.outcomeName) {
-        const match = opener.h2h?.find(o => o.name === bet.outcomeName);
-        if (match?.price != null) openingOdds = match.price;
-      }
-    } catch {}
-    setPendingBet({ ...bet, openingOdds });
-    setActiveTab('TRACKER');
-  };
 
   const [watchlist, setWatchlist] = usePersistentState('edgefinder_watchlist', []);
   const [manualOpeners, setManualOpeners] = usePersistentState('edgefinder_manual_openers', {});
@@ -232,9 +274,29 @@ export default function BettingApp() {
   };
 
   const {
-    games, playerProps, propsLoading, injuries, historicOdds, loading, error, lastUpdate,
-    isConnected, countdown, gameLineHistory, propHistory, sportLastUpdated, manualRefresh,
+    games, playerProps, propsLoading, injuries, historicOdds, loading, lastUpdate,
+    isConnected, nextRefreshAt, refreshInterval, refreshing, gameLineHistory, propHistory, manualRefresh,
   } = useOdds({ filter, enabledSports });
+
+  // Minute-level clock: keeps "starts in 12m" / "5m ago" labels honest
+  // without re-rendering the whole app every second.
+  const clock = useNow(60000);
+
+  // Enrich incoming bet with the historic opener price (if one was captured
+  // when we first saw this game), so CLV can be computed automatically.
+  // Stable identity so memoized game cards don't re-render on every update.
+  const handleSetPendingBet = useCallback((bet) => {
+    let openingOdds = null;
+    try {
+      const opener = bet.gameId ? historicOdds?.[bet.gameId] : null;
+      if (opener && bet.marketKey === 'h2h' && bet.outcomeName) {
+        const match = opener.h2h?.find(o => o.name === bet.outcomeName);
+        if (match?.price != null) openingOdds = match.price;
+      }
+    } catch {}
+    setPendingBet({ ...bet, openingOdds });
+    setActiveTab('TRACKER');
+  }, [historicOdds]);
 
   // Bets live at app level (not inside BetTracker) so the closing-line
   // auto-capture below keeps observing the odds feed on EVERY tab. When this
@@ -243,28 +305,45 @@ export default function BettingApp() {
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
   useClosingLineCapture(bets, setBets, games, historicOdds, playerProps);
 
-  const toggleWatchlist = (id) => {
+  const toggleWatchlist = useCallback((id) => {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
+  }, [setWatchlist]);
+
+  const handleToggleGame = useCallback((id) => {
+    setExpandedGame(prev => (prev === id ? null : id));
+  }, []);
 
   // Open a specific game (from the ticker / game-of-the-day) on the board,
   // expanded. Reset filter+search so the game is guaranteed to be visible.
+  const scrollToGameRef = useRef(null);
   const handleSelectGame = (game) => {
     if (!game?.id) return;
     setFilter('ALL');
     setSearchTerm('');
     setExpandedGame(game.id);
+    scrollToGameRef.current = game.id;
     setActiveTab('GAMES');
   };
+
+  // New tab = start at the top, like a new page. The exception is jumping to
+  // a specific game, which scrolls that card into view once it renders.
+  const isFirstTabRender = useRef(true);
+  useEffect(() => {
+    if (isFirstTabRender.current) { isFirstTabRender.current = false; return; }
+    if (activeTab !== 'GAMES') scrollToGameRef.current = null; // never carry a stale jump
+    if (activeTab === 'GAMES' && scrollToGameRef.current) return;
+    window.scrollTo({ top: 0 });
+  }, [activeTab]);
 
   const alertsApi = useAlerts({ games, watchlist, gameLineHistory, historicOdds, tier });
 
   const handleManageSubscription = async () => {
     if (!user) {
-      alert('Please log in first to manage your subscription.');
+      setPortalError('Please sign in again to manage your subscription.');
       return;
     }
 
+    setPortalError('');
     setIsOpeningPortal(true);
     try {
       // Identity travels as a verified ID token — the server ignores any
@@ -284,11 +363,11 @@ export default function BettingApp() {
         window.location.href = data.url;
       } else {
         console.error('Billing portal error:', data.error);
-        alert('Failed to open billing portal: ' + (data.error || 'Unknown error'));
+        setPortalError(`Couldn't open the billing portal${data.error ? `: ${data.error}` : ''}. Please try again.`);
       }
     } catch (error) {
       console.error('Billing portal error:', error);
-      alert('Failed to open billing portal. Please try again.');
+      setPortalError("Couldn't open the billing portal. Check your connection and try again.");
     } finally {
       setIsOpeningPortal(false);
     }
@@ -359,6 +438,15 @@ export default function BettingApp() {
   const teamLogoMap = useTeamLogos(games);
 
   useEffect(() => {
+    const targetId = scrollToGameRef.current;
+    if (!targetId || activeTab !== 'GAMES') return;
+    const el = document.getElementById(`game-${targetId}`);
+    if (!el) return; // not rendered yet (e.g. still loading) — retry next render
+    scrollToGameRef.current = null;
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [activeTab, gamesBySport, expandedGame]);
+
+  useEffect(() => {
     if (activeTab === 'EV_CALC' || activeTab === 'KELLY' || activeTab === 'EDGES_LINES') {
       setActiveTab('PRO_TOOLS');
     }
@@ -424,12 +512,11 @@ export default function BettingApp() {
         games={games}
         playerProps={playerProps}
         isConnected={isConnected}
-        injuries={injuries}
         loading={loading}
-        countdown={countdown}
+        refreshing={refreshing}
+        nextRefreshAt={nextRefreshAt}
         onRefresh={manualRefresh}
         lastUpdate={lastUpdate}
-        sportLastUpdated={sportLastUpdated}
         alertsApi={alertsApi}
       />
       <VerifyEmailBanner user={user} />
@@ -467,10 +554,7 @@ export default function BettingApp() {
             games={games}
           />
           {loading && games.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px' }}>
-              <Loader size={36} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
-              <p style={{ marginTop: '16px', color: '#94a3b8' }}>Loading games...</p>
-            </div>
+            <GameBoardSkeleton />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
               {gamesBySport.map(([sportKey, sportGames]) => {
@@ -506,11 +590,12 @@ export default function BettingApp() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {sportGames.map(game => (
-                        <div key={game.id}>
+                        <div key={game.id} id={`game-${game.id}`} className="game-anchor">
                           <GameCard
                             game={game}
                             expanded={expandedGame === game.id}
-                            onToggle={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
+                            onToggle={handleToggleGame}
+                            clock={clock}
                             watchlist={watchlist}
                             onToggleWatchlist={toggleWatchlist}
                             injuries={injuries}
@@ -538,9 +623,23 @@ export default function BettingApp() {
                   </div>
                 );
               })}
-              {filteredGames.length === 0 && !loading && (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No games found. Try adjusting filters.</div>
-              )}
+              {filteredGames.length === 0 && !loading && (() => {
+                const emptyButton = { marginTop: '14px', padding: '8px 16px', borderRadius: '8px', background: 'var(--ef-accent-soft)', border: '1px solid var(--ef-accent-border)', color: 'var(--ef-cyan)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--ef-font-body)' };
+                const empty = deferredSearchTerm
+                  ? { message: `No games match “${deferredSearchTerm}”.`, hint: 'Search covers team names across every enabled sport.', action: 'Clear search', onClick: () => setSearchTerm('') }
+                  : filter !== 'ALL'
+                    ? { message: `No ${filter} games on the board right now.`, hint: 'Books may not have posted lines yet — we keep checking automatically.', action: 'Show all sports', onClick: () => setFilter('ALL') }
+                    : enabledSports.length === 0
+                      ? { message: 'All sports are turned off.', hint: 'Pick the sports you bet on and the board fills in.', action: 'Choose sports', onClick: () => setActiveTab('SETTINGS') }
+                      : { message: 'No games posted yet.', hint: 'Books may not have opened lines — the board refreshes automatically.', action: refreshing ? 'Refreshing…' : 'Refresh now', onClick: manualRefresh };
+                return (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0' }}>{empty.message}</div>
+                    <div style={{ fontSize: '12px', marginTop: '6px', color: '#64748b' }}>{empty.hint}</div>
+                    <button type="button" onClick={empty.onClick} disabled={refreshing && empty.onClick === manualRefresh} style={emptyButton}>{empty.action}</button>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </main>
@@ -585,6 +684,9 @@ export default function BettingApp() {
                 >
                   {isOpeningPortal ? 'Opening...' : 'Manage Subscription'}
                 </button>
+                {portalError && (
+                  <div role="alert" style={{ marginTop: '8px', fontSize: '11px', color: '#f87171' }}>{portalError}</div>
+                )}
               </div>
             ) : <ProBanner />}
           </div>
@@ -643,10 +745,10 @@ export default function BettingApp() {
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>Auto-Refresh</div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Live games refresh every 60s. Non-live every 120s.</div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>Refreshes every 30s while a game is live, every 120s otherwise, and right away when you come back to the app.</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '12px', color: isConnected ? '#10b981' : '#ef4444' }}>{isConnected ? 'Connected' : 'Disconnected'}</span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>| Next refresh in {countdown}s</span>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>| {refreshing ? 'Refreshing now…' : <>Next refresh in <NextRefreshIn nextRefreshAt={nextRefreshAt} /> ({refreshInterval}s cadence)</>}</span>
             </div>
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
@@ -726,15 +828,6 @@ export default function BettingApp() {
         </main>
       )}
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes efPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-        @keyframes efMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-        .ef-ticker-track { display: inline-flex; }
-        .ef-ticker-scroll { animation: efMarquee 42s linear infinite; }
-        .ef-ticker-scroll:hover { animation-play-state: paused; }
-        @media (prefers-reduced-motion: reduce) { .ef-ticker-scroll { animation: none; } }
-      `}</style>
     </div>
   );
 }

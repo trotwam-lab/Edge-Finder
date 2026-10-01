@@ -7,6 +7,51 @@ import { auth, getUserTier } from './firebase';
 
 const WelcomePage = lazy(() => import('./components/WelcomePage.jsx'));
 
+// A tiny "this device was signed in last time" flag. It only decides whether
+// to start downloading the dashboard before Firebase finishes restoring the
+// session — never whether anyone is signed in.
+const SESSION_HINT_KEY = 'edgefinder_session_hint';
+
+export function hasSessionHint() {
+  try { return localStorage.getItem(SESSION_HINT_KEY) === '1'; } catch { return false; }
+}
+
+function setSessionHint(signedIn) {
+  try {
+    if (signedIn) localStorage.setItem(SESSION_HINT_KEY, '1');
+    else localStorage.removeItem(SESSION_HINT_KEY);
+  } catch {}
+}
+
+export function AuthLoadingScreen({ label }) {
+  return (
+    <div role="status" style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'column',
+      gap: '14px',
+      padding: '24px',
+      paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))',
+      paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))'
+    }}>
+      <div style={{
+        width: '32px',
+        height: '32px',
+        border: '3px solid rgba(99, 102, 241, 0.2)',
+        borderTopColor: '#818cf8',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite'
+      }} />
+      <div style={{ color: '#94a3b8', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace" }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
 // --- Auth Context ---
 // This context provides { user, tier, loading, logout } to the whole app
 // "tier" is either "free" or "pro" — it controls what features are visible
@@ -35,6 +80,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      setSessionHint(!!u);
       if (u) {
         // User is logged in — check their subscription tier using Firebase UID first, then email fallback
         const userTier = await getUserTier();
@@ -78,32 +124,7 @@ export default function AuthGate({ children }) {
   }, [loading]);
 
   if (loading && !authTimedOut) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'column',
-        gap: '14px',
-        padding: '24px',
-        paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))',
-        paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))'
-      }}>
-        <div style={{
-          width: '32px',
-          height: '32px',
-          border: '3px solid rgba(99, 102, 241, 0.2)',
-          borderTopColor: '#818cf8',
-          borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite'
-        }} />
-        <div style={{ color: '#94a3b8', fontSize: '12px', fontFamily: "'JetBrains Mono', monospace" }}>
-          Restoring sign-in…
-        </div>
-      </div>
-    );
+    return <AuthLoadingScreen label="Restoring sign-in…" />;
   }
 
   if (!user) {

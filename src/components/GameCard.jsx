@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { memo, useState } from 'react';
 import { Star, ChevronDown, ChevronUp, Share2, Lock, Target } from 'lucide-react';
 import { getConsensusFairOdds, formatOdds, findBestOdds, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
@@ -52,7 +52,11 @@ function HoldBadge({ hold }) {
   );
 }
 
-export default function GameCard({
+// Memoized: the board renders dozens of these, and each one runs several
+// odds-math passes. Expanding one card or typing in search should only
+// re-render the cards whose inputs actually changed. The parent also passes a
+// minute `clock` prop (unused here) so memo lets "starts in 12m" labels refresh.
+function GameCard({
   game, expanded, onToggle, watchlist, onToggleWatchlist,
   injuries, gameLineHistory, setPendingBet, logoMap = {},
 }) {
@@ -135,10 +139,24 @@ export default function GameCard({
   return (
     <div>
       {/* Clickable card header */}
-      <div onClick={onToggle} className="game-card-header" style={{
+      <div
+        onClick={() => onToggle(game.id)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(game.id); }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`${game.away_team} at ${game.home_team} — ${expanded ? 'hide' : 'show'} odds, line movement and research`}
+        className="game-card-header" style={{
         padding: '14px 18px',
         background: expanded ? 'rgba(20, 184, 166, 0.12)' : 'rgba(15, 23, 42, 0.72)',
-        border: `1px solid ${expanded ? 'rgba(45, 212, 191, 0.34)' : 'rgba(100, 116, 139, 0.18)'}`,
+        // Longhand borders: mixing the `border` shorthand with borderLeft made
+        // React drop the sport-colour stripe whenever a card was expanded.
+        borderTop: `1px solid ${expanded ? 'rgba(45, 212, 191, 0.34)' : 'rgba(100, 116, 139, 0.18)'}`,
+        borderRight: `1px solid ${expanded ? 'rgba(45, 212, 191, 0.34)' : 'rgba(100, 116, 139, 0.18)'}`,
+        borderBottom: `1px solid ${expanded ? 'rgba(45, 212, 191, 0.34)' : 'rgba(100, 116, 139, 0.18)'}`,
         borderLeft: `4px solid ${sportVisual.color}`,
         borderRadius: '8px', cursor: 'pointer',
         display: 'grid', gridTemplateColumns: '40px minmax(0, 2fr) 116px 116px 78px',
@@ -148,6 +166,9 @@ export default function GameCard({
         {/* Watchlist star + Share button side by side */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
           <button onClick={(e) => { e.stopPropagation(); onToggleWatchlist(game.id); }}
+            aria-label={watchlist.includes(game.id) ? 'Remove from watchlist' : 'Add to watchlist'}
+            aria-pressed={watchlist.includes(game.id)}
+            title={watchlist.includes(game.id) ? 'Remove from watchlist' : 'Add to watchlist'}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
             <Star size={18} color={watchlist.includes(game.id) ? '#fbbf24' : '#475569'}
               fill={watchlist.includes(game.id) ? '#fbbf24' : 'none'} />
@@ -155,6 +176,8 @@ export default function GameCard({
           {/* Share button — copies game summary to clipboard (free for everyone) */}
           <div style={{ position: 'relative' }}>
             <button onClick={handleShare}
+              aria-label="Copy game summary"
+              title="Copy game summary"
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
               <Share2 size={14} color="#475569" />
             </button>
@@ -172,6 +195,8 @@ export default function GameCard({
             <button
               onClick={(e) => { e.stopPropagation(); setShowQuickPick(!showQuickPick); }}
               title="Quick bet — track this game"
+              aria-label="Quick bet — track this game"
+              aria-expanded={showQuickPick}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                 color: '#64748b', lineHeight: 1,
@@ -432,3 +457,5 @@ export default function GameCard({
     </div>
   );
 }
+
+export default memo(GameCard);

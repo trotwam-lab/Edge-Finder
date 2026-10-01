@@ -93,3 +93,26 @@ h1, h2, h3, h4 {
   }
   ::-webkit-scrollbar-thumb:hover { background: rgba(125, 141, 168, 0.4); }
 }
+
+/* Shared animations. These live here (not inside a component) so spinners on
+   screens outside the main app — e.g. "Restoring sign-in…" — animate too. */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes efPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes efMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes efShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.ef-ticker-track { display: inline-flex; }
+.ef-ticker-scroll { animation: efMarquee 42s linear infinite; }
+.ef-ticker-scroll:hover { animation-play-state: paused; }
+
+/* Loading placeholder shaped like the content that's on its way. */
+.ef-skeleton {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.55) 0%, rgba(51, 65, 85, 0.55) 50%, rgba(30, 41, 59, 0.55) 100%);
+  background-size: 200% 100%;
+  border: 1px solid rgba(100, 116, 139, 0.14);
+  animation: efShimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ef-ticker-scroll, .ef-skeleton { animation: none; }
+}

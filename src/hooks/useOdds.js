@@ -124,7 +124,15 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [error, setError] = useState(null);
     const [lastUpdate, setLastUpdate] = useState(null);
     const [isConnected, setIsConnected] = useState(true);
-    const [countdown, setCountdown] = useState(defaultInterval);
+    // Absolute time of the next auto-refresh. Exposing a timestamp instead of
+    // a ticking "seconds left" counter means the app re-renders when data
+    // changes, not once a second — the per-second re-render of every game card
+    // was the single biggest source of jank on the board.
+    const [nextRefreshAt, setNextRefreshAt] = useState(() => Date.now() + defaultInterval * 1000);
+    // True while any odds load is in flight (initial, auto, manual or
+    // filter-driven) so the UI can show refresh feedback without blanking.
+    const [refreshing, setRefreshing] = useState(false);
+    const inFlightRef = useRef(0);
     const [sportLastUpdated, setSportLastUpdated] = useState({});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
@@ -313,6 +321,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   const loadData = useCallback(async (isInitial = false) => {
         if (isInitial) setLoading(true);
         setError(null);
+        inFlightRef.current += 1;
+        setRefreshing(true);
 
                                    try {
                                            const allSports = Object.entries(SPORTS).filter(([name]) => !enabledSports || enabledSports.includes(name));
@@ -506,13 +516,15 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           setLastUpdate(new Date());
                                            setIsConnected(true);
-                                           setCountdown(refreshInterval);
+                                           setNextRefreshAt(Date.now() + refreshInterval * 1000);
                                    } catch (err) {
                                            setError(err.message);
                                            setIsConnected(false);
                                            setPropsLoading(false);
                                    } finally {
                                            setLoading(false);
+                                           inFlightRef.current = Math.max(0, inFlightRef.current - 1);
+                                           if (inFlightRef.current === 0) setRefreshing(false);
                                    }
   }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveCatalog, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
@@ -529,26 +541,51 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   useEffect(() => {
         if (!hasCompletedInitialLoadRef.current) return;
         loadData(false);
-        setCountdown(refreshInterval);
+        setNextRefreshAt(Date.now() + refreshInterval * 1000);
   }, [filter, enabledSports]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Countdown + auto-refresh
+  // Auto-refresh: one timer aimed at nextRefreshAt. The next deadline is set
+  // before loading (and again when a load succeeds), so a failed refresh still
+  // retries on the normal cadence instead of looping.
   useEffect(() => {
-        const interval = setInterval(() => {
-                setCountdown(prev => {
-                          if (prev <= 1) {
-                                      loadData(false);
-                                      return refreshInterval;
-                          }
-                          return prev - 1;
-                });
-        }, 1000);
-        return () => clearInterval(interval);
-  }, [refreshInterval, loadData]);
+        const delay = Math.max(0, nextRefreshAt - Date.now());
+        const timer = setTimeout(() => {
+                setNextRefreshAt(Date.now() + refreshInterval * 1000);
+                // Slow networks: don't stack a timed refresh on one still running.
+                if (inFlightRef.current > 0) return;
+                loadData(false);
+        }, delay);
+        return () => clearTimeout(timer);
+  }, [nextRefreshAt, refreshInterval, loadData]);
+
+  // When a game goes live the cadence tightens — pull the next refresh in
+  // rather than waiting out the slower pregame countdown.
+  useEffect(() => {
+        setNextRefreshAt(prev => Math.min(prev, Date.now() + refreshInterval * 1000));
+  }, [refreshInterval]);
+
+  // Coming back to the app (phone unlocked, tab refocused, network restored):
+  // if a refresh came due while we were away, run it now so the board is
+  // never showing stale prices the moment the user looks at it.
+  const nextRefreshAtRef = useRef(nextRefreshAt);
+  nextRefreshAtRef.current = nextRefreshAt;
+  useEffect(() => {
+        const refreshIfDue = () => {
+                if (document.visibilityState !== 'visible') return;
+                if (Date.now() >= nextRefreshAtRef.current) setNextRefreshAt(Date.now());
+        };
+        const refreshNow = () => setNextRefreshAt(Date.now());
+        document.addEventListener('visibilitychange', refreshIfDue);
+        window.addEventListener('online', refreshNow);
+        return () => {
+                document.removeEventListener('visibilitychange', refreshIfDue);
+                window.removeEventListener('online', refreshNow);
+        };
+  }, []);
 
   const manualRefresh = useCallback(() => {
         loadData(false);
-        setCountdown(refreshInterval);
+        setNextRefreshAt(Date.now() + refreshInterval * 1000);
   }, [loadData, refreshInterval]);
 
   return {
@@ -561,7 +598,9 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         error,
         lastUpdate,
         isConnected,
-        countdown,
+        nextRefreshAt,
+        refreshInterval,
+        refreshing,
         gameLineHistory,
         propHistory,
         sportLastUpdated,
