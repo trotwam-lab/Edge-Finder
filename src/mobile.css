@@ -39,6 +39,10 @@ input {
 .edge-app-shell {
   width: 100%;
   overflow-x: hidden;
+  /* clip (where supported) hides sideways overflow the same way but, unlike
+     hidden, doesn't create a scroll container — which was silently disabling
+     the sticky header (desktop) and sticky sport filter (phones). */
+  overflow-x: clip;
   padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -565,19 +569,20 @@ input {
   -ms-overflow-style: none;
 }
 
-/* Keep the sport switcher reachable on desktop: pin it just under the sticky
-   header so you can change sports without scrolling back to the top. */
+/* Desktop: the sport chips wrap so every league is visible at once, which
+   makes the bar several rows tall — too tall to pin. The header stays sticky
+   instead; phones get a pinned single-row strip (see the mobile override). */
+
 @media (min-width: 769px) {
   .sport-filter-bar {
-    position: sticky;
-    top: 56px;
-    z-index: 80;
     padding: 10px 0 8px;
-    background: rgba(7, 11, 20, 0.92);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
   }
+}
+
+/* Where "jump to game" lands a card: just below whatever is pinned on top
+   (the header on desktop, the sport strip on phones). */
+.game-anchor {
+  scroll-margin-top: 96px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -599,6 +604,10 @@ input {
      than keeping the logo visible. */
   .edge-header {
     position: static !important;
+  }
+
+  .game-anchor {
+    scroll-margin-top: 112px;
   }
 
   .sport-filter-bar {

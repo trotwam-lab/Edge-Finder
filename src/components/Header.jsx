@@ -4,21 +4,46 @@ import { useAuth } from '../AuthGate.jsx';
 import { NAV_TABS } from '../constants.js';
 import AlertsBell from './AlertsBell.jsx';
 import Logo from './Logo.jsx';
+import { useNow } from '../hooks/useNow.js';
 
 const TAB_ICONS = { Home, Target, Users, Wrench, FileText, TrendingUp, Settings };
 
+function formatAgo(seconds) {
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const mins = Math.floor(seconds / 60);
+  return mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
+}
+
+// Ticks once a second on its own so the rest of the header (and app) doesn't.
+function RefreshStatus({ loading, refreshing, lastUpdate, nextRefreshAt }) {
+  const now = useNow(1000);
+  const secondsToNext = nextRefreshAt ? Math.max(0, Math.ceil((nextRefreshAt - now) / 1000)) : null;
+  const text = loading || refreshing
+    ? 'Updating…'
+    : lastUpdate
+      ? `Updated ${formatAgo(Math.max(0, Math.round((now - lastUpdate.getTime()) / 1000)))}`
+      : secondsToNext != null ? `${secondsToNext}s` : '';
+  return (
+    <div
+      className="ef-mono"
+      aria-live="polite"
+      title={secondsToNext != null ? `Next auto-refresh in ${secondsToNext}s` : undefined}
+      style={{ fontSize: '11px', color: 'var(--ef-text-dim)' }}
+    >
+      {text}
+    </div>
+  );
+}
+
 export default function Header({
   activeTab, setActiveTab, games, playerProps,
-  isConnected, injuries, loading, countdown,
-  onRefresh, lastUpdate, sportLastUpdated, alertsApi
+  isConnected, loading, refreshing, nextRefreshAt,
+  onRefresh, lastUpdate, alertsApi
 }) {
   const { user, tier, logout } = useAuth();
   const isPro = tier === 'pro';
-
-  // "Last updated X seconds ago"
-  const lastUpdatedText = lastUpdate
-    ? `Updated ${Math.round((Date.now() - lastUpdate.getTime()) / 1000)}s ago`
-    : '';
+  const busy = loading || refreshing;
 
   const tabCounts = { GAMES: games.length, PROPS: playerProps.length };
 
@@ -113,13 +138,12 @@ export default function Header({
             {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
             {isConnected ? 'LIVE' : 'OFFLINE'}
           </div>
-          <div className="ef-mono" style={{ fontSize: '11px', color: 'var(--ef-text-dim)' }}>
-            {loading ? 'Updating...' : lastUpdatedText || `${countdown}s`}
-          </div>
+          <RefreshStatus loading={loading} refreshing={refreshing} lastUpdate={lastUpdate} nextRefreshAt={nextRefreshAt} />
           <button
             onClick={onRefresh}
-            disabled={loading}
-            title="Refresh odds"
+            disabled={busy}
+            title={busy ? 'Refreshing odds…' : 'Refresh odds now'}
+            aria-label="Refresh odds"
             style={{
               padding: '6px 12px',
               background: 'var(--ef-accent-soft)',
@@ -127,10 +151,10 @@ export default function Header({
               borderRadius: '8px',
               color: 'var(--ef-cyan)',
               fontSize: '11px',
-              cursor: loading ? 'not-allowed' : 'pointer'
+              cursor: busy ? 'progress' : 'pointer'
             }}
           >
-            <RefreshCw size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+            <RefreshCw size={12} style={{ animation: busy ? 'spin 1s linear infinite' : 'none' }} />
           </button>
 
           {alertsApi && <AlertsBell {...alertsApi} onNavigate={setActiveTab} />}

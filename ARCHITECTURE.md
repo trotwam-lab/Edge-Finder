@@ -56,4 +56,8 @@ This repo is being standardised around the working Firebase login/subscriber flo
 ## Known debt
 - `src/hooks/useOdds.js` is oversized and mixes fetch, merge, polling, cache, and history logic
 - `src/App.jsx` and `src/components/BetTracker.jsx` are still large components; most styling is inline
-- bundle size is too large and needs code-splitting later
+- bundle: the signed-in app (`App.jsx`) and Firestore are split out of the landing-page path (`src/main.jsx`, `vite.config.js`); recharts is still a large chunk, loaded only by the Tracker and game details
+
+## Rendering performance
+- `useOdds` exposes `nextRefreshAt` (a timestamp), not a ticking countdown — anything that shows seconds uses `useNow` (`src/hooks/useNow.js`) in a small leaf component so the board doesn't re-render every second
+- `GameCard` is memoized; pass it stable callbacks (`useCallback`) or it re-renders with every parent update
