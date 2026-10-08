@@ -15,6 +15,7 @@ import { getSportVisual } from '../utils/team-logos.js';
 import { getGameStatus, formatStartTime } from '../utils/live-status.js';
 import GameTicker from './GameTicker.jsx';
 import EdgeReceipts from './EdgeReceipts.jsx';
+import EdgeWhy from './EdgeWhy.jsx';
 
 const PRO_LOCKED_BOOK_COUNT = Object.keys(BOOKMAKERS).length - FREE_BOOKS.length;
 
@@ -153,6 +154,8 @@ export default function HomeDashboard({
   onNavigate = () => {},
   onSelectGame,
   onRefresh = () => {},
+  setPendingBet = null,
+  bets = [],
 }) {
   const { tier, user } = useAuth();
   const isPro = tier === 'pro';
@@ -365,6 +368,7 @@ export default function HomeDashboard({
                   <div style={{ fontSize: '10px', color: '#818cf8', marginTop: '3px' }}>
                     {edge.book} · {edge.confidence} confidence · fair win chance {edge.fairProbability}%
                   </div>
+                  <EdgeWhy edge={edge} onTrack={setPendingBet} />
                 </div>
               ))}
             </div>
@@ -446,7 +450,7 @@ export default function HomeDashboard({
       </div>
 
       {/* Public track record: yesterday's edges graded vs the close */}
-      <EdgeReceipts onNavigate={onNavigate} />
+      <EdgeReceipts onNavigate={onNavigate} bets={bets} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', marginBottom: '14px' }}>
         {/* Top props */}

@@ -601,6 +601,8 @@ export default function BettingApp() {
           onNavigate={setActiveTab}
           onSelectGame={handleSelectGame}
           onRefresh={manualRefresh}
+          setPendingBet={handleSetPendingBet}
+          bets={bets}
         />
       )}
       {activeTab === 'GAMES' && (
@@ -723,6 +725,7 @@ export default function BettingApp() {
             watchlist={watchlist}
             onToggleWatchlist={toggleWatchlist}
             parlay={{ slip: parlaySlip, remove: removeFromParlay, clear: clearParlay, track: trackParlay, atBetLimit }}
+            onTrackBet={handleSetPendingBet}
           />
         </Suspense>
       )}

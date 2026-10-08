@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Receipt, Lock } from 'lucide-react';
+import { matchTakenEdges } from '../utils/receipts.js';
 import { useAuth } from '../AuthGate.jsx';
 import { formatOdds } from '../utils/odds-math.js';
 
@@ -30,7 +31,7 @@ function GradeBadge({ edge }) {
   );
 }
 
-export default function EdgeReceipts({ onNavigate = () => {} }) {
+export default function EdgeReceipts({ onNavigate = () => {}, bets = [] }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
   const [data, setData] = useState(null);
@@ -51,6 +52,10 @@ export default function EdgeReceipts({ onNavigate = () => {} }) {
   const y = data.yesterday;
   const d30 = data.rolling?.d30;
   const graded = y ? y.beat + y.missed : 0;
+  const taken = y ? matchTakenEdges(y.edges, bets) : [];
+  const takenBeat = taken.filter(e => e.beatClose === true).length;
+  const groupLine = (rows) => (rows || []).filter(r => r.graded > 0).slice(0, 4)
+    .map(r => `${r.key} ${r.beatRate}% of ${r.graded}`).join(' · ');
 
   return (
     <div style={{
@@ -93,6 +98,13 @@ export default function EdgeReceipts({ onNavigate = () => {} }) {
         )}
       </div>
 
+      {taken.length > 0 && (
+        <div style={{ fontSize: '11px', color: 'var(--ef-text)', marginBottom: '10px', padding: '8px 10px', borderRadius: '8px', background: 'var(--ef-accent-soft)' }}>
+          You logged <strong>{taken.length}</strong> of yesterday&apos;s {y.edges.length} edge{y.edges.length === 1 ? '' : 's'}
+          {taken.some(e => e.beatClose != null) && <> — {takenBeat} beat the close</>}.
+        </div>
+      )}
+
       {!y || y.edges.length === 0 ? (
         <div style={{ fontSize: '12px', color: 'var(--ef-text-muted)', lineHeight: 1.6 }}>
           The scan is building its public record — yesterday had no qualifying edges.
@@ -128,6 +140,12 @@ export default function EdgeReceipts({ onNavigate = () => {} }) {
           {d30?.graded
             ? <>Last 30 days: <strong className="ef-mono" style={{ color: 'var(--ef-text-muted)' }}>{d30.beatRate}%</strong> of {d30.graded} graded edges beat the close{d30.avgClv != null && <> · avg {d30.avgClv > 0 ? '+' : ''}{d30.avgClv}% CLV</>}</>
             : 'Rolling 7 and 30-day stats build automatically as days grade out.'}
+          {d30?.graded > 0 && groupLine(d30.bySport) && (
+            <div style={{ marginTop: '4px' }}>By sport: <span className="ef-mono">{groupLine(d30.bySport)}</span></div>
+          )}
+          {d30?.graded > 0 && groupLine(d30.byMarket) && (
+            <div style={{ marginTop: '2px' }}>By bet type: <span className="ef-mono">{groupLine(d30.byMarket)}</span></div>
+          )}
         </div>
         {!isPro && data.todayCount > 0 && (
           <button onClick={() => onNavigate('SETTINGS')} style={{

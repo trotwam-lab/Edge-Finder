@@ -27,7 +27,34 @@ function publicEdge(entry) {
     commenceTime: entry.commenceTime,
     closingEv: entry.grade?.closingEv ?? null,
     beatClose: entry.grade?.beatClose ?? null,
+    // Identify the exact line, so a signed-in user's app can say which of
+    // yesterday's edges they took. Yesterday's lines can't be bet anymore.
+    gameId: entry.gameId ?? null,
+    market: entry.market ?? null,
+    outcomeName: entry.outcomeName ?? null,
+    outcomePoint: entry.outcomePoint ?? null,
   };
+}
+
+const MARKET_LABELS = { h2h: 'Moneyline', spreads: 'Spread', totals: 'Total' };
+
+// Beat-the-close rate per group, for graded edges only.
+function groupStats(docs, keyOf) {
+  const groups = new Map();
+  docs.forEach(doc => {
+    summarizeDay(doc).graded.forEach(entry => {
+      if (!entry.grade) return;
+      const key = keyOf(entry) || 'Other';
+      if (!groups.has(key)) groups.set(key, { key, beat: 0, graded: 0, clvSum: 0 });
+      const g = groups.get(key);
+      g.graded += 1;
+      if (entry.grade.beatClose) g.beat += 1;
+      g.clvSum += entry.grade.closingEv;
+    });
+  });
+  return [...groups.values()]
+    .map(g => ({ key: g.key, graded: g.graded, beatRate: Math.round((g.beat / g.graded) * 100), avgClv: parseFloat((g.clvSum / g.graded).toFixed(1)) }))
+    .sort((a, b) => b.graded - a.graded);
 }
 
 function rollingStats(docs) {
@@ -106,7 +133,11 @@ export default async function handler(req, res) {
         : null,
       rolling: {
         d7: rollingStats(last7),
-        d30: rollingStats(pastDocs),
+        d30: {
+          ...rollingStats(pastDocs),
+          bySport: groupStats(pastDocs, e => e.sport),
+          byMarket: groupStats(pastDocs, e => MARKET_LABELS[e.market] || e.market),
+        },
       },
       todayCount: todayDoc ? Object.keys(todayDoc.edges || {}).length : 0,
     };
