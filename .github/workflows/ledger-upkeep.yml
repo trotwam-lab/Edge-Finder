@@ -1,0 +1,95 @@
+name: Ledger upkeep
+
+# Two jobs for the verified bet ledger:
+#  * closes — every 10 minutes, record closing lines for verified bets that
+#    start soon (the endpoint only fetches odds for sports that need it).
+#  * anchor — once a day, commit the public fingerprint of every ledger to the
+#    `ledger-anchors` branch of this public repo, so history before that day
+#    can't be rewritten unnoticed — not even by EdgeFinder.
+#
+# Setup (Settings → Secrets and variables → Actions):
+#  * variable EDGEFINDER_BASE_URL — the production site, e.g. https://edgefinderdaily.com
+#    (both jobs skip cleanly while it is unset)
+#  * secret LEDGER_CRON_SECRET — optional; must match the Vercel env var of
+#    the same name when set
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Which job to run
+        type: choice
+        options: [closes, anchor]
+        default: anchor
+
+permissions:
+  contents: read
+
+jobs:
+  closes:
+    if: github.event.schedule == '*/10 * * * *' || inputs.task == 'closes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency: { group: ledger-closes, cancel-in-progress: false }
+    steps:
+      - name: Capture closing lines
+        env:
+          BASE_URL: ${{ vars.EDGEFINDER_BASE_URL }}
+          CRON_SECRET: ${{ secrets.LEDGER_CRON_SECRET }}
+        run: |
+          if [ -z "$BASE_URL" ]; then echo "::notice::EDGEFINDER_BASE_URL is not set — skipping."; exit 0; fi
+          curl -fsS --max-time 60 -X POST "${BASE_URL%/}/api/ledger-maintenance?task=closes" \
+            -H "Authorization: Bearer ${CRON_SECRET}"
+
+  anchor:
+    if: github.event.schedule == '17 6 * * *' || inputs.task == 'anchor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency: { group: ledger-anchor, cancel-in-progress: false }
+    permissions:
+      contents: write
+    steps:
+      - name: Check configuration
+        id: config
+        env:
+          BASE_URL: ${{ vars.EDGEFINDER_BASE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then echo "::notice::EDGEFINDER_BASE_URL is not set — skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.skip != 'true'
+
+      - name: Fetch and publish today's anchor
+        if: steps.config.outputs.skip != 'true'
+        env:
+          BASE_URL: ${{ vars.EDGEFINDER_BASE_URL }}
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 60 "${BASE_URL%/}/api/ledger-maintenance?task=anchor" -o /tmp/anchor.json
+          jq -e '.available == true and (.anchor | test("^[0-9a-f]{64}$"))' /tmp/anchor.json > /dev/null
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin ledger-anchors > /dev/null; then
+            git fetch origin ledger-anchors
+            git checkout ledger-anchors
+          else
+            git checkout --orphan ledger-anchors
+            git rm -rf --quiet .
+            printf '%s\n' "# EdgeFinder ledger anchors" "" \
+              "One file per day: a SHA-256 fingerprint over every verified bet ledger's latest entry." \
+              "Each ledger is listed by an opaque id. A public record page checks itself against anchors/latest.json." \
+              "Because this branch's history is public, a record's past can't be rewritten unnoticed." > README.md
+          fi
+
+          day=$(date -u +%F)
+          mkdir -p anchors
+          jq 'del(.available)' /tmp/anchor.json > "anchors/${day}.json"
+          cp "anchors/${day}.json" anchors/latest.json
+          git add README.md anchors
+          if git diff --cached --quiet; then echo "No change."; exit 0; fi
+          git commit -m "Ledger anchor ${day}"
+          git push origin ledger-anchors

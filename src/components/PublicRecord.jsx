@@ -6,7 +6,8 @@ import { ShieldCheck, Info } from 'lucide-react';
 import Logo from './Logo.jsx';
 import { activeBets, verifyChain } from '../utils/ledger.js';
 import {
-  ChainAlert, EntryRow, HowVerificationWorks, IntegrityBadge, RecordStats, formatWhen, linkButton, panelStyle,
+  AnchorNote, ChainAlert, EntryRow, HowVerificationWorks, IntegrityBadge, RecordStats, formatWhen, linkButton, panelStyle,
+  useAnchorCheck,
 } from './verified/RecordParts.jsx';
 
 export default function PublicRecord({ handle }) {
@@ -37,6 +38,7 @@ export default function PublicRecord({ handle }) {
     [state.events],
   );
   const now = Date.now();
+  const anchor = useAnchorCheck(state.ledgerId, state.events);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--ef-bg)', color: 'var(--ef-text)', fontFamily: 'var(--ef-font-body)' }}>
@@ -78,6 +80,7 @@ export default function PublicRecord({ handle }) {
                 <IntegrityBadge chain={state.chain} />
               </div>
               <ChainAlert chain={state.chain} />
+              <AnchorNote result={anchor} />
               {state.stats?.total === 0 && (
                 <div style={{ fontSize: '12px', color: '#cbd5e1' }}>No verified bets yet.</div>
               )}

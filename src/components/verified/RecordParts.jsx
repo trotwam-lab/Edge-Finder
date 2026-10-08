@@ -1,6 +1,6 @@
 // Building blocks shared by the owner's Verified Record panel and the public
 // record page, so both always show the same numbers the same way.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import { closingEvPct } from '../../utils/ledger.js';
 import { formatOdds, formatPoint } from '../../utils/bets.js';
@@ -181,5 +181,55 @@ export function HowVerificationWorks({ audience = 'owner' }) {
       <li>The closing line is the no-vig consensus across books just before kick-off. Results come from final scores (basketball, football, baseball and hockey). Neither can be typed in.</li>
       <li>Stats use only the verified record, with flat 1-unit staking, so bet sizing can't flatter the results.{owner ? ' Your personal tracker below stays fully editable and is labelled "self-reported" where it isn\'t verified.' : ' Stake sizes are private: each entry stores a fingerprint of its stake instead.'}</li>
     </ul>
+  );
+}
+
+// ---- Public anchor check -------------------------------------------------
+// The daily anchor is published to the public GitHub repo by a scheduled
+// workflow. Fetching it from GitHub (not from EdgeFinder) means this check
+// doesn't depend on trusting EdgeFinder's own server.
+export const ANCHOR_REPO_URL = 'https://github.com/trotwam-lab/Edge-Finder/tree/ledger-anchors/anchors';
+const ANCHOR_LATEST_URL = 'https://raw.githubusercontent.com/trotwam-lab/Edge-Finder/ledger-anchors/anchors/latest.json';
+
+// Pure: compare a record's events with an anchor's entry for its ledger.
+export function checkAgainstAnchor(anchor, ledgerId, events) {
+  const head = anchor?.heads?.find(h => h.ledgerId === ledgerId);
+  if (!head) return { status: 'not_anchored' };
+  const anchored = (events || []).find(e => e.seq === head.seq);
+  if (!anchored || anchored.hash !== head.headHash) {
+    return { status: 'mismatch', seq: head.seq, generatedAt: anchor.generatedAt };
+  }
+  return { status: 'anchored', seq: head.seq, generatedAt: anchor.generatedAt };
+}
+
+export function useAnchorCheck(ledgerId, events) {
+  const [result, setResult] = useState(null);
+  useEffect(() => {
+    if (!ledgerId || !events?.length) { setResult(null); return undefined; }
+    let cancelled = false;
+    fetch(ANCHOR_LATEST_URL, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(anchor => { if (!cancelled) setResult(anchor ? checkAgainstAnchor(anchor, ledgerId, events) : null); })
+      .catch(() => { if (!cancelled) setResult(null); });
+    return () => { cancelled = true; };
+  }, [ledgerId, events]);
+  return result;
+}
+
+export function AnchorNote({ result }) {
+  if (!result || result.status === 'not_anchored') return null;
+  const day = formatWhen(result.generatedAt);
+  if (result.status === 'mismatch') {
+    return (
+      <div role="alert" style={{ fontSize: '11px', color: '#fca5a5', marginTop: '8px' }}>
+        This record does not match its public anchor from {day} (entry #{result.seq}). History before that point has changed — treat this record as untrustworthy.
+      </div>
+    );
+  }
+  return (
+    <div style={{ fontSize: '10px', color: '#86efac', marginTop: '8px' }}>
+      ✓ Matches the public anchor published {day} (entries 1–{result.seq} unchanged since).{' '}
+      <a href={ANCHOR_REPO_URL} target="_blank" rel="noopener" style={{ color: '#7dd3fc' }}>See the anchors on GitHub</a>
+    </div>
   );
 }

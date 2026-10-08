@@ -28,7 +28,13 @@ Bets logged from the board (basketball, football, baseball and hockey moneylines
 - **Nothing typed in.** The closing line is the edge scan's no-vig consensus just before kick-off. Results come from final scores (`src/utils/grading.js`); anything that can't be graded with certainty is left ungraded rather than guessed.
 - **Honest stats.** The Verified Record panel uses only ledger data, with flat 1-unit staking, CLV against the no-vig close, and actual-vs-expected results ("skill vs. luck"). The personal tracker stays editable and labels unverified bets "self-reported".
 
-Storage is `bet_ledger/{uid}` (+ `events`) and `ledger_open`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
+- **Shareable proof.** Users can opt in to a public page at `/r/<handle>`. Stakes stay private: from ledger v2 each stake is stored as a salted SHA-256 commitment, so shared entries still verify in the viewer's browser.
+- **Public anchors.** Once a day the `Ledger upkeep` workflow commits a fingerprint of every ledger's latest entry to the `ledger-anchors` branch of this public repo. Record pages check themselves against `anchors/latest.json` fetched straight from GitHub, so history before an anchor can't be rewritten unnoticed, even by EdgeFinder.
+- **Closing lines on a schedule.** The same workflow asks `/api/ledger-maintenance?task=closes` every 10 minutes to record closes for verified bets starting soon. It only fetches odds for sports that need them.
+
+**To switch on the scheduled jobs:** in GitHub → Settings → Secrets and variables → Actions, add the variable `EDGEFINDER_BASE_URL` (the production site URL). Optionally add a secret `LEDGER_CRON_SECRET`, and put the same value in Vercel's environment variables. Until the URL is set, both jobs skip cleanly.
+
+Storage is `bet_ledger/{uid}` (+ `events`), `ledger_open` and `ledger_handles`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
 
 ## Local development
 1. Install dependencies:

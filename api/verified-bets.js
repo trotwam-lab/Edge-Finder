@@ -18,6 +18,7 @@ import {
   LedgerRejection,
   getSharing,
   gradePendingEvents,
+  ledgerIdFor,
   loadEvents,
   loadPublicRecord,
   setSharing,
@@ -71,6 +72,7 @@ export default async function handler(req, res, deps = {}) {
         available: true,
         handle: record.handle,
         since: record.since,
+        ledgerId: record.ledgerId,
         events: record.events,
         stats: computeLedgerStats(record.events),
         serverTime: new Date().toISOString(),
@@ -103,6 +105,7 @@ export default async function handler(req, res, deps = {}) {
       return res.status(200).json({
         available: true,
         sharing,
+        ledgerId: await ledgerIdFor(user.uid),
         events,
         chain,
         stats: computeLedgerStats(events),

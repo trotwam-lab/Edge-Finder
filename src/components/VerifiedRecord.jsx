@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ShieldCheck, ChevronDown, ChevronUp, RefreshCw, Info, Link2, Copy, Check } from 'lucide-react';
 import {
-  ChainAlert, EntryRow, HowVerificationWorks, IntegrityBadge, RecordStats, linkButton, mono, panelStyle,
+  AnchorNote, ChainAlert, EntryRow, HowVerificationWorks, IntegrityBadge, RecordStats, linkButton, mono, panelStyle,
+  useAnchorCheck,
 } from './verified/RecordParts.jsx';
 
 function suggestedHandle() {
@@ -95,6 +96,7 @@ export default function VerifiedRecord({ ledger }) {
   const [showEntries, setShowEntries] = useState(false);
   const [showHow, setShowHow] = useState(false);
   const now = Date.now();
+  const anchor = useAnchorCheck(ledger?.ledgerId, ledger?.events);
 
   const entries = useMemo(
     () => [...(ledger?.byClientId?.values() || [])].sort((a, b) => b.seq - a.seq),
@@ -121,6 +123,7 @@ export default function VerifiedRecord({ ledger }) {
       </div>
 
       <ChainAlert chain={ledger.chain} />
+      <AnchorNote result={anchor} />
 
       {ledger.status === 'error' && (
         <div style={{ fontSize: '11px', color: '#fca5a5', marginBottom: '10px' }}>

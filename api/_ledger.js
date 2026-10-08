@@ -22,7 +22,7 @@
 
 import { randomBytes, webcrypto } from 'node:crypto';
 import {
-  GENESIS_HASH, americanToDecimalOdds, computeEventHash, sha256Hex, stakeCommitInput,
+  GENESIS_HASH, americanToDecimalOdds, canonicalJson, computeEventHash, sha256Hex, stakeCommitInput,
 } from '../src/utils/ledger.js';
 import { findScoreRow, gradeBet, isAutoGradeable, readFinalScore } from '../src/utils/grading.js';
 import { probIndexKey } from './_receipts.js';
@@ -475,5 +475,49 @@ export async function loadPublicRecord(db, rawHandle) {
   const sharing = await getSharing(db, uid);
   if (!sharing.enabled || sharing.handle !== handle) return null;
   const events = await loadEvents(db, uid);
-  return { handle, since: sharing.since, events: events.map(toPublicEvent) };
+  return { handle, since: sharing.since, ledgerId: await ledgerIdFor(uid), events: events.map(toPublicEvent) };
+}
+
+// ---- Public anchors ------------------------------------------------------
+// A daily fingerprint over every ledger's latest entry, published outside
+// EdgeFinder (committed to the public GitHub repo by a scheduled workflow).
+// Once a day's anchor is out, nobody — EdgeFinder included — can rewrite any
+// record's history before that point without the mismatch being visible.
+// Ledgers are listed by an opaque id, never by user id.
+
+export async function ledgerIdFor(uid) {
+  return sha256Hex(`edgefinder-ledger:${uid}`);
+}
+
+export async function computeAnchor(db, now = Date.now()) {
+  const snap = await db.collection(LEDGER_COLLECTION).get();
+  const heads = [];
+  for (const doc of snap.docs) {
+    const head = doc.data();
+    if (!head?.headHash || !Number.isInteger(head.seq)) continue;
+    heads.push({ ledgerId: await ledgerIdFor(doc.id), seq: head.seq, headHash: head.headHash });
+  }
+  heads.sort((a, b) => (a.ledgerId < b.ledgerId ? -1 : 1));
+  return {
+    version: 1,
+    generatedAt: new Date(now).toISOString(),
+    ledgers: heads.length,
+    anchor: await sha256Hex(canonicalJson(heads)),
+    heads,
+  };
+}
+
+// Sports with verified bets starting within `windowMs` — the only odds a
+// scheduled close capture needs to fetch.
+export async function sportsNeedingCloses(db, now = Date.now(), windowMs = 4 * 60 * 60 * 1000) {
+  const snap = await db.collection(OPEN_COLLECTION)
+    .where('commenceTime', '<=', new Date(now + windowMs).toISOString())
+    .limit(1000)
+    .get();
+  const sports = new Set();
+  snap.docs.forEach(doc => {
+    const open = doc.data();
+    if (Date.parse(open.commenceTime) > now) sports.add(open.sportKey);
+  });
+  return [...sports];
 }

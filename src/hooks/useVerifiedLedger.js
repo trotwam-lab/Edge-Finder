@@ -76,7 +76,7 @@ export function useVerifiedLedger({ user, bets, setBets }) {
       if (status !== 200 || !Array.isArray(data?.events)) throw new Error(data?.error || `HTTP ${status}`);
       // Independent check in this browser — we don't take the server's word.
       const chain = await verifyChain(data.events);
-      setState({ status: 'ready', events: data.events, chain, sharing: data.sharing || null, error: null, serverTime: data.serverTime });
+      setState({ status: 'ready', events: data.events, chain, sharing: data.sharing || null, ledgerId: data.ledgerId || null, error: null, serverTime: data.serverTime });
     } catch (error) {
       setState(prev => ({ ...prev, status: 'error', error: error.message || 'Could not load your verified record.' }));
     } finally {
