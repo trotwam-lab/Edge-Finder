@@ -35,6 +35,7 @@ import WeeklyRecap from './WeeklyRecap.jsx';
 import VerifiedRecord from './VerifiedRecord.jsx';
 import TrackerInsights from './TrackerInsights.jsx';
 import { betsToCsv, findDuplicate } from '../utils/insights.js';
+import { closingEvPct } from '../utils/ledger.js';
 
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
@@ -1426,6 +1427,11 @@ function BetCard({ bet, verified, onSettle, onDelete, onSetTimingOdds, isPending
           )}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
             <VerificationBadge bet={bet} verified={verified} />
+            {verified && !verified.voided && closingEvPct(verified) != null && (
+              <span style={{ fontSize: '10px', color: closingEvPct(verified) > 0 ? '#22c55e' : '#f87171' }} title="Value of your recorded price against the no-vig market consensus at kick-off">
+                CLV vs market close {closingEvPct(verified) > 0 ? '+' : ''}{closingEvPct(verified).toFixed(1)}%
+              </span>
+            )}
             {bet.gradedBy === 'auto' && (
               <span style={{ fontSize: '10px', color: '#64748b' }} title="Graded automatically from the final score">
                 Auto-graded{bet.gradeDetail ? ` · ${bet.gradeDetail}` : ''}

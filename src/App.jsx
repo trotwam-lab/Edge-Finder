@@ -8,6 +8,7 @@ import { useAlerts } from './hooks/useAlerts.js';
 import { useCloudBets } from './hooks/useCloudBets.js';
 import { useClosingLineCapture } from './hooks/useClosingLineCapture.js';
 import { useVerifiedLedger } from './hooks/useVerifiedLedger.js';
+import { useAutoGrade } from './hooks/useAutoGrade.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
@@ -310,6 +311,10 @@ export default function BettingApp() {
   // Server-verified record: verifies new board bets and brings final results
   // back into the tracker, on every tab.
   const ledger = useVerifiedLedger({ user, bets, setBets });
+  // Personal board bets that aren't verified still grade themselves from
+  // final scores (same rules); verified ones are graded via the ledger.
+  const verifiedIds = useMemo(() => new Set(ledger.byClientId.keys()), [ledger.byClientId]);
+  useAutoGrade({ user, bets, setBets, verifiedIds });
 
   // Parlay slip: legs picked from the board ("+ Parlay"), priced and tracked
   // in Tools → Parlay Builder. One leg per game — books don't price

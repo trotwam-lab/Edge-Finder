@@ -316,3 +316,20 @@ describe('stakes and public sharing', () => {
     expect(await verifyChain([{ ...pub, prevHash: 'f'.repeat(64) }])).toMatchObject({ valid: false });
   });
 });
+
+describe('grading personal bets', () => {
+  it('grades valid items only and writes nothing', async () => {
+    const { sanitizeGradeRequest, gradeUnverified } = await import('./_ledger.js');
+    const items = sanitizeGradeRequest([
+      { key: '1', gameId: 'g1', sportKey: 'basketball_nba', marketKey: 'spreads', outcomeName: 'Boston Celtics', outcomePoint: -4.5, commenceTime: START, homeTeam: 'Boston Celtics', awayTeam: 'New York Knicks' },
+      { key: '2', sportKey: 'soccer_epl', marketKey: 'h2h', outcomeName: 'Arsenal', commenceTime: START },
+      { key: '../x', sportKey: 'basketball_nba', marketKey: 'h2h', outcomeName: 'x', commenceTime: START },
+      { key: '3', sportKey: 'basketball_nba', marketKey: 'player_points', outcomeName: 'x', commenceTime: START },
+    ]);
+    expect(items.map(i => i.key)).toEqual(['1', '2']);
+    const rows = [{ id: 'other', home_team: 'Boston Celtics', away_team: 'New York Knicks', commence_time: START, completed: true,
+      scores: [{ name: 'Boston Celtics', score: '110' }, { name: 'New York Knicks', score: '100' }], source: 'ESPN final scores' }];
+    const grades = await gradeUnverified(items, async () => rows, Date.parse(START) + 3 * 3600e3);
+    expect(grades).toEqual({ 1: expect.objectContaining({ result: 'won', homeScore: 110, scoreSource: 'ESPN final scores' }) });
+  });
+});

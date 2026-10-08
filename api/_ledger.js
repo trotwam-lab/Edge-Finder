@@ -29,6 +29,7 @@ import {
   MAX_PARLAY_LEGS, MIN_PARLAY_LEGS, combinedDecimal, decimalToAmerican, settleParlay,
 } from '../src/utils/parlay.js';
 import { probIndexKey } from './_receipts.js';
+import { etDateKey } from './_scores.js';
 
 // The shared hashing code uses Web Crypto (same in browsers and Node 19+).
 // Older Node runtimes only expose it as crypto.webcrypto.
@@ -482,7 +483,10 @@ export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = 
   const sports = [...new Set(items.map(item => item.market.sportKey))].slice(0, 8);
   const rowsBySport = new Map();
   await Promise.all(sports.map(async sport => {
-    try { rowsBySport.set(sport, await fetchScoreRows(sport)); } catch { rowsBySport.set(sport, null); }
+    // Eastern calendar days of the games we need (the fallback source is
+    // organised by day).
+    const dates = [...new Set(items.filter(i => i.market.sportKey === sport).map(i => etDateKey(i.market.commenceTime)).filter(Boolean))];
+    try { rowsBySport.set(sport, await fetchScoreRows(sport, { dates })); } catch { rowsBySport.set(sport, null); }
   }));
 
   const gradedAt = new Date(now).toISOString();
@@ -505,7 +509,7 @@ export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = 
       awayTeam: final.awayTeam,
       homeScore: final.home,
       awayScore: final.away,
-      scoreSource: 'The Odds API final scores',
+      scoreSource: row.source || 'The Odds API final scores',
       scoreEventId: row?.id ?? null,
       gradedAt,
     };
@@ -532,6 +536,68 @@ export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = 
   const writes = [...updates.values()].map(({ event, fields }) => eventsCol(db, uid).doc(event.id).update(fields));
   await Promise.all(writes);
   return writes.length;
+}
+
+// ---- Grading personal (unverified) bets ---------------------------------
+// Stateless: grades board bets from the user's own tracker with the same
+// rules and score sources, writes nothing. The result is still the user's
+// self-reported record — only ledger entries are "verified".
+export const MAX_GRADE_REQUEST = 30;
+const KEY_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+export function sanitizeGradeRequest(input) {
+  const list = Array.isArray(input) ? input.slice(0, MAX_GRADE_REQUEST) : [];
+  return list.map(raw => {
+    const item = raw && typeof raw === 'object' ? raw : {};
+    const key = String(item.key ?? '');
+    const sportKey = String(item.sportKey ?? '');
+    const marketKey = String(item.marketKey ?? '');
+    const gameId = item.gameId == null ? '' : String(item.gameId);
+    const point = finiteOrNull(item.outcomePoint);
+    const text = (v) => (typeof v === 'string' && v.length <= 80 ? v : null);
+    if (!KEY_RE.test(key) || !SPORT_RE.test(sportKey) || !MARKETS.has(marketKey)) return null;
+    if (gameId && !ID_RE.test(gameId)) return null;
+    if (Number.isNaN(point)) return null;
+    const outcomeName = text(item.outcomeName);
+    if (!outcomeName || !Number.isFinite(Date.parse(item.commenceTime || ''))) return null;
+    return {
+      key, gameId: gameId || null, sportKey, marketKey, outcomeName, outcomePoint: point,
+      commenceTime: new Date(Date.parse(item.commenceTime)).toISOString(),
+      homeTeam: text(item.homeTeam), awayTeam: text(item.awayTeam),
+    };
+  }).filter(Boolean);
+}
+
+export async function gradeUnverified(items, fetchScoreRows, now = Date.now()) {
+  const due = items.filter(item => {
+    if (!isAutoGradeable(item)) return false;
+    const start = Date.parse(item.commenceTime);
+    return now - start >= GRADE_AFTER_MS && now - start <= GRADE_GIVE_UP_MS;
+  });
+  const sports = [...new Set(due.map(i => i.sportKey))].slice(0, 8);
+  const rowsBySport = new Map();
+  await Promise.all(sports.map(async sport => {
+    const dates = [...new Set(due.filter(i => i.sportKey === sport).map(i => etDateKey(i.commenceTime)).filter(Boolean))];
+    try { rowsBySport.set(sport, await fetchScoreRows(sport, { dates })); } catch { rowsBySport.set(sport, null); }
+  }));
+  const grades = {};
+  due.forEach(item => {
+    const rows = rowsBySport.get(item.sportKey);
+    if (!rows) return;
+    const row = findScoreRow(rows, item);
+    const final = readFinalScore(row);
+    const result = gradeBet(item, final);
+    if (!result) return;
+    grades[item.key] = {
+      result,
+      homeTeam: final.homeTeam,
+      awayTeam: final.awayTeam,
+      homeScore: final.home,
+      awayScore: final.away,
+      scoreSource: row.source || 'The Odds API final scores',
+    };
+  });
+  return grades;
 }
 
 // ---- Public sharing ------------------------------------------------------

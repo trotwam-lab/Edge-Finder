@@ -3,6 +3,7 @@
 // GET                              → your ledger events, server chain check, stats
 // GET ?handle=name                 → a publicly shared record (no sign-in; no stakes)
 // POST { action: 'share', enabled, handle } → turn public sharing on/off
+// POST { action: 'grade', bets: [...] }  → grade personal board bets (no writes)
 // POST { action: 'record', bet }   → verify a bet against the live market and record it
 // POST { action: 'void', clientBetId } → void a verified bet (pregame only)
 //
@@ -12,13 +13,15 @@
 import { getVerifiedUser } from './_auth.js';
 import { getAdminDb } from './_firebaseAdmin.js';
 import { guardRequest } from './_http.js';
-import { coalescedJson } from './_upstream.js';
+import { fetchScoreRows } from './_scores.js';
 import { loadSportOdds } from './_oddsFeed.js';
 import {
   LedgerRejection,
   getSharing,
   gradePendingEvents,
+  gradeUnverified,
   ledgerIdFor,
+  sanitizeGradeRequest,
   loadEvents,
   loadPublicRecord,
   recordParlay,
@@ -29,22 +32,6 @@ import {
   voidBet,
 } from './_ledger.js';
 import { computeLedgerStats, verifyChain } from '../src/utils/ledger.js';
-
-const SPORT_RE = /^[a-z0-9_]{2,64}$/;
-const scoresCache = new Map();
-const SCORES_TTL = 2 * 60 * 1000;
-
-async function fetchScoreRows(sport) {
-  if (!SPORT_RE.test(sport)) return null;
-  const cached = scoresCache.get(sport);
-  if (cached && Date.now() - cached.ts < SCORES_TTL) return cached.data;
-  const apiKey = process.env.ODDS_API_KEY;
-  if (!apiKey) return null;
-  const result = await coalescedJson(`https://api.the-odds-api.com/v4/sports/${sport}/scores?apiKey=${apiKey}&daysFrom=3`);
-  if (!result.ok || !Array.isArray(result.data)) return null;
-  scoresCache.set(sport, { data: result.data, ts: Date.now() });
-  return result.data;
-}
 
 function parseBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -140,6 +127,12 @@ export default async function handler(req, res, deps = {}) {
       }
       const { event, duplicate } = await recordBet(db, user.uid, claim, odds.data);
       return res.status(200).json({ verified: true, duplicate, event });
+    }
+
+    if (body.action === 'grade') {
+      const items = sanitizeGradeRequest(body.bets);
+      const grades = await gradeUnverified(items, scores);
+      return res.status(200).json({ grades });
     }
 
     if (body.action === 'share') {
