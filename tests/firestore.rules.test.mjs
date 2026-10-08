@@ -33,6 +33,7 @@ const cases = [
   ['owner cannot rewrite ledger head', () => assertFails(setDoc(doc(alice, 'bet_ledger/alice'), { seq: 0 }))],
   ['owner cannot read ledger directly (served via API)', () => assertFails(getDoc(doc(alice, 'bet_ledger/alice/events/b_1')))],
   ['clients cannot touch the open-bets index', () => assertFails(setDoc(doc(alice, 'ledger_open/alice__b_1'), { x: 1 }))],
+  ['clients cannot claim a public handle directly', () => assertFails(setDoc(doc(alice, 'ledger_handles/sharp_sam'), { uid: 'alice' }))],
 ];
 
 let failed = 0;

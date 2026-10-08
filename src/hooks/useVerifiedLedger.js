@@ -76,7 +76,7 @@ export function useVerifiedLedger({ user, bets, setBets }) {
       if (status !== 200 || !Array.isArray(data?.events)) throw new Error(data?.error || `HTTP ${status}`);
       // Independent check in this browser — we don't take the server's word.
       const chain = await verifyChain(data.events);
-      setState({ status: 'ready', events: data.events, chain, error: null, serverTime: data.serverTime });
+      setState({ status: 'ready', events: data.events, chain, sharing: data.sharing || null, error: null, serverTime: data.serverTime });
     } catch (error) {
       setState(prev => ({ ...prev, status: 'error', error: error.message || 'Could not load your verified record.' }));
     } finally {
@@ -213,6 +213,20 @@ export function useVerifiedLedger({ user, bets, setBets }) {
     }
   }, [user, refresh]);
 
+  const updateSharing = useCallback(async ({ enabled, handle }) => {
+    if (!user) return { ok: false, message: 'Please sign in again.' };
+    try {
+      const { status, data } = await authedFetch(user, 'POST', { action: 'share', enabled: Boolean(enabled), handle });
+      if (status === 200 && data?.ok) {
+        setState(prev => ({ ...prev, sharing: data.sharing }));
+        return { ok: true };
+      }
+      return { ok: false, message: data?.message || data?.error || 'Could not update sharing.' };
+    } catch {
+      return { ok: false, message: 'Could not reach the server. Try again.' };
+    }
+  }, [user]);
+
   const derived = useMemo(() => {
     const voided = new Set(state.events.filter(e => e.type === 'void').map(e => e.betEventId));
     const byClientId = new Map(state.events
@@ -221,5 +235,5 @@ export function useVerifiedLedger({ user, bets, setBets }) {
     return { byClientId, stats: computeLedgerStats(state.events) };
   }, [state.events]);
 
-  return { ...state, ...derived, refresh, voidVerifiedBet };
+  return { ...state, ...derived, refresh, voidVerifiedBet, updateSharing };
 }

@@ -20,8 +20,10 @@
 //   bet_ledger/{uid}/events/{id}     chained events (+ derived.close/grade)
 //   ledger_open/{uid}__{id}          index of bets still awaiting a close
 
-import { webcrypto } from 'node:crypto';
-import { GENESIS_HASH, americanToDecimalOdds, computeEventHash } from '../src/utils/ledger.js';
+import { randomBytes, webcrypto } from 'node:crypto';
+import {
+  GENESIS_HASH, americanToDecimalOdds, computeEventHash, sha256Hex, stakeCommitInput,
+} from '../src/utils/ledger.js';
 import { findScoreRow, gradeBet, isAutoGradeable, readFinalScore } from '../src/utils/grading.js';
 import { probIndexKey } from './_receipts.js';
 
@@ -32,7 +34,11 @@ if (!globalThis.crypto?.subtle) globalThis.crypto = webcrypto;
 export const LEDGER_COLLECTION = 'bet_ledger';
 export const OPEN_COLLECTION = 'ledger_open';
 export const DAILY_RECORD_LIMIT = 200;
-export const LEDGER_VERSION = 1;
+// v2: the stake is committed by hash (stakeCommit) instead of stored in the
+// hashed part, so a record can be shared publicly without revealing stakes.
+export const LEDGER_VERSION = 2;
+export const HANDLE_COLLECTION = 'ledger_handles';
+const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
 // Voids exist to undo a mis-tap, not to curate a record: a longer window
 // would let someone quietly void every bet the line moved against.
 export const VOID_WINDOW_MS = 10 * 60 * 1000;
@@ -234,8 +240,15 @@ export async function recordBet(db, uid, claim, games) {
   return appendEvent(db, uid, eventId, async (_tx, recordedAt) => {
     // Re-check with the timestamp we're about to write, so a bet recorded a
     // moment after kick-off can never slip through.
-    const fields = checkClaimAgainstMarket(claim, games, Date.parse(recordedAt));
-    return { type: 'bet', clientBetId: claim.clientBetId, ...fields };
+    const { wager, ...fields } = checkClaimAgainstMarket(claim, games, Date.parse(recordedAt));
+    const salt = randomBytes(16).toString('hex');
+    return {
+      type: 'bet',
+      clientBetId: claim.clientBetId,
+      ...fields,
+      stakeCommit: await sha256Hex(stakeCommitInput(wager, salt)),
+      private: { stake: { wager, salt } },
+    };
   }, {
     onWrite: (tx, event) => {
       tx.set(db.collection(OPEN_COLLECTION).doc(openDocId(uid, event.id)), {
@@ -386,4 +399,81 @@ export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = 
   });
   await Promise.all(writes);
   return writes.length;
+}
+
+// ---- Public sharing ------------------------------------------------------
+// Opt-in. A handle maps to one user (ledger_handles/{handle} → uid). The
+// public view never includes stakes: v2 entries drop their private stake
+// reveal (the stake commitment keeps them verifiable); older v1 entries,
+// whose stake is inside the hash, are sent redacted and verified by linkage.
+
+export function normalizeHandle(value) {
+  const handle = String(value ?? '').trim().toLowerCase();
+  return HANDLE_RE.test(handle) ? handle : null;
+}
+
+export async function setSharing(db, uid, { enabled, handle: rawHandle }) {
+  const headRef = db.collection(LEDGER_COLLECTION).doc(uid);
+  return db.runTransaction(async (tx) => {
+    const headSnap = await tx.get(headRef);
+    const head = headSnap.exists ? headSnap.data() : {};
+    const current = head.sharing || {};
+
+    if (!enabled) {
+      if (current.handle) tx.delete(db.collection(HANDLE_COLLECTION).doc(current.handle));
+      tx.set(headRef, { sharing: { enabled: false, handle: null, since: null } }, { merge: true });
+      return { enabled: false, handle: null };
+    }
+
+    const handle = normalizeHandle(rawHandle);
+    if (!handle) {
+      throw new LedgerRejection('invalid_handle', 'Handles are 3–20 characters: lowercase letters, numbers and underscores.');
+    }
+    const handleRef = db.collection(HANDLE_COLLECTION).doc(handle);
+    const owner = await tx.get(handleRef);
+    if (owner.exists && owner.data().uid !== uid) {
+      throw new LedgerRejection('handle_taken', 'That handle is taken. Try another one.');
+    }
+    if (current.handle && current.handle !== handle) {
+      tx.delete(db.collection(HANDLE_COLLECTION).doc(current.handle));
+    }
+    const since = current.enabled && current.handle === handle && current.since ? current.since : new Date().toISOString();
+    tx.set(handleRef, { uid, handle, since });
+    tx.set(headRef, { sharing: { enabled: true, handle, since } }, { merge: true });
+    return { enabled: true, handle, since };
+  });
+}
+
+export async function getSharing(db, uid) {
+  const snap = await db.collection(LEDGER_COLLECTION).doc(uid).get();
+  const sharing = snap.exists ? snap.data().sharing : null;
+  return sharing?.enabled ? { enabled: true, handle: sharing.handle, since: sharing.since } : { enabled: false, handle: null };
+}
+
+// Only the private stake reveal is withheld. Everything else, including
+// clientBetId, is part of the hashed contents and must stay for viewers to
+// verify each entry.
+export function toPublicEvent(event) {
+  const out = { ...event };
+  delete out.private;
+  if ('wager' in out) {
+    // v1 entry: the stake is part of the hashed contents. Drop it and mark the
+    // entry so viewers verify it by its chain links instead.
+    delete out.wager;
+    out.redacted = true;
+  }
+  return out;
+}
+
+// Returns { handle, since, events } for a public handle, or null.
+export async function loadPublicRecord(db, rawHandle) {
+  const handle = normalizeHandle(rawHandle);
+  if (!handle) return null;
+  const mapping = await db.collection(HANDLE_COLLECTION).doc(handle).get();
+  if (!mapping.exists) return null;
+  const { uid } = mapping.data();
+  const sharing = await getSharing(db, uid);
+  if (!sharing.enabled || sharing.handle !== handle) return null;
+  const events = await loadEvents(db, uid);
+  return { handle, since: sharing.since, events: events.map(toPublicEvent) };
 }

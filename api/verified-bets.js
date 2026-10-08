@@ -1,6 +1,8 @@
 // api/verified-bets.js — the signed-in user's verified bet record.
 //
 // GET                              → your ledger events, server chain check, stats
+// GET ?handle=name                 → a publicly shared record (no sign-in; no stakes)
+// POST { action: 'share', enabled, handle } → turn public sharing on/off
 // POST { action: 'record', bet }   → verify a bet against the live market and record it
 // POST { action: 'void', clientBetId } → void a verified bet (pregame only)
 //
@@ -14,8 +16,11 @@ import { coalescedJson } from './_upstream.js';
 import { loadSportOdds } from './_oddsFeed.js';
 import {
   LedgerRejection,
+  getSharing,
   gradePendingEvents,
   loadEvents,
+  loadPublicRecord,
+  setSharing,
   recordBet,
   sanitizeClaim,
   voidBet,
@@ -55,6 +60,27 @@ export default async function handler(req, res, deps = {}) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   res.setHeader('Cache-Control', 'no-store');
 
+  // Public, read-only view of a record its owner chose to share.
+  if (req.method === 'GET' && req.query?.handle != null) {
+    const publicDb = 'db' in deps ? deps.db : getAdminDb();
+    if (!publicDb) return res.status(200).json({ available: false });
+    try {
+      const record = await loadPublicRecord(publicDb, req.query.handle);
+      if (!record) return res.status(404).json({ error: 'No public record with that name.' });
+      return res.status(200).json({
+        available: true,
+        handle: record.handle,
+        since: record.since,
+        events: record.events,
+        stats: computeLedgerStats(record.events),
+        serverTime: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('public record failed:', error.message);
+      return res.status(500).json({ error: 'Could not load this record.' });
+    }
+  }
+
   const user = await (deps.getVerifiedUser || getVerifiedUser)(req);
   if (!user) return res.status(401).json({ error: 'Please sign in again.' });
 
@@ -73,8 +99,10 @@ export default async function handler(req, res, deps = {}) {
         console.warn('Ledger grading skipped:', error.message);
       }
       const chain = await verifyChain(events);
+      const sharing = await getSharing(db, user.uid);
       return res.status(200).json({
         available: true,
+        sharing,
         events,
         chain,
         stats: computeLedgerStats(events),
@@ -92,6 +120,11 @@ export default async function handler(req, res, deps = {}) {
       }
       const { event, duplicate } = await recordBet(db, user.uid, claim, odds.data);
       return res.status(200).json({ verified: true, duplicate, event });
+    }
+
+    if (body.action === 'share') {
+      const sharing = await setSharing(db, user.uid, { enabled: body.enabled === true, handle: body.handle });
+      return res.status(200).json({ ok: true, sharing });
     }
 
     if (body.action === 'void') {
