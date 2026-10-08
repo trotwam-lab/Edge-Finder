@@ -5,6 +5,9 @@
 import { americanToDecimal, americanToImplied } from './odds-math.js';
 import { getSportMeta } from './props.js';
 
+// Free accounts can keep this many (non-deleted) bets in the tracker.
+export const FREE_BET_LIMIT = 5;
+
 // Bet dates are stored as local calendar days (YYYY-MM-DD). toISOString()
 // would use the UTC day, so a bet logged on a US evening landed on tomorrow.
 export function toLocalDateStr(value = new Date()) {

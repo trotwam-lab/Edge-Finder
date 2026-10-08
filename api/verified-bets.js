@@ -21,6 +21,8 @@ import {
   ledgerIdFor,
   loadEvents,
   loadPublicRecord,
+  recordParlay,
+  sanitizeParlayClaim,
   setSharing,
   recordBet,
   sanitizeClaim,
@@ -114,6 +116,21 @@ export default async function handler(req, res, deps = {}) {
     }
 
     const body = parseBody(req);
+    if (body.action === 'record' && Array.isArray(body.bet?.legs)) {
+      const { claim, error } = sanitizeParlayClaim(body.bet);
+      if (error) return res.status(400).json({ verified: false, reason: 'invalid', message: error });
+      const gamesBySport = new Map();
+      for (const sport of new Set(claim.legs.map(l => l.sportKey))) {
+        const odds = await loadOdds(sport, { maxAgeMs: 60 * 1000 });
+        if (!odds.ok) {
+          return res.status(503).json({ verified: false, reason: 'market_unavailable', message: 'Couldn\'t reach the odds feed to verify this parlay. It\'s saved to your tracker — try again in a minute.' });
+        }
+        gamesBySport.set(sport, odds.data);
+      }
+      const { event, duplicate } = await recordParlay(db, user.uid, claim, gamesBySport);
+      return res.status(200).json({ verified: true, duplicate, event });
+    }
+
     if (body.action === 'record') {
       const { claim, error } = sanitizeClaim(body.bet);
       if (error) return res.status(400).json({ verified: false, reason: 'invalid', message: error });

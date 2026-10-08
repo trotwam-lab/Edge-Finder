@@ -25,6 +25,9 @@ import {
   GENESIS_HASH, americanToDecimalOdds, canonicalJson, computeEventHash, sha256Hex, stakeCommitInput,
 } from '../src/utils/ledger.js';
 import { findScoreRow, gradeBet, isAutoGradeable, readFinalScore } from '../src/utils/grading.js';
+import {
+  MAX_PARLAY_LEGS, MIN_PARLAY_LEGS, combinedDecimal, decimalToAmerican, settleParlay,
+} from '../src/utils/parlay.js';
 import { probIndexKey } from './_receipts.js';
 
 // The shared hashing code uses Web Crypto (same in browsers and Node 19+).
@@ -103,6 +106,34 @@ export function sanitizeClaim(input) {
       odds,
       wager: Math.round(wager * 100) / 100,
       bookKey,
+    },
+  };
+}
+
+// Validate a parlay claim: 2–10 legs, each a valid game-line claim, and no
+// two legs from the same game (same-game parlays are priced differently by
+// books, so their combined price can't be checked from the board).
+export function sanitizeParlayClaim(input) {
+  const bet = input && typeof input === 'object' ? input : {};
+  const rawLegs = Array.isArray(bet.legs) ? bet.legs : [];
+  if (rawLegs.length < MIN_PARLAY_LEGS || rawLegs.length > MAX_PARLAY_LEGS) {
+    return { error: `Parlays need ${MIN_PARLAY_LEGS}–${MAX_PARLAY_LEGS} legs.` };
+  }
+  const legs = [];
+  for (let i = 0; i < rawLegs.length; i += 1) {
+    const { claim, error } = sanitizeClaim({ ...rawLegs[i], clientBetId: bet.clientBetId, wager: bet.wager });
+    if (error) return { error: `Leg ${i + 1}: ${error}` };
+    legs.push(claim);
+  }
+  if (new Set(legs.map(l => l.gameId)).size !== legs.length) {
+    return { error: 'Same-game parlays can\'t be verified — books price them differently from separate games.' };
+  }
+  const { clientBetId, wager } = legs[0];
+  return {
+    claim: {
+      clientBetId,
+      wager,
+      legs: legs.map(({ clientBetId: _c, wager: _w, ...leg }) => leg),
     },
   };
 }
@@ -266,6 +297,62 @@ export async function recordBet(db, uid, claim, games) {
   });
 }
 
+// Record a verified parlay. `gamesBySport` maps each leg's sport to the
+// server's current odds feed. Every leg is checked exactly like a single bet;
+// the combined price is computed here from the recorded leg prices.
+export async function recordParlay(db, uid, claim, gamesBySport) {
+  const eventId = betEventId(claim.clientBetId);
+  return appendEvent(db, uid, eventId, async (_tx, recordedAt) => {
+    const now = Date.parse(recordedAt);
+    const legs = claim.legs.map((leg, i) => {
+      try {
+        const { wager: _w, ...fields } = checkClaimAgainstMarket(
+          { ...leg, clientBetId: claim.clientBetId, wager: claim.wager },
+          gamesBySport.get(leg.sportKey) || [],
+          now,
+        );
+        return fields;
+      } catch (error) {
+        if (error instanceof LedgerRejection) {
+          throw new LedgerRejection(error.reason, `Leg ${i + 1}: ${error.message}`, error.details);
+        }
+        throw error;
+      }
+    });
+    const parlayDecimal = combinedDecimal(legs.map(l => l.odds));
+    const salt = randomBytes(16).toString('hex');
+    const firstStart = Math.min(...legs.map(l => Date.parse(l.commenceTime)));
+    return {
+      type: 'parlay',
+      clientBetId: claim.clientBetId,
+      game: legs.map(l => l.game).join(' + '),
+      commenceTime: new Date(firstStart).toISOString(),
+      legs,
+      parlayDecimal,
+      odds: decimalToAmerican(parlayDecimal),
+      stakeCommit: await sha256Hex(stakeCommitInput(claim.wager, salt)),
+      private: { stake: { wager: claim.wager, salt } },
+    };
+  }, {
+    onWrite: (tx, event) => {
+      event.legs.forEach((leg, legIndex) => {
+        tx.set(db.collection(OPEN_COLLECTION).doc(openDocId(uid, `${event.id}~${legIndex}`)), {
+          uid,
+          eventId: event.id,
+          legIndex,
+          gameId: leg.gameId,
+          sportKey: leg.sportKey,
+          marketKey: leg.marketKey,
+          outcomeName: leg.outcomeName,
+          outcomePoint: leg.outcomePoint,
+          commenceTime: leg.commenceTime,
+          lastObservedAt: null,
+        });
+      });
+    },
+  });
+}
+
 // Void a bet — only within VOID_WINDOW_MS of recording and before kick-off.
 export async function voidBet(db, uid, clientBetId) {
   if (!CLIENT_ID_RE.test(String(clientBetId ?? ''))) throw new LedgerRejection('invalid', 'Invalid bet id.');
@@ -280,9 +367,19 @@ export async function voidBet(db, uid, clientBetId) {
     if (Date.parse(recordedAt) - Date.parse(bet.recordedAt) > VOID_WINDOW_MS) {
       throw new LedgerRejection('void_window_closed', 'Verified bets can only be voided within 10 minutes of logging them.');
     }
-    return { type: 'void', clientBetId: String(clientBetId), betEventId: bet.id, game: bet.game };
+    const fields = { type: 'void', clientBetId: String(clientBetId), betEventId: bet.id, game: bet.game };
+    if (bet.type === 'parlay') fields.legCount = bet.legs.length;
+    return fields;
   }, {
-    onWrite: (tx, event) => tx.delete(db.collection(OPEN_COLLECTION).doc(openDocId(uid, event.betEventId))),
+    onWrite: (tx, event) => {
+      if (event.legCount) {
+        for (let i = 0; i < event.legCount; i += 1) {
+          tx.delete(db.collection(OPEN_COLLECTION).doc(openDocId(uid, `${event.betEventId}~${i}`)));
+        }
+      } else {
+        tx.delete(db.collection(OPEN_COLLECTION).doc(openDocId(uid, event.betEventId)));
+      }
+    },
   });
 }
 
@@ -336,8 +433,9 @@ export async function updateLedgerCloses(db, probIndex, now = Date.now()) {
     if (!current || !Number.isFinite(current.fairProb)) return;
     const observedAt = new Date(now).toISOString();
     const eventRef = eventsCol(db, open.uid).doc(open.eventId);
+    const field = Number.isInteger(open.legIndex) ? `derived.legCloses.${open.legIndex}` : 'derived.close';
     queue(b => b.update(eventRef, {
-      'derived.close': {
+      [field]: {
         fairProb: Number(current.fairProb.toFixed(6)),
         bestPrice: current.bestPrice ?? null,
         observedAt,
@@ -362,27 +460,43 @@ const GRADE_GIVE_UP_MS = 3 * 24 * 60 * 60 * 1000; // scores feed covers 3 days
 // changed; anything we can't grade safely is left for the user to settle.
 export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = Date.now()) {
   const voided = new Set(events.filter(e => e.type === 'void').map(e => e.betEventId));
-  const due = events.filter(e => {
-    if (e.type !== 'bet' || voided.has(e.id) || e.derived?.grade || !isAutoGradeable(e)) return false;
-    const start = Date.parse(e.commenceTime);
+  const isDue = (market) => {
+    if (!isAutoGradeable(market)) return false;
+    const start = Date.parse(market.commenceTime);
     return Number.isFinite(start) && now - start >= GRADE_AFTER_MS && now - start <= GRADE_GIVE_UP_MS;
+  };
+  // Work items: whole single bets, or individual ungraded legs of a parlay.
+  const items = [];
+  events.forEach(e => {
+    if (voided.has(e.id) || e.derived?.grade) return;
+    if (e.type === 'bet' && isDue(e)) items.push({ event: e, market: e, legIndex: null });
+    if (e.type === 'parlay' && Array.isArray(e.legs)) {
+      e.legs.forEach((leg, legIndex) => {
+        if (!e.derived?.legGrades?.[legIndex] && isDue(leg)) items.push({ event: e, market: leg, legIndex });
+      });
+    }
   });
-  if (!due.length) return 0;
+  if (!items.length) return 0;
 
-  const sports = [...new Set(due.map(e => e.sportKey))].slice(0, 8);
+  const sports = [...new Set(items.map(item => item.market.sportKey))].slice(0, 8);
   const rowsBySport = new Map();
   await Promise.all(sports.map(async sport => {
     try { rowsBySport.set(sport, await fetchScoreRows(sport)); } catch { rowsBySport.set(sport, null); }
   }));
 
   const gradedAt = new Date(now).toISOString();
-  const writes = [];
-  due.forEach(event => {
-    const rows = rowsBySport.get(event.sportKey);
+  const updates = new Map(); // event id -> { event, fields }
+  const addUpdate = (event, field, value) => {
+    if (!updates.has(event.id)) updates.set(event.id, { event, fields: {} });
+    updates.get(event.id).fields[field] = value;
+  };
+
+  items.forEach(({ event, market, legIndex }) => {
+    const rows = rowsBySport.get(market.sportKey);
     if (!rows) return;
-    const row = findScoreRow(rows, event);
+    const row = findScoreRow(rows, market);
     const final = readFinalScore(row);
-    const result = gradeBet(event, final);
+    const result = gradeBet(market, final);
     if (!result) return;
     const grade = {
       result,
@@ -394,9 +508,27 @@ export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = 
       scoreEventId: row?.id ?? null,
       gradedAt,
     };
-    event.derived = { ...(event.derived || {}), grade };
-    writes.push(eventsCol(db, uid).doc(event.id).update({ 'derived.grade': grade }));
+    if (legIndex == null) {
+      event.derived = { ...(event.derived || {}), grade };
+      addUpdate(event, 'derived.grade', grade);
+    } else {
+      event.derived = { ...(event.derived || {}), legGrades: { ...(event.derived?.legGrades || {}), [legIndex]: grade } };
+      addUpdate(event, `derived.legGrades.${legIndex}`, grade);
+    }
   });
+
+  // A parlay is graded once its legs decide it (any loss decides it at once).
+  updates.forEach(({ event }) => {
+    if (event.type !== 'parlay') return;
+    const results = event.legs.map((_, i) => event.derived?.legGrades?.[i]?.result ?? null);
+    const settled = settleParlay(results, event.legs.map(l => l.odds));
+    if (!settled) return;
+    const grade = { result: settled.result, effectiveDecimal: settled.effectiveDecimal, gradedAt };
+    event.derived = { ...event.derived, grade };
+    addUpdate(event, 'derived.grade', grade);
+  });
+
+  const writes = [...updates.values()].map(({ event, fields }) => eventsCol(db, uid).doc(event.id).update(fields));
   await Promise.all(writes);
   return writes.length;
 }

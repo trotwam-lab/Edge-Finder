@@ -30,6 +30,7 @@ import {
   getRelativeDate,
   getBetSport,
   settleProfit,
+  FREE_BET_LIMIT,
 } from '../utils/bets.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
@@ -40,7 +41,6 @@ import VerifiedRecord from './VerifiedRecord.jsx';
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
 const PIE_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#22c55e', '#f59e0b', '#64748b'];
-const FREE_BET_LIMIT = 5;
 
 // Sports for tabs
 const DEFAULT_SPORTS = ['All', 'NBA', 'NFL', 'UFC', 'MLB', 'NHL', 'NCAAF', 'NCAAB'];
@@ -1376,6 +1376,20 @@ function BetCard({ bet, verified, onSettle, onDelete, onSetTimingOdds, isPending
           <div style={{ fontSize: '12px', color: '#94a3b8' }}>
             {bet.pick} @ {formatOdds(bet.odds)} • ${bet.wager}
           </div>
+          {Array.isArray(bet.legs) && bet.legs.length > 0 && (
+            <div style={{ marginTop: '4px', display: 'grid', gap: '2px' }}>
+              {bet.legs.map((leg, i) => {
+                const legResult = verified?.derived?.legGrades?.[i]?.result;
+                return (
+                  <div key={i} style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    • {leg.label} <span style={{ fontFamily: "'JetBrains Mono', monospace", color: '#a5b4fc' }}>{formatOdds(leg.odds)}</span>
+                    {leg.game && leg.game !== leg.label ? <span style={{ color: '#64748b' }}> · {leg.game}</span> : null}
+                    {legResult && <span style={{ fontSize: '9px', fontWeight: 800, marginLeft: '6px', color: statusColors[legResult] || '#94a3b8' }}>{legResult.toUpperCase()}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
             <VerificationBadge bet={bet} verified={verified} />
             {bet.gradedBy === 'auto' && (

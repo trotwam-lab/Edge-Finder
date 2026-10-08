@@ -23,6 +23,7 @@ export const signed = (n, digits = 2, suffix = '') => (n == null ? '—' : `${n 
 export const tone = (n) => (n == null ? '#94a3b8' : n > 0 ? '#22c55e' : n < 0 ? '#f87171' : '#e2e8f0');
 
 export function pickLabel(e) {
+  if (e.type === 'parlay') return `${e.legs?.length || 0}-leg parlay`;
   if (e.marketKey === 'h2h') return `${e.outcomeName} ML`;
   if (e.marketKey === 'spreads') return `${e.outcomeName} ${formatPoint(e.outcomePoint)}`;
   return `${e.outcomeName} ${e.outcomePoint}`;
@@ -143,13 +144,30 @@ export function EntryRow({ entry, now, onVoid }) {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: entry.voided ? '#64748b' : '#e2e8f0', textDecoration: entry.voided ? 'line-through' : 'none' }}>
             {pickLabel(entry)} <span style={{ ...mono, color: '#a5b4fc' }}>{formatOdds(entry.odds)}</span>
-            <span style={{ color: '#64748b', fontWeight: 500 }}> · {entry.bookTitle}</span>
+            {entry.bookTitle && <span style={{ color: '#64748b', fontWeight: 500 }}> · {entry.bookTitle}</span>}
           </div>
-          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{entry.game}</div>
+          {entry.type === 'parlay' ? (
+            <div style={{ marginTop: '4px', display: 'grid', gap: '2px' }}>
+              {entry.legs.map((leg, i) => {
+                const legResult = entry.derived?.legGrades?.[i]?.result;
+                const legColor = legResult === 'won' ? '#22c55e' : legResult === 'lost' ? '#f87171' : legResult === 'push' ? '#94a3b8' : '#64748b';
+                return (
+                  <div key={i} style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    {pickLabel(leg)} <span style={{ ...mono, color: '#a5b4fc' }}>{formatOdds(leg.odds)}</span> · {leg.bookTitle} · {leg.game}
+                    {leg.priceAdjusted && <span style={{ color: '#f59e0b' }}> (entered {formatOdds(leg.claimedOdds)})</span>}
+                    {' '}<span style={{ fontSize: '9px', fontWeight: 800, color: legColor }}>{legResult ? legResult.toUpperCase() : 'PENDING'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{entry.game}</div>
+          )}
           <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', lineHeight: 1.6 }}>
             Recorded {formatWhen(entry.recordedAt)} (server time) · game {Date.parse(entry.commenceTime) > now ? 'starts' : 'started'} {formatWhen(entry.commenceTime)}
             {entry.priceAdjusted && <> · <span style={{ color: '#f59e0b' }}>{formatOdds(entry.claimedOdds)} was entered; the best price on the board was {formatOdds(entry.odds)}, so that's what was recorded</span></>}
-            {grade && <> · Final: {grade.awayTeam} {grade.awayScore} @ {grade.homeTeam} {grade.homeScore}</>}
+            {grade?.homeTeam && <> · Final: {grade.awayTeam} {grade.awayScore} @ {grade.homeTeam} {grade.homeScore}</>}
+            {entry.type === 'parlay' && grade?.result === 'won' && grade.effectiveDecimal && Math.abs(grade.effectiveDecimal - entry.parlayDecimal) > 1e-6 && <> · paid at {grade.effectiveDecimal.toFixed(2)} after pushed legs</>}
             {clv != null && <> · CLV vs no-vig close <span style={{ ...mono, color: tone(clv) }}>{signed(clv, 1, '%')}</span></>}
           </div>
           <div style={{ ...mono, fontSize: '9px', color: '#475569', marginTop: '3px' }} title={`Entry hash ${entry.hash}\nPrevious ${entry.prevHash}`}>

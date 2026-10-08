@@ -15,6 +15,8 @@
 //     them. Stats below are computed only from ledger data, never from the
 //     editable personal tracker.
 
+import { parlayClosingEvPct } from './parlay.js';
+
 export const GENESIS_HASH = '0'.repeat(64);
 
 // Deterministic JSON: object keys sorted, undefined dropped. The server and
@@ -107,6 +109,10 @@ export function americanToDecimalOdds(american) {
 // against the no-vig market consensus at the close. +2.0 = the price was 2%
 // better than the fair closing price.
 export function closingEvPct(bet) {
+  if (bet?.type === 'parlay') {
+    const legs = Array.isArray(bet.legs) ? bet.legs : [];
+    return parlayClosingEvPct(legs.map(l => l.odds), legs.map((_, i) => bet.derived?.legCloses?.[i]?.fairProb ?? null));
+  }
   const decimal = americanToDecimalOdds(bet?.odds);
   const fair = Number(bet?.derived?.close?.fairProb);
   if (!decimal || !Number.isFinite(fair) || fair <= 0 || fair >= 1) return null;
@@ -117,7 +123,7 @@ export function closingEvPct(bet) {
 // game starts, so they can't hide a loser) are listed but excluded from stats.
 export function activeBets(events) {
   const voided = new Set((events || []).filter(e => e.type === 'void').map(e => e.betEventId));
-  return (events || []).filter(e => e.type === 'bet').map(bet => ({ ...bet, voided: voided.has(bet.id) }));
+  return (events || []).filter(e => e.type === 'bet' || e.type === 'parlay').map(bet => ({ ...bet, voided: voided.has(bet.id) }));
 }
 
 const round = (n, d = 2) => Number(n.toFixed(d));
@@ -135,7 +141,7 @@ export function computeLedgerStats(events) {
 
   bets.forEach(bet => {
     const result = bet.derived?.grade?.result;
-    const decimal = americanToDecimalOdds(bet.odds);
+    const decimal = bet.type === 'parlay' ? Number(bet.parlayDecimal) || null : americanToDecimalOdds(bet.odds);
     const clv = closingEvPct(bet);
     if (clv != null) {
       clvSum += clv;
@@ -143,7 +149,9 @@ export function computeLedgerStats(events) {
       if (clv > 0) beatClose += 1;
     }
     if (!result || !decimal) { pending += 1; return; }
-    const unit = result === 'won' ? decimal - 1 : result === 'lost' ? -1 : 0;
+    // A parlay with pushed legs pays its reduced (effective) price.
+    const paid = Number(bet.derived?.grade?.effectiveDecimal) || decimal;
+    const unit = result === 'won' ? paid - 1 : result === 'lost' ? -1 : 0;
     if (result === 'won') wins += 1;
     else if (result === 'lost') losses += 1;
     else pushes += 1;

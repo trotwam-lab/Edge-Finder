@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useEffect, useRef, useState } from 'react';
 import { Star, ChevronDown, ChevronUp, Share2, Lock, Target } from 'lucide-react';
 import { getConsensusFairOdds, formatOdds, findBestOdds, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
@@ -58,7 +58,7 @@ function HoldBadge({ hold }) {
 // minute `clock` prop (unused here) so memo lets "starts in 12m" labels refresh.
 function GameCard({
   game, expanded, onToggle, watchlist, onToggleWatchlist,
-  injuries, gameLineHistory, setPendingBet, logoMap = {},
+  injuries, gameLineHistory, setPendingBet, logoMap = {}, onAddToParlay,
 }) {
   const sportVisual = getSportVisual(game.sport_key);
   const awayLogo = resolveTeamLogo(logoMap, game.sport_key, game.away_team);
@@ -66,6 +66,25 @@ function GameCard({
   const { tier } = useAuth(); // Get tier for EV display
   const [copied, setCopied] = useState(false); // For share button "Copied!" tooltip
   const [showQuickPick, setShowQuickPick] = useState(false); // Quick-pick bet popover
+  const [parlayNote, setParlayNote] = useState(''); // feedback after "+ Parlay"
+  const quickPickRef = useRef(null);
+
+  // Close the quick-pick popover on an outside click or Escape, so an open
+  // popover never lingers over the next card.
+  useEffect(() => {
+    if (!showQuickPick) return undefined;
+    const close = () => { setShowQuickPick(false); setParlayNote(''); };
+    const onPointer = (e) => { if (!quickPickRef.current?.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('touchstart', onPointer, { passive: true });
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('touchstart', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showQuickPick]);
   // Accurate status from the ESPN-backed feed (falls back to time/scores).
   const status = getGameStatus(game);
   const isLive = status.isLive;
@@ -137,7 +156,8 @@ function GameCard({
   } : null;
 
   return (
-    <div>
+    // Lifted above the following cards while its popover is open.
+    <div style={{ position: 'relative', zIndex: showQuickPick ? 30 : undefined }}>
       {/* Clickable card header */}
       <div
         onClick={() => onToggle(game.id)}
@@ -191,7 +211,7 @@ function GameCard({
             )}
           </div>
           {/* 🎯 Quick Bet button — opens a popover with the main lines to track */}
-          <div style={{ position: 'relative' }}>
+          <div ref={quickPickRef} style={{ position: 'relative' }}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowQuickPick(!showQuickPick); }}
               title="Quick bet — track this game"
@@ -207,9 +227,11 @@ function GameCard({
               <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  position: 'absolute', top: '24px', left: '50%', transform: 'translateX(-50%)',
+                  // Opens rightwards from the icon column (centering it pushed
+                  // it off the left edge of the screen).
+                  position: 'absolute', top: '24px', left: '-8px',
                   zIndex: 100, background: '#1e293b', border: '1px solid rgba(99,102,241,0.4)',
-                  borderRadius: '8px', padding: '10px', minWidth: '220px',
+                  borderRadius: '8px', padding: '10px', width: 'min(300px, calc(100vw - 40px))',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                 }}
               >
@@ -242,40 +264,67 @@ function GameCard({
                   totals?.outcomes?.forEach(o => {
                     options.push({ label: `${o.name} ${o.point}`, type: 'Total', pick: `${o.name} ${o.point}`, odds: o.price, marketKey: 'totals', outcomeName: o.name, outcomePoint: o.point });
                   });
-                  return options.map((opt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setPendingBet({
-                          game: `${game.away_team} vs ${game.home_team}`,
-                          type: opt.type,
-                          pick: opt.pick,
-                          odds: opt.odds,
-                          date: game.commence_time,
-                          gameId: game.id,
-                          sportKey: game.sport_key,
-                          marketKey: opt.marketKey,
-                          outcomeName: opt.outcomeName,
-                          outcomePoint: opt.outcomePoint,
-                          commenceTime: game.commence_time,
-                        });
-                        setShowQuickPick(false);
-                      }}
-                      style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        width: '100%', padding: '7px 10px', marginBottom: '4px',
-                        background: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(71,85,105,0.3)',
-                        borderRadius: '6px', cursor: 'pointer', color: '#e2e8f0',
-                        fontSize: '11px', fontFamily: "'JetBrains Mono', monospace",
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(30, 41, 59, 0.8)'}
-                    >
-                      <span>{opt.label}</span>
-                      <span style={{ color: '#818cf8', fontWeight: 700 }}>{formatOdds(opt.odds)}</span>
-                    </button>
-                  ));
+                  const betFor = (opt) => ({
+                    game: `${game.away_team} vs ${game.home_team}`,
+                    type: opt.type,
+                    pick: opt.pick,
+                    odds: opt.odds,
+                    date: game.commence_time,
+                    gameId: game.id,
+                    sportKey: game.sport_key,
+                    marketKey: opt.marketKey,
+                    outcomeName: opt.outcomeName,
+                    outcomePoint: opt.outcomePoint,
+                    commenceTime: game.commence_time,
+                  });
+                  return (
+                    <>
+                      {options.map((opt, i) => (
+                        <div key={i} style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                          <button
+                            onClick={() => {
+                              setPendingBet(betFor(opt));
+                              setShowQuickPick(false);
+                            }}
+                            title="Track this bet"
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flex: 1,
+                              padding: '7px 10px',
+                              background: 'rgba(30, 41, 59, 0.8)', border: '1px solid rgba(71,85,105,0.3)',
+                              borderRadius: '6px', cursor: 'pointer', color: '#e2e8f0',
+                              fontSize: '11px', fontFamily: "'JetBrains Mono', monospace",
+                              transition: 'background 0.15s',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(30, 41, 59, 0.8)'}
+                          >
+                            <span>{opt.label}</span>
+                            <span style={{ color: '#818cf8', fontWeight: 700 }}>{formatOdds(opt.odds)}</span>
+                          </button>
+                          {onAddToParlay && (
+                            <button
+                              onClick={() => {
+                                const result = onAddToParlay(betFor(opt));
+                                setParlayNote(result?.replaced
+                                  ? `Swapped this game's leg · ${result.count} in parlay`
+                                  : `Added · ${result?.count ?? ''} in parlay`);
+                              }}
+                              title="Add this line to your parlay slip (Tools → Parlay Builder)"
+                              aria-label={`Add ${opt.label} to parlay`}
+                              style={{
+                                padding: '0 8px', borderRadius: '6px', cursor: 'pointer', flexShrink: 0,
+                                border: '1px solid rgba(167,139,250,0.35)', background: 'rgba(123,92,255,0.12)',
+                                color: '#c4b5fd', fontSize: '10px', fontWeight: 700,
+                              }}
+                            >+ Parlay</button>
+                          )}
+                        </div>
+                      ))}
+                      {parlayNote && (
+                        <div role="status" style={{ fontSize: '10px', color: '#c4b5fd', textAlign: 'center', marginTop: '4px' }}>{parlayNote}</div>
+                      )}
+                    </>
+                  );
                 })()}
               </div>
             )}
