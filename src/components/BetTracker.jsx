@@ -8,10 +8,6 @@ import {
   Search, Calendar, Filter, Clock, Edit3, Check, Download, Upload, Archive
 } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from 'recharts';
-import {
   toLocalDateStr,
   todayStr,
   parseBetDate,
@@ -37,6 +33,8 @@ import ProBanner from './ProBanner.jsx';
 import { scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
 import WeeklyRecap from './WeeklyRecap.jsx';
 import VerifiedRecord from './VerifiedRecord.jsx';
+import TrackerInsights from './TrackerInsights.jsx';
+import { betsToCsv, findDuplicate } from '../utils/insights.js';
 
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
@@ -411,6 +409,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
     if (!game || !pick || !odds || !wager) return;
     
     const newBet = buildBetFromInput();
+    const duplicate = findDuplicate(bets, newBet);
+    if (duplicate && !window.confirm(`You already logged "${duplicate.pick}" at ${formatOdds(duplicate.odds)} on this game for this date. Add it again?`)) return;
 
     setBets(prev => [newBet, ...prev]);
     setGame('');
@@ -519,6 +519,24 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
       const message = 'Export failed: ' + err.message;
       setDataPanelStatus(message);
       alert(message);
+    }
+  }
+
+  // Spreadsheet-friendly export of the live (non-deleted) bets.
+  function exportCsv() {
+    try {
+      const blob = new Blob([betsToCsv(bets)], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edgefinder-bets-${todayStr()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDataPanelStatus(`CSV export started: ${bets.filter(b => !b.deleted).length} bet(s).`);
+    } catch (err) {
+      setDataPanelStatus('CSV export failed: ' + err.message);
     }
   }
 
@@ -737,6 +755,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
         </div>
       )}
 
+      {/* INSIGHTS — breakdowns by book / type / price / timing + bankroll curve */}
+      <TrackerInsights bets={filteredBets} />
+
       {/* EV TIMING ANALYTICS PANEL — Edge Finder V2.5 */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))',
@@ -937,6 +958,19 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
                 }}
               >
                 <Download size={14} /> Export JSON
+              </button>
+              <button
+                onClick={exportCsv}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 14px',
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                  borderRadius: '8px',
+                  color: '#22c55e', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                <Download size={14} /> Export CSV
               </button>
               <label style={{
                 display: 'flex', alignItems: 'center', gap: '6px',

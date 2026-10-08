@@ -4,6 +4,7 @@
 // they can be unit tested.
 import { americanToDecimal, americanToImplied } from './odds-math.js';
 import { getSportMeta } from './props.js';
+import { detectLeague } from './teams.js';
 
 // Free accounts can keep this many (non-deleted) bets in the tracker.
 export const FREE_BET_LIMIT = 5;
@@ -162,14 +163,9 @@ export function getBetSport(bet) {
   return getSportFromGame(bet?.game);
 }
 
+// Hand-typed bets: work the league out from team names (see utils/teams.js).
 export function getSportFromGame(gameStr) {
-  if (!gameStr) return 'Other';
-  const game = gameStr.toLowerCase();
-  if (game.includes('lakers') || game.includes('celtics') || game.includes('nba')) return 'NBA';
-  if (game.includes('chiefs') || game.includes('eagles') || game.includes('nfl')) return 'NFL';
-  if (game.includes('ufc') || game.includes('fight')) return 'UFC';
-  if (game.includes('yankees') || game.includes('mlb')) return 'MLB';
-  return 'Other';
+  return detectLeague(gameStr);
 }
 
 // Profit for a settled bet: win pays the American price, loss costs the
