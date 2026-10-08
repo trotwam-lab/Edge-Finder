@@ -306,11 +306,12 @@ export async function recordParlay(db, uid, claim, gamesBySport) {
     const now = Date.parse(recordedAt);
     const legs = claim.legs.map((leg, i) => {
       try {
-        const { wager: _w, ...fields } = checkClaimAgainstMarket(
+        const fields = checkClaimAgainstMarket(
           { ...leg, clientBetId: claim.clientBetId, wager: claim.wager },
           gamesBySport.get(leg.sportKey) || [],
           now,
         );
+        delete fields.wager; // the stake belongs to the parlay, committed below
         return fields;
       } catch (error) {
         if (error instanceof LedgerRejection) {
