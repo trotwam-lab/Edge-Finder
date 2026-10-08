@@ -9,6 +9,7 @@ import { useCloudBets } from './hooks/useCloudBets.js';
 import { useClosingLineCapture } from './hooks/useClosingLineCapture.js';
 import { useVerifiedLedger } from './hooks/useVerifiedLedger.js';
 import { useAutoGrade } from './hooks/useAutoGrade.js';
+import { usePushAlerts } from './hooks/usePushAlerts.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
@@ -315,6 +316,14 @@ export default function BettingApp() {
   // final scores (same rules); verified ones are graded via the ledger.
   const verifiedIds = useMemo(() => new Set(ledger.byClientId.keys()), [ledger.byClientId]);
   useAutoGrade({ user, bets, setBets, verifiedIds });
+
+  // Background line-move alerts follow the starred games that are on the board.
+  const pushWatch = useMemo(() => watchlist
+    .map(id => games.find(g => g.id === id))
+    .filter(Boolean)
+    .map(g => ({ gameId: g.id, sportKey: g.sport_key }))
+    .slice(0, 50), [watchlist, games]);
+  const pushAlerts = usePushAlerts({ user, watch: pushWatch });
 
   // Parlay slip: legs picked from the board ("+ Parlay"), priced and tracked
   // in Tools → Parlay Builder. One leg per game — books don't price
@@ -831,6 +840,43 @@ export default function BettingApp() {
             {watchlist.length > 0 && (
               <button onClick={() => { if (confirm('Clear entire watchlist?')) setWatchlist([]); }} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', fontSize: '11px', cursor: 'pointer' }}>Clear Watchlist</button>
             )}
+          </div>
+          <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>Alerts when EdgeFinder is closed</div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.6 }}>
+                  Get a notification on this device when the spread on a starred game moves 1+ point or the total 1.5+ points (checked about every 10 minutes, using the median across books).
+                </div>
+              </div>
+              {(pushAlerts.status === 'on' || pushAlerts.status === 'off' || pushAlerts.status === 'working') && (
+                <button
+                  onClick={pushAlerts.status === 'on' ? pushAlerts.disable : pushAlerts.enable}
+                  disabled={pushAlerts.status === 'working'}
+                  role="switch"
+                  aria-checked={pushAlerts.status === 'on'}
+                  aria-label="Background line-move alerts"
+                  style={{
+                    width: '42px', height: '24px', borderRadius: '12px', flexShrink: 0, padding: '2px',
+                    border: pushAlerts.status === 'on' ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.4)',
+                    background: pushAlerts.status === 'on' ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.6)',
+                    cursor: pushAlerts.status === 'working' ? 'progress' : 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: pushAlerts.status === 'on' ? 'flex-end' : 'flex-start',
+                  }}
+                >
+                  <span style={{ width: '16px', height: '16px', borderRadius: '50%', background: pushAlerts.status === 'on' ? '#22c55e' : '#64748b' }} />
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: '11px', marginTop: '8px', color: pushAlerts.error ? '#f87171' : '#94a3b8' }}>
+              {pushAlerts.error
+                || (pushAlerts.status === 'on' && `On for this device · watching ${pushWatch.length} starred game${pushWatch.length === 1 ? '' : 's'} on the board.`)
+                || (pushAlerts.status === 'unsupported' && 'This browser can\'t receive background alerts. On iPhone, add EdgeFinder to your Home Screen (Share → Add to Home Screen) and open it from there.')
+                || (pushAlerts.status === 'denied' && 'Notifications are blocked for EdgeFinder. Allow them in your browser or phone settings, then come back here.')
+                || (pushAlerts.status === 'unavailable' && 'Background alerts aren\'t switched on for EdgeFinder yet.')
+                || (pushAlerts.status === 'checking' && 'Checking this device…')
+                || 'Off. Star games on the board, then turn this on.'}
+            </div>
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>

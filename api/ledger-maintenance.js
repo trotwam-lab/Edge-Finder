@@ -7,6 +7,8 @@
 //                      without waiting for someone to load the dashboard.
 //                      Only fetches odds for sports that actually have such
 //                      bets. Protected by LEDGER_CRON_SECRET when it is set.
+// POST ?task=alerts  → sends background line-move alerts for watched games
+//                      (web push; off until VAPID keys are configured).
 
 import { timingSafeEqual } from 'node:crypto';
 import { getAdminDb } from './_firebaseAdmin.js';
@@ -14,6 +16,7 @@ import { guardRequest } from './_http.js';
 import { loadSportOdds } from './_oddsFeed.js';
 import { buildProbIndex } from './_consensus.js';
 import { computeAnchor, sportsNeedingCloses, updateLedgerCloses } from './_ledger.js';
+import { runLineAlerts } from './_alerts.js';
 
 const MAX_SPORTS_PER_RUN = 10;
 const anchorCache = { data: null, ts: 0 };
@@ -65,6 +68,17 @@ export default async function handler(req, res, deps = {}) {
     } catch (error) {
       console.error('ledger closes failed:', error.message);
       return res.status(500).json({ error: 'Close capture failed.' });
+    }
+  }
+
+  if (task === 'alerts' && req.method === 'POST') {
+    if (!authorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+      const result = await runLineAlerts(db, { loadSportOdds: deps.loadSportOdds || loadSportOdds, send: deps.send });
+      return res.status(200).json({ ok: true, ...result });
+    } catch (error) {
+      console.error('line alerts failed:', error.message);
+      return res.status(500).json({ error: 'Alert run failed.' });
     }
   }
 

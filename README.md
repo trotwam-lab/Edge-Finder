@@ -38,6 +38,11 @@ Bets logged from the board (basketball, football, baseball and hockey moneylines
 
 Storage is `bet_ledger/{uid}` (+ `events`), `ledger_open` and `ledger_handles`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
 
+## Background line-move alerts (web push)
+Users can turn on **Settings → Alerts when EdgeFinder is closed**. Every 10 minutes the `Ledger upkeep` workflow calls `/api/ledger-maintenance?task=alerts`. For each subscriber it checks their starred pregame games and sends one notification when the median spread across books moves 1+ point or the total 1.5+ points since the last alert. The first check only records a starting line. Dead device subscriptions are removed automatically. Storage is `push_subscriptions/{uid}`, Admin-only.
+
+It is **off until VAPID keys are configured**. Generate a pair once with `npx web-push generate-vapid-keys`, then add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (e.g. `mailto:admin@edgefinderdaily.com`) to Vercel's environment variables. iPhone users must add EdgeFinder to their Home Screen first (an iOS requirement).
+
 ## Local development
 1. Install dependencies:
    ```bash
