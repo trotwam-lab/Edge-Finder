@@ -7,6 +7,7 @@ import { useOdds, usePersistentState } from './hooks/useOdds.js';
 import { useAlerts } from './hooks/useAlerts.js';
 import { useCloudBets } from './hooks/useCloudBets.js';
 import { useClosingLineCapture } from './hooks/useClosingLineCapture.js';
+import { useVerifiedLedger } from './hooks/useVerifiedLedger.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
@@ -304,6 +305,9 @@ export default function BettingApp() {
   // happened to be sitting on that tab when the game kicked off.
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
   useClosingLineCapture(bets, setBets, games, historicOdds, playerProps);
+  // Server-verified record: verifies new board bets and brings final results
+  // back into the tracker, on every tab.
+  const ledger = useVerifiedLedger({ user, bets, setBets });
 
   const toggleWatchlist = useCallback((id) => {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -666,7 +670,7 @@ export default function BettingApp() {
           />
         </Suspense>
       )}
-      {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} bets={bets} setBets={setBets} /></Suspense>}
+      {activeTab === 'TRACKER' && <Suspense fallback={<TabFallback label="Loading tracker..." />}><BetTracker pendingBet={pendingBet} onBetConsumed={() => setPendingBet(null)} bets={bets} setBets={setBets} ledger={ledger} /></Suspense>}
       {activeTab === 'SETTINGS' && (
         <main className="edge-app-main" style={{ maxWidth: '640px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: '#f8fafc' }}>Settings</h2>
