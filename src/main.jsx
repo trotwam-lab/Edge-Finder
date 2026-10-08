@@ -12,8 +12,15 @@ import PWAUpdatePrompt from './PWAUpdatePrompt.jsx'
 // else warms it in idle time so signing in feels instant.
 const loadApp = () => import('./App.jsx')
 const App = lazy(loadApp)
+const PublicRecord = lazy(() => import('./components/PublicRecord.jsx'))
 
-if (hasSessionHint()) {
+// Public verified-record pages (/r/<handle>) need no sign-in and none of the
+// dashboard, so they get their own lightweight tree.
+const publicRecordMatch = window.location.pathname.match(/^\/r\/([a-z0-9_]{3,20})\/?$/i)
+
+if (publicRecordMatch) {
+  // nothing to warm: the visitor isn't using the dashboard
+} else if (hasSessionHint()) {
   loadApp()
 } else if ('requestIdleCallback' in window) {
   window.requestIdleCallback(() => loadApp(), { timeout: 6000 })
@@ -22,6 +29,13 @@ if (hasSessionHint()) {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
+  publicRecordMatch ? (
+    <React.StrictMode>
+      <Suspense fallback={<AuthLoadingScreen label="Loading record…" />}>
+        <PublicRecord handle={publicRecordMatch[1].toLowerCase()} />
+      </Suspense>
+    </React.StrictMode>
+  ) : (
   <React.StrictMode>
     {/* Mounted outside the auth gate so the update toast reaches every screen,
         including the landing page and stale/comp accounts stuck on old builds. */}
@@ -33,5 +47,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         </Suspense>
       </AuthGate>
     </AuthProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
+  ),
 )

@@ -15,6 +15,8 @@
 //     them. Stats below are computed only from ledger data, never from the
 //     editable personal tracker.
 
+import { parlayClosingEvPct } from './parlay.js';
+
 export const GENESIS_HASH = '0'.repeat(64);
 
 // Deterministic JSON: object keys sorted, undefined dropped. The server and
@@ -31,11 +33,25 @@ export function canonicalJson(value) {
   return `{${keys.map(k => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`;
 }
 
-// Everything except the event's own hash and the derived (recomputable)
-// fields is covered by the hash.
+// Everything except the event's own hash, the derived (recomputable) fields
+// and the private stake reveal is covered by the hash. From ledger v2 the
+// stake is committed as stakeCommit = sha256("<wager>:<salt>"), so a record
+// can be shared publicly and still verified without revealing stake sizes.
 export function hashedPart(event) {
-  const { hash: _hash, derived: _derived, ...core } = event || {};
+  const { hash: _hash, derived: _derived, private: _private, ...core } = event || {};
   return core;
+}
+
+export function stakeCommitInput(wager, salt) {
+  return `${wager}:${salt}`;
+}
+
+// The stake of a bet event, whichever ledger version wrote it (null when it
+// isn't disclosed, e.g. a publicly shared v2 entry).
+export function eventWager(event) {
+  const value = event?.private?.stake?.wager ?? event?.wager;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function sha256Hex(text) {
@@ -48,25 +64,39 @@ export async function computeEventHash(event) {
   return sha256Hex(canonicalJson(hashedPart(event)));
 }
 
-// Re-verifies a whole chain. Returns { valid, checked, brokenAtSeq, reason }.
+// Re-verifies a whole chain. Returns { valid, checked, linkedOnly,
+// brokenAtSeq, reason }.
+// * Every entry must link to the one before it (seq + prevHash).
+// * Every entry's contents must reproduce its hash — except entries a public
+//   view had to redact (`redacted: true`, older v1 entries whose stake is
+//   inside the hash). Those are still checked for linkage, and counted in
+//   `linkedOnly` so the UI can say so.
+// * When a stake reveal is present it must match the entry's stakeCommit.
 export async function verifyChain(events) {
   const ordered = [...(events || [])].sort((a, b) => a.seq - b.seq);
   let prev = GENESIS_HASH;
+  let linkedOnly = 0;
   for (let i = 0; i < ordered.length; i += 1) {
     const event = ordered[i];
+    const fail = (reason) => ({ valid: false, checked: i, linkedOnly, brokenAtSeq: event.seq ?? i + 1, reason });
     if (event.seq !== i + 1) {
-      return { valid: false, checked: i, brokenAtSeq: i + 1, reason: 'missing or reordered entry' };
+      return { valid: false, checked: i, linkedOnly, brokenAtSeq: i + 1, reason: 'missing or reordered entry' };
     }
-    if (event.prevHash !== prev) {
-      return { valid: false, checked: i, brokenAtSeq: event.seq, reason: 'link to previous entry does not match' };
+    if (event.prevHash !== prev) return fail('link to previous entry does not match');
+    if (event.redacted) {
+      linkedOnly += 1;
+    } else {
+      const expected = await computeEventHash(event);
+      if (expected !== event.hash) return fail('entry contents were changed after recording');
     }
-    const expected = await computeEventHash(event);
-    if (expected !== event.hash) {
-      return { valid: false, checked: i, brokenAtSeq: event.seq, reason: 'entry contents were changed after recording' };
+    const stake = event.private?.stake;
+    if (event.stakeCommit && stake) {
+      const commit = await sha256Hex(stakeCommitInput(stake.wager, stake.salt));
+      if (commit !== event.stakeCommit) return fail('stake was changed after recording');
     }
     prev = event.hash;
   }
-  return { valid: true, checked: ordered.length, brokenAtSeq: null, reason: null };
+  return { valid: true, checked: ordered.length, linkedOnly, brokenAtSeq: null, reason: null };
 }
 
 export function americanToDecimalOdds(american) {
@@ -79,6 +109,10 @@ export function americanToDecimalOdds(american) {
 // against the no-vig market consensus at the close. +2.0 = the price was 2%
 // better than the fair closing price.
 export function closingEvPct(bet) {
+  if (bet?.type === 'parlay') {
+    const legs = Array.isArray(bet.legs) ? bet.legs : [];
+    return parlayClosingEvPct(legs.map(l => l.odds), legs.map((_, i) => bet.derived?.legCloses?.[i]?.fairProb ?? null));
+  }
   const decimal = americanToDecimalOdds(bet?.odds);
   const fair = Number(bet?.derived?.close?.fairProb);
   if (!decimal || !Number.isFinite(fair) || fair <= 0 || fair >= 1) return null;
@@ -89,7 +123,7 @@ export function closingEvPct(bet) {
 // game starts, so they can't hide a loser) are listed but excluded from stats.
 export function activeBets(events) {
   const voided = new Set((events || []).filter(e => e.type === 'void').map(e => e.betEventId));
-  return (events || []).filter(e => e.type === 'bet').map(bet => ({ ...bet, voided: voided.has(bet.id) }));
+  return (events || []).filter(e => e.type === 'bet' || e.type === 'parlay').map(bet => ({ ...bet, voided: voided.has(bet.id) }));
 }
 
 const round = (n, d = 2) => Number(n.toFixed(d));
@@ -107,7 +141,7 @@ export function computeLedgerStats(events) {
 
   bets.forEach(bet => {
     const result = bet.derived?.grade?.result;
-    const decimal = americanToDecimalOdds(bet.odds);
+    const decimal = bet.type === 'parlay' ? Number(bet.parlayDecimal) || null : americanToDecimalOdds(bet.odds);
     const clv = closingEvPct(bet);
     if (clv != null) {
       clvSum += clv;
@@ -115,14 +149,18 @@ export function computeLedgerStats(events) {
       if (clv > 0) beatClose += 1;
     }
     if (!result || !decimal) { pending += 1; return; }
-    const unit = result === 'won' ? decimal - 1 : result === 'lost' ? -1 : 0;
+    // A parlay with pushed legs pays its reduced (effective) price.
+    const paid = Number(bet.derived?.grade?.effectiveDecimal) || decimal;
+    const unit = result === 'won' ? paid - 1 : result === 'lost' ? -1 : 0;
     if (result === 'won') wins += 1;
     else if (result === 'lost') losses += 1;
     else pushes += 1;
     flatUnits += unit;
-    const wager = Number(bet.wager) || 0;
-    staked += wager;
-    stakeProfit += wager * unit;
+    const wager = eventWager(bet);
+    if (wager != null) {
+      staked += wager;
+      stakeProfit += wager * unit;
+    }
     if (clv != null) {
       expectedUnits += clv / 100;
       actualOnClvBets += unit;

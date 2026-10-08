@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Layers, Plus, Trash2 } from 'lucide-react';
+import { Layers, Plus, Trash2, ShieldCheck, X } from 'lucide-react';
 import { americanToDecimal, impliedToAmerican, formatOdds } from '../utils/odds-math.js';
 
 // Parlay Builder — free for everyone.
@@ -31,9 +31,15 @@ function newLeg() {
   return { id: Math.random().toString(36).slice(2), label: '', odds: '', estProb: '' };
 }
 
-export default function ParlayBuilder() {
-  const [legs, setLegs] = useState([newLeg(), newLeg()]);
+// `parlay` (optional, from the app): { slip, remove, clear, track, atBetLimit }.
+// Slip legs come from the board ("+ Parlay" on a game) and keep their market
+// details, so a parlay made only of board legs can be verified and graded.
+export default function ParlayBuilder({ parlay = null }) {
+  const slip = parlay?.slip;
+  const boardLegs = useMemo(() => slip || [], [slip]);
+  const [legs, setLegs] = useState(() => (boardLegs.length ? [] : [newLeg(), newLeg()]));
   const [stake, setStake] = useState('25');
+  const [trackError, setTrackError] = useState('');
 
   const updateLeg = (id, patch) => {
     setLegs(prev => prev.map(leg => (leg.id === id ? { ...leg, ...patch } : leg)));
@@ -42,9 +48,10 @@ export default function ParlayBuilder() {
   const removeLeg = (id) => setLegs(prev => (prev.length > 1 ? prev.filter(leg => leg.id !== id) : prev));
 
   const summary = useMemo(() => {
-    const parsed = legs
-      .map(leg => ({ ...leg, oddsNum: parseAmerican(leg.odds) }))
-      .filter(leg => leg.oddsNum != null);
+    const parsed = [
+      ...boardLegs.map(leg => ({ ...leg, oddsNum: parseAmerican(String(leg.odds)), board: true })),
+      ...legs.map(leg => ({ ...leg, oddsNum: parseAmerican(leg.odds) })),
+    ].filter(leg => leg.oddsNum != null);
     if (parsed.length < 2) return null;
 
     const combinedDecimal = parsed.reduce((acc, leg) => acc * americanToDecimal(leg.oddsNum), 1);
@@ -65,6 +72,7 @@ export default function ParlayBuilder() {
     const evPct = trueProb != null ? (trueProb * combinedDecimal - 1) * 100 : null;
 
     return {
+      parsed,
       legCount: parsed.length,
       combinedDecimal,
       combinedAmerican,
@@ -74,7 +82,23 @@ export default function ParlayBuilder() {
       trueProb,
       evPct,
     };
-  }, [legs, stake]);
+  }, [legs, stake, boardLegs]);
+
+  const now = Date.now();
+  const startedLegs = boardLegs.filter(l => Date.parse(l.commenceTime || '') <= now);
+  const sameGame = new Set(boardLegs.map(l => l.gameId)).size !== boardLegs.length;
+  const allBoard = summary && summary.parsed.every(l => l.board);
+  const verifiable = allBoard && !startedLegs.length && !sameGame && summary.legCount <= 10;
+
+  const handleTrack = () => {
+    setTrackError('');
+    if (!summary) return;
+    const stakeNum = parseFloat(stake);
+    if (!(stakeNum > 0)) { setTrackError('Enter a stake to track this parlay.'); return; }
+    if (parlay?.atBetLimit) { setTrackError('Free accounts can track 5 bets — upgrade to Pro for unlimited tracking.'); return; }
+    const payload = summary.parsed.map(l => (l.board ? l : { label: l.label || 'Leg', odds: l.oddsNum, id: l.id }));
+    if (parlay.track({ legs: payload, stake: stakeNum })) setLegs([]);
+  };
 
   return (
     <div style={{ padding: '16px', display: 'grid', gap: '14px' }}>
@@ -83,6 +107,43 @@ export default function ParlayBuilder() {
         <span className="ef-mono">+145</span>) to see the true combined price and payout.
         Optionally estimate each leg&apos;s real win chance to see whether the parlay is +EV or a donation.
       </div>
+
+      {boardLegs.length > 0 && (
+        <div style={{ display: 'grid', gap: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ef-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              From the board · {boardLegs.length}
+            </div>
+            <button onClick={parlay.clear} style={{ background: 'none', border: 'none', color: 'var(--ef-text-dim)', fontSize: '11px', cursor: 'pointer' }}>Clear</button>
+          </div>
+          {boardLegs.map(leg => {
+            const started = Date.parse(leg.commenceTime || '') <= now;
+            return (
+              <div key={leg.id} style={{
+                display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px',
+                borderRadius: 'var(--ef-radius-sm)', border: `1px solid ${started ? 'rgba(255,68,102,0.45)' : 'var(--ef-border)'}`,
+                background: 'var(--ef-surface)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ef-text)' }}>{leg.pick}</div>
+                  <div style={{ fontSize: '10px', color: started ? 'var(--ef-red)' : 'var(--ef-text-dim)' }}>
+                    {leg.game}{started ? ' · already started — remove to verify' : ''}
+                  </div>
+                </div>
+                <span className="ef-mono" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ef-cyan)' }}>{formatOdds(Number(leg.odds))}</span>
+                <button onClick={() => parlay.remove(leg.id)} aria-label={`Remove ${leg.pick}`} style={{ background: 'none', border: 'none', color: 'var(--ef-text-dim)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {parlay && boardLegs.length === 0 && (
+        <div style={{ fontSize: '11px', color: 'var(--ef-text-dim)' }}>
+          Tip: tap the target icon on any game, then <strong>+ Parlay</strong> to add board lines here. Board-only parlays are verified and graded automatically.
+        </div>
+      )}
 
       <div style={{ display: 'grid', gap: '8px' }}>
         {legs.map((leg, idx) => {
@@ -234,6 +295,31 @@ export default function ParlayBuilder() {
       ) : (
         <div style={{ fontSize: '12px', color: 'var(--ef-text-dim)', lineHeight: 1.6 }}>
           Enter valid American odds on at least two legs to price the parlay.
+        </div>
+      )}
+
+      {parlay && summary && (
+        <div style={{ display: 'grid', gap: '6px' }}>
+          <button
+            onClick={handleTrack}
+            style={{
+              justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '10px 16px', borderRadius: '8px', border: 'none', background: 'var(--ef-gradient)',
+              color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', fontFamily: 'var(--ef-font-body)',
+            }}
+          >
+            <Layers size={14} /> Track this parlay
+          </button>
+          <div style={{ fontSize: '11px', color: verifiable ? '#86efac' : 'var(--ef-text-dim)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            {verifiable
+              ? <><ShieldCheck size={12} /> All legs are from the board — this parlay will be verified and graded automatically.</>
+              : sameGame
+                ? 'Two legs are from the same game — it will be tracked as self-reported.'
+                : startedLegs.length
+                  ? 'A leg has already started — it will be tracked as self-reported.'
+                  : 'Typed-in legs can\'t be verified, so this parlay will be tracked as self-reported.'}
+          </div>
+          {trackError && <div role="alert" style={{ fontSize: '11px', color: 'var(--ef-red)' }}>{trackError}</div>}
         </div>
       )}
     </div>

@@ -24,3 +24,24 @@ describe('isVerifiableBet', () => {
     expect(isVerifiableBet(bet({ deleted: true }), NOW)).toBe(false);
   });
 });
+
+describe('isVerifiableBet — parlays', () => {
+  const leg = (over = {}) => ({ gameId: 'g1', sportKey: 'basketball_nba', marketKey: 'h2h', outcomeName: 'Boston Celtics', odds: -150, commenceTime: '2026-10-08T23:00:00Z', ...over });
+  const parlay = (over = {}) => ({
+    id: NOW - 60 * 1000, type: 'Parlay', status: 'pending', wager: 10,
+    legs: [leg(), leg({ gameId: 'g2', outcomeName: 'Miami Heat', marketKey: 'spreads', outcomePoint: -2.5, odds: -110 })],
+    ...over,
+  });
+
+  it('accepts a fresh board-only parlay across different games', () => {
+    expect(isVerifiableBet(parlay(), NOW)).toBe(true);
+  });
+
+  it('rejects typed-in legs, same-game legs, started legs and bad sizes', () => {
+    expect(isVerifiableBet(parlay({ legs: [leg(), { label: 'Lakers -3', odds: -110, manual: true }] }), NOW)).toBe(false);
+    expect(isVerifiableBet(parlay({ legs: [leg(), leg({ outcomeName: 'New York Knicks' })] }), NOW)).toBe(false);
+    expect(isVerifiableBet(parlay({ legs: [leg({ commenceTime: '2026-10-08T17:00:00Z' }), leg({ gameId: 'g2' })] }), NOW)).toBe(false);
+    expect(isVerifiableBet(parlay({ legs: [leg()] }), NOW)).toBe(false);
+    expect(isVerifiableBet(parlay({ legs: [leg(), leg({ gameId: 'g2', sportKey: 'soccer_epl' })] }), NOW)).toBe(false);
+  });
+});

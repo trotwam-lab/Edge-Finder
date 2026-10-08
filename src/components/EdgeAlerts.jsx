@@ -3,6 +3,7 @@ import { Zap, RefreshCw, Lock, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import { auth } from '../firebase.js';
 import ProBanner from './ProBanner.jsx';
+import EdgeWhy from './EdgeWhy.jsx';
 
 const CONFIDENCE_COLORS = {
   HIGH: '#22c55e',
@@ -23,7 +24,7 @@ async function getAuthHeaders() {
   }
 }
 
-export default function EdgeAlerts() {
+export default function EdgeAlerts({ onTrackBet = null }) {
   const { tier } = useAuth();
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -221,6 +222,7 @@ export default function EdgeAlerts() {
                 {edge.book}
               </span>
             </div>
+            <EdgeWhy edge={edge} onTrack={onTrackBet} />
           </div>
         ))}
       </div>

@@ -4,6 +4,10 @@
 // they can be unit tested.
 import { americanToDecimal, americanToImplied } from './odds-math.js';
 import { getSportMeta } from './props.js';
+import { detectLeague } from './teams.js';
+
+// Free accounts can keep this many (non-deleted) bets in the tracker.
+export const FREE_BET_LIMIT = 5;
 
 // Bet dates are stored as local calendar days (YYYY-MM-DD). toISOString()
 // would use the UTC day, so a bet logged on a US evening landed on tomorrow.
@@ -25,6 +29,14 @@ export function parseBetDate(value) {
   const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   return new Date(value);
+}
+
+// Signed money: +$12.50 / -$100.00 (a loss always shows its minus sign, not
+// just a red colour). Null shows a dash.
+export function formatMoney(val) {
+  if (val === null || val === undefined || Number.isNaN(Number(val))) return '—';
+  const n = Number(val);
+  return `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
 }
 
 export function formatOdds(odds) {
@@ -159,14 +171,9 @@ export function getBetSport(bet) {
   return getSportFromGame(bet?.game);
 }
 
+// Hand-typed bets: work the league out from team names (see utils/teams.js).
 export function getSportFromGame(gameStr) {
-  if (!gameStr) return 'Other';
-  const game = gameStr.toLowerCase();
-  if (game.includes('lakers') || game.includes('celtics') || game.includes('nba')) return 'NBA';
-  if (game.includes('chiefs') || game.includes('eagles') || game.includes('nfl')) return 'NFL';
-  if (game.includes('ufc') || game.includes('fight')) return 'UFC';
-  if (game.includes('yankees') || game.includes('mlb')) return 'MLB';
-  return 'Other';
+  return detectLeague(gameStr);
 }
 
 // Profit for a settled bet: win pays the American price, loss costs the

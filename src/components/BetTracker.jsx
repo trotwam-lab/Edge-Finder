@@ -4,43 +4,40 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   PlusCircle, Trophy, XCircle, RotateCcw, TrendingUp,
-  DollarSign, Target, BarChart3, Trash2, ChevronDown, ChevronUp,
-  Search, Calendar, Filter, Clock, Edit3, Check, Download, Upload, Archive
+  DollarSign, Target, BarChart3, ChevronDown, ChevronUp,
+  Search, Calendar, Filter, Clock, Download, Upload, Archive
 } from 'lucide-react';
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from 'recharts';
 import {
   toLocalDateStr,
   todayStr,
   parseBetDate,
   formatOdds,
-  formatPoint,
   calculateCLV,
   getBetPoint,
   getPointCLV,
   getOpenerPointEdge,
   getTimingValue,
   calculateOpenerEdge,
-  gradeTiming,
-  gradeLineTiming,
   gradePortfolioTiming,
   formatTimingValue,
   getRelativeDate,
   getBetSport,
   settleProfit,
+  FREE_BET_LIMIT,
+  formatMoney,
 } from '../utils/bets.js';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
 import WeeklyRecap from './WeeklyRecap.jsx';
 import VerifiedRecord from './VerifiedRecord.jsx';
+import BetCard from './tracker/BetCard.jsx';
+import { cardStyle, inputStyle } from './tracker/styles.js';
+import TrackerInsights from './TrackerInsights.jsx';
+import { betsToCsv, findDuplicate } from '../utils/insights.js';
 
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
-const PIE_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#22c55e', '#f59e0b', '#64748b'];
-const FREE_BET_LIMIT = 5;
 
 // Sports for tabs
 const DEFAULT_SPORTS = ['All', 'NBA', 'NFL', 'UFC', 'MLB', 'NHL', 'NCAAF', 'NCAAB'];
@@ -70,33 +67,6 @@ function readSavedUnitSize() {
     return null;
   }
 }
-
-function formatMoney(val) {
-  if (val === null || val === undefined) return '—';
-  const sign = val >= 0 ? '+' : '';
-  return `${sign}$${Math.abs(val).toFixed(2)}`;
-}
-
-
-const cardStyle = {
-  background: 'rgba(30, 41, 59, 0.6)',
-  border: '1px solid rgba(71, 85, 105, 0.2)',
-  borderRadius: '12px',
-  padding: '16px',
-  marginBottom: '12px',
-};
-
-const inputStyle = {
-  width: '100%',
-  padding: '10px 12px',
-  background: 'rgba(15, 23, 42, 0.8)',
-  border: '1px solid rgba(71, 85, 105, 0.4)',
-  borderRadius: '8px',
-  color: '#e2e8f0',
-  fontSize: '13px',
-  outline: 'none',
-  boxSizing: 'border-box',
-};
 
 // Bets state lives in App (useCloudBets) so closing-line auto-capture keeps
 // running app-wide even when this tab isn't mounted; see useClosingLineCapture.
@@ -411,6 +381,8 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
     if (!game || !pick || !odds || !wager) return;
     
     const newBet = buildBetFromInput();
+    const duplicate = findDuplicate(bets, newBet);
+    if (duplicate && !window.confirm(`You already logged "${duplicate.pick}" at ${formatOdds(duplicate.odds)} on this game for this date. Add it again?`)) return;
 
     setBets(prev => [newBet, ...prev]);
     setGame('');
@@ -519,6 +491,24 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
       const message = 'Export failed: ' + err.message;
       setDataPanelStatus(message);
       alert(message);
+    }
+  }
+
+  // Spreadsheet-friendly export of the live (non-deleted) bets.
+  function exportCsv() {
+    try {
+      const blob = new Blob([betsToCsv(bets)], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edgefinder-bets-${todayStr()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDataPanelStatus(`CSV export started: ${bets.filter(b => !b.deleted).length} bet(s).`);
+    } catch (err) {
+      setDataPanelStatus('CSV export failed: ' + err.message);
     }
   }
 
@@ -737,6 +727,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
         </div>
       )}
 
+      {/* INSIGHTS — breakdowns by book / type / price / timing + bankroll curve */}
+      <TrackerInsights bets={filteredBets} />
+
       {/* EV TIMING ANALYTICS PANEL — Edge Finder V2.5 */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))',
@@ -937,6 +930,19 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
                 }}
               >
                 <Download size={14} /> Export JSON
+              </button>
+              <button
+                onClick={exportCsv}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 14px',
+                  background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                  borderRadius: '8px',
+                  color: '#22c55e', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                <Download size={14} /> Export CSV
               </button>
               <label style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
@@ -1304,221 +1310,3 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
 }
 
 // Bet Card Component
-// Trust label for a tracker row. "Verified" comes only from the server
-// ledger (never from fields on the bet, which the user can edit).
-function VerificationBadge({ bet, verified }) {
-  const chip = (label, color, title) => (
-    <span title={title} style={{
-      fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700,
-      background: `${color}22`, color, display: 'inline-flex', alignItems: 'center', gap: '3px',
-    }}>{label}</span>
-  );
-  if (verified) {
-    if (verified.voided) return chip('VOIDED', '#94a3b8', 'Voided before kick-off. The void is part of your verified record.');
-    return chip('✓ VERIFIED', '#22c55e', `Recorded by the server ${new Date(verified.recordedAt).toLocaleString()} at ${formatOdds(verified.odds)} (${verified.bookTitle}). Entry #${verified.seq}.`);
-  }
-  const v = bet.verification;
-  if (v?.status === 'verifying' || v?.status === 'retry') return chip('VERIFYING…', '#38bdf8', 'Checking this bet against the live market.');
-  if (v?.status === 'rejected') return chip('NOT VERIFIED', '#f59e0b', v.message || 'This bet could not be verified.');
-  if (v?.status === 'failed') return chip('NOT VERIFIED', '#f59e0b', v.message || 'The verification service was unreachable.');
-  return chip('SELF-REPORTED', '#64748b', 'Entered by you and not verified by the server. Only bets logged from the board before kick-off can be verified.');
-}
-
-function BetCard({ bet, verified, onSettle, onDelete, onSetTimingOdds, isPending }) {
-  const statusColors = {
-    pending: '#f59e0b', won: '#22c55e', lost: '#ef4444', push: '#64748b',
-  };
-
-  const [editingTiming, setEditingTiming] = useState(false);
-  const [openDraft, setOpenDraft] = useState(bet.openingOdds ?? '');
-  const [closeDraft, setCloseDraft] = useState(bet.closingOdds ?? '');
-  const [openPointDraft, setOpenPointDraft] = useState(bet.openingPoint ?? getBetPoint(bet) ?? '');
-  const [closePointDraft, setClosePointDraft] = useState(bet.closingPoint ?? '');
-
-  const clv = calculateCLV(bet.odds, bet.closingOdds);
-  const pointClv = getPointCLV(bet);
-  const grade = pointClv != null ? gradeLineTiming(pointClv) : gradeTiming(clv);
-  const hasTiming = bet.openingOdds != null || bet.closingOdds != null || bet.openingPoint != null || bet.closingPoint != null || getBetPoint(bet) != null;
-
-  function saveTiming() {
-    onSetTimingOdds?.(bet.id, {
-      openingOdds: openDraft === '' ? null : openDraft,
-      closingOdds: closeDraft === '' ? null : closeDraft,
-      openingPoint: openPointDraft === '' ? null : openPointDraft,
-      closingPoint: closePointDraft === '' ? null : closePointDraft,
-    });
-    setEditingTiming(false);
-  }
-
-  return (
-    <div style={{ ...cardStyle, padding: '12px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>{bet.game}</span>
-            <span style={{
-              fontSize: '10px', padding: '2px 6px',
-              background: 'rgba(99, 102, 241, 0.15)', borderRadius: '4px', color: '#818cf8',
-            }}>{bet.type}</span>
-            {(pointClv != null || clv != null) && (
-              <span style={{
-                fontSize: '10px', padding: '2px 6px', borderRadius: '4px',
-                background: grade.bg, color: grade.color, fontWeight: 700,
-                display: 'inline-flex', alignItems: 'center', gap: '3px',
-              }}>
-                <Clock size={9} />
-                {pointClv != null
-                  ? `${grade.label} ${pointClv >= 0 ? '+' : ''}${pointClv.toFixed(2)} pts`
-                  : `${grade.label} ${clv >= 0 ? '+' : ''}${clv.toFixed(2)}%`}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-            {bet.pick} @ {formatOdds(bet.odds)} • ${bet.wager}
-          </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
-            <VerificationBadge bet={bet} verified={verified} />
-            {bet.gradedBy === 'auto' && (
-              <span style={{ fontSize: '10px', color: '#64748b' }} title="Graded automatically from the final score">
-                Auto-graded{bet.gradeDetail ? ` · ${bet.gradeDetail}` : ''}
-              </span>
-            )}
-            {bet.verification?.status === 'rejected' && bet.verification.message && (
-              <span style={{ fontSize: '10px', color: '#f59e0b' }}>{bet.verification.message}</span>
-            )}
-          </div>
-          {hasTiming && !editingTiming && (
-            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {getBetPoint(bet) != null && <span>Bet line: {formatPoint(getBetPoint(bet))}</span>}
-              {bet.closingPoint != null && <span>Close line: {formatPoint(bet.closingPoint)}</span>}
-              {bet.openingOdds != null && <span>Open: {formatOdds(bet.openingOdds)}</span>}
-              {bet.closingOdds != null && <span>Close: {formatOdds(bet.closingOdds)}</span>}
-              {clv != null && pointClv != null && <span>Price CLV: {clv >= 0 ? '+' : ''}{clv.toFixed(2)}%</span>}
-            </div>
-          )}
-        </div>
-
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          {isPending ? (
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button onClick={() => onSettle(bet.id, 'won')} style={{
-                padding: '6px 12px', background: 'rgba(34, 197, 94, 0.2)',
-                border: '1px solid rgba(34, 197, 94, 0.5)', borderRadius: '6px',
-                color: '#22c55e', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              }}>Won</button>
-              <button onClick={() => onSettle(bet.id, 'lost')} style={{
-                padding: '6px 12px', background: 'rgba(239, 68, 68, 0.2)',
-                border: '1px solid rgba(239, 68, 68, 0.5)', borderRadius: '6px',
-                color: '#ef4444', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              }}>Lost</button>
-              <button onClick={() => onSettle(bet.id, 'push')} style={{
-                padding: '6px 12px', background: 'rgba(100, 116, 139, 0.2)',
-                border: '1px solid rgba(100, 116, 139, 0.5)', borderRadius: '6px',
-                color: '#64748b', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-              }}>Push</button>
-            </div>
-          ) : (
-            <div>
-              <div style={{
-                fontSize: '12px', fontWeight: 700,
-                color: bet.profit >= 0 ? '#22c55e' : '#ef4444',
-              }}>
-                {formatMoney(bet.profit)}
-              </div>
-              <div style={{
-                fontSize: '10px', padding: '2px 6px',
-                background: `rgba(${bet.status === 'won' ? '34, 197, 94' : bet.status === 'lost' ? '239, 68, 68' : '100, 116, 139'}, 0.15)`,
-                borderRadius: '4px', color: statusColors[bet.status], display: 'inline-block',
-              }}>
-                {bet.status.toUpperCase()}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-          {onSetTimingOdds && (
-            <button
-              onClick={() => setEditingTiming(v => !v)}
-              title="Edit opening/closing odds for CLV tracking"
-              style={{
-                padding: '6px', background: editingTiming ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                border: 'none', borderRadius: '4px',
-                color: editingTiming ? '#818cf8' : '#64748b', cursor: 'pointer',
-              }}>
-              <Edit3 size={14} />
-            </button>
-          )}
-          <button onClick={() => onDelete(bet.id)} style={{
-            padding: '6px', background: 'transparent', border: 'none',
-            color: '#64748b', cursor: 'pointer',
-          }}>
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
-
-      {editingTiming && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          marginTop: '10px', paddingTop: '10px',
-          borderTop: '1px solid rgba(71, 85, 105, 0.2)',
-          flexWrap: 'wrap',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Bet Line</label>
-            <input
-              type="number" value={openPointDraft} onChange={(e) => setOpenPointDraft(e.target.value)}
-              placeholder="-3.5"
-              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Close Line</label>
-            <input
-              type="number" value={closePointDraft} onChange={(e) => setClosePointDraft(e.target.value)}
-              placeholder="-5"
-              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Open Odds</label>
-            <input
-              type="number" value={openDraft} onChange={(e) => setOpenDraft(e.target.value)}
-              placeholder="-105"
-              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
-            />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>Close Odds</label>
-            <input
-              type="number" value={closeDraft} onChange={(e) => setCloseDraft(e.target.value)}
-              placeholder="-115"
-              style={{ ...inputStyle, width: '80px', padding: '6px 8px', fontSize: '12px' }}
-            />
-          </div>
-          <button onClick={saveTiming} style={{
-            display: 'flex', alignItems: 'center', gap: '4px',
-            padding: '6px 10px',
-            background: 'rgba(34, 197, 94, 0.2)',
-            border: '1px solid rgba(34, 197, 94, 0.5)', borderRadius: '6px',
-            color: '#22c55e', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-          }}>
-            <Check size={12} /> Save
-          </button>
-          <button onClick={() => {
-            setEditingTiming(false);
-            setOpenDraft(bet.openingOdds ?? '');
-            setCloseDraft(bet.closingOdds ?? '');
-            setOpenPointDraft(bet.openingPoint ?? getBetPoint(bet) ?? '');
-            setClosePointDraft(bet.closingPoint ?? '');
-          }} style={{
-            padding: '6px 10px', background: 'transparent',
-            border: '1px solid rgba(71, 85, 105, 0.3)', borderRadius: '6px',
-            color: '#94a3b8', fontSize: '11px', cursor: 'pointer',
-          }}>Cancel</button>
-        </div>
-      )}
-    </div>
-  );
-}

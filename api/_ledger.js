@@ -20,10 +20,16 @@
 //   bet_ledger/{uid}/events/{id}     chained events (+ derived.close/grade)
 //   ledger_open/{uid}__{id}          index of bets still awaiting a close
 
-import { webcrypto } from 'node:crypto';
-import { GENESIS_HASH, americanToDecimalOdds, computeEventHash } from '../src/utils/ledger.js';
+import { randomBytes, webcrypto } from 'node:crypto';
+import {
+  GENESIS_HASH, americanToDecimalOdds, canonicalJson, computeEventHash, sha256Hex, stakeCommitInput,
+} from '../src/utils/ledger.js';
 import { findScoreRow, gradeBet, isAutoGradeable, readFinalScore } from '../src/utils/grading.js';
+import {
+  MAX_PARLAY_LEGS, MIN_PARLAY_LEGS, combinedDecimal, decimalToAmerican, settleParlay,
+} from '../src/utils/parlay.js';
 import { probIndexKey } from './_receipts.js';
+import { etDateKey } from './_scores.js';
 
 // The shared hashing code uses Web Crypto (same in browsers and Node 19+).
 // Older Node runtimes only expose it as crypto.webcrypto.
@@ -32,7 +38,11 @@ if (!globalThis.crypto?.subtle) globalThis.crypto = webcrypto;
 export const LEDGER_COLLECTION = 'bet_ledger';
 export const OPEN_COLLECTION = 'ledger_open';
 export const DAILY_RECORD_LIMIT = 200;
-export const LEDGER_VERSION = 1;
+// v2: the stake is committed by hash (stakeCommit) instead of stored in the
+// hashed part, so a record can be shared publicly without revealing stakes.
+export const LEDGER_VERSION = 2;
+export const HANDLE_COLLECTION = 'ledger_handles';
+const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
 // Voids exist to undo a mis-tap, not to curate a record: a longer window
 // would let someone quietly void every bet the line moved against.
 export const VOID_WINDOW_MS = 10 * 60 * 1000;
@@ -97,6 +107,34 @@ export function sanitizeClaim(input) {
       odds,
       wager: Math.round(wager * 100) / 100,
       bookKey,
+    },
+  };
+}
+
+// Validate a parlay claim: 2–10 legs, each a valid game-line claim, and no
+// two legs from the same game (same-game parlays are priced differently by
+// books, so their combined price can't be checked from the board).
+export function sanitizeParlayClaim(input) {
+  const bet = input && typeof input === 'object' ? input : {};
+  const rawLegs = Array.isArray(bet.legs) ? bet.legs : [];
+  if (rawLegs.length < MIN_PARLAY_LEGS || rawLegs.length > MAX_PARLAY_LEGS) {
+    return { error: `Parlays need ${MIN_PARLAY_LEGS}–${MAX_PARLAY_LEGS} legs.` };
+  }
+  const legs = [];
+  for (let i = 0; i < rawLegs.length; i += 1) {
+    const { claim, error } = sanitizeClaim({ ...rawLegs[i], clientBetId: bet.clientBetId, wager: bet.wager });
+    if (error) return { error: `Leg ${i + 1}: ${error}` };
+    legs.push(claim);
+  }
+  if (new Set(legs.map(l => l.gameId)).size !== legs.length) {
+    return { error: 'Same-game parlays can\'t be verified — books price them differently from separate games.' };
+  }
+  const { clientBetId, wager } = legs[0];
+  return {
+    claim: {
+      clientBetId,
+      wager,
+      legs: legs.map(({ clientBetId: _c, wager: _w, ...leg }) => leg),
     },
   };
 }
@@ -234,8 +272,15 @@ export async function recordBet(db, uid, claim, games) {
   return appendEvent(db, uid, eventId, async (_tx, recordedAt) => {
     // Re-check with the timestamp we're about to write, so a bet recorded a
     // moment after kick-off can never slip through.
-    const fields = checkClaimAgainstMarket(claim, games, Date.parse(recordedAt));
-    return { type: 'bet', clientBetId: claim.clientBetId, ...fields };
+    const { wager, ...fields } = checkClaimAgainstMarket(claim, games, Date.parse(recordedAt));
+    const salt = randomBytes(16).toString('hex');
+    return {
+      type: 'bet',
+      clientBetId: claim.clientBetId,
+      ...fields,
+      stakeCommit: await sha256Hex(stakeCommitInput(wager, salt)),
+      private: { stake: { wager, salt } },
+    };
   }, {
     onWrite: (tx, event) => {
       tx.set(db.collection(OPEN_COLLECTION).doc(openDocId(uid, event.id)), {
@@ -248,6 +293,63 @@ export async function recordBet(db, uid, claim, games) {
         outcomePoint: event.outcomePoint,
         commenceTime: event.commenceTime,
         lastObservedAt: null,
+      });
+    },
+  });
+}
+
+// Record a verified parlay. `gamesBySport` maps each leg's sport to the
+// server's current odds feed. Every leg is checked exactly like a single bet;
+// the combined price is computed here from the recorded leg prices.
+export async function recordParlay(db, uid, claim, gamesBySport) {
+  const eventId = betEventId(claim.clientBetId);
+  return appendEvent(db, uid, eventId, async (_tx, recordedAt) => {
+    const now = Date.parse(recordedAt);
+    const legs = claim.legs.map((leg, i) => {
+      try {
+        const fields = checkClaimAgainstMarket(
+          { ...leg, clientBetId: claim.clientBetId, wager: claim.wager },
+          gamesBySport.get(leg.sportKey) || [],
+          now,
+        );
+        delete fields.wager; // the stake belongs to the parlay, committed below
+        return fields;
+      } catch (error) {
+        if (error instanceof LedgerRejection) {
+          throw new LedgerRejection(error.reason, `Leg ${i + 1}: ${error.message}`, error.details);
+        }
+        throw error;
+      }
+    });
+    const parlayDecimal = combinedDecimal(legs.map(l => l.odds));
+    const salt = randomBytes(16).toString('hex');
+    const firstStart = Math.min(...legs.map(l => Date.parse(l.commenceTime)));
+    return {
+      type: 'parlay',
+      clientBetId: claim.clientBetId,
+      game: legs.map(l => l.game).join(' + '),
+      commenceTime: new Date(firstStart).toISOString(),
+      legs,
+      parlayDecimal,
+      odds: decimalToAmerican(parlayDecimal),
+      stakeCommit: await sha256Hex(stakeCommitInput(claim.wager, salt)),
+      private: { stake: { wager: claim.wager, salt } },
+    };
+  }, {
+    onWrite: (tx, event) => {
+      event.legs.forEach((leg, legIndex) => {
+        tx.set(db.collection(OPEN_COLLECTION).doc(openDocId(uid, `${event.id}~${legIndex}`)), {
+          uid,
+          eventId: event.id,
+          legIndex,
+          gameId: leg.gameId,
+          sportKey: leg.sportKey,
+          marketKey: leg.marketKey,
+          outcomeName: leg.outcomeName,
+          outcomePoint: leg.outcomePoint,
+          commenceTime: leg.commenceTime,
+          lastObservedAt: null,
+        });
       });
     },
   });
@@ -267,9 +369,19 @@ export async function voidBet(db, uid, clientBetId) {
     if (Date.parse(recordedAt) - Date.parse(bet.recordedAt) > VOID_WINDOW_MS) {
       throw new LedgerRejection('void_window_closed', 'Verified bets can only be voided within 10 minutes of logging them.');
     }
-    return { type: 'void', clientBetId: String(clientBetId), betEventId: bet.id, game: bet.game };
+    const fields = { type: 'void', clientBetId: String(clientBetId), betEventId: bet.id, game: bet.game };
+    if (bet.type === 'parlay') fields.legCount = bet.legs.length;
+    return fields;
   }, {
-    onWrite: (tx, event) => tx.delete(db.collection(OPEN_COLLECTION).doc(openDocId(uid, event.betEventId))),
+    onWrite: (tx, event) => {
+      if (event.legCount) {
+        for (let i = 0; i < event.legCount; i += 1) {
+          tx.delete(db.collection(OPEN_COLLECTION).doc(openDocId(uid, `${event.betEventId}~${i}`)));
+        }
+      } else {
+        tx.delete(db.collection(OPEN_COLLECTION).doc(openDocId(uid, event.betEventId)));
+      }
+    },
   });
 }
 
@@ -323,8 +435,9 @@ export async function updateLedgerCloses(db, probIndex, now = Date.now()) {
     if (!current || !Number.isFinite(current.fairProb)) return;
     const observedAt = new Date(now).toISOString();
     const eventRef = eventsCol(db, open.uid).doc(open.eventId);
+    const field = Number.isInteger(open.legIndex) ? `derived.legCloses.${open.legIndex}` : 'derived.close';
     queue(b => b.update(eventRef, {
-      'derived.close': {
+      [field]: {
         fairProb: Number(current.fairProb.toFixed(6)),
         bestPrice: current.bestPrice ?? null,
         observedAt,
@@ -349,27 +462,46 @@ const GRADE_GIVE_UP_MS = 3 * 24 * 60 * 60 * 1000; // scores feed covers 3 days
 // changed; anything we can't grade safely is left for the user to settle.
 export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = Date.now()) {
   const voided = new Set(events.filter(e => e.type === 'void').map(e => e.betEventId));
-  const due = events.filter(e => {
-    if (e.type !== 'bet' || voided.has(e.id) || e.derived?.grade || !isAutoGradeable(e)) return false;
-    const start = Date.parse(e.commenceTime);
+  const isDue = (market) => {
+    if (!isAutoGradeable(market)) return false;
+    const start = Date.parse(market.commenceTime);
     return Number.isFinite(start) && now - start >= GRADE_AFTER_MS && now - start <= GRADE_GIVE_UP_MS;
+  };
+  // Work items: whole single bets, or individual ungraded legs of a parlay.
+  const items = [];
+  events.forEach(e => {
+    if (voided.has(e.id) || e.derived?.grade) return;
+    if (e.type === 'bet' && isDue(e)) items.push({ event: e, market: e, legIndex: null });
+    if (e.type === 'parlay' && Array.isArray(e.legs)) {
+      e.legs.forEach((leg, legIndex) => {
+        if (!e.derived?.legGrades?.[legIndex] && isDue(leg)) items.push({ event: e, market: leg, legIndex });
+      });
+    }
   });
-  if (!due.length) return 0;
+  if (!items.length) return 0;
 
-  const sports = [...new Set(due.map(e => e.sportKey))].slice(0, 8);
+  const sports = [...new Set(items.map(item => item.market.sportKey))].slice(0, 8);
   const rowsBySport = new Map();
   await Promise.all(sports.map(async sport => {
-    try { rowsBySport.set(sport, await fetchScoreRows(sport)); } catch { rowsBySport.set(sport, null); }
+    // Eastern calendar days of the games we need (the fallback source is
+    // organised by day).
+    const dates = [...new Set(items.filter(i => i.market.sportKey === sport).map(i => etDateKey(i.market.commenceTime)).filter(Boolean))];
+    try { rowsBySport.set(sport, await fetchScoreRows(sport, { dates })); } catch { rowsBySport.set(sport, null); }
   }));
 
   const gradedAt = new Date(now).toISOString();
-  const writes = [];
-  due.forEach(event => {
-    const rows = rowsBySport.get(event.sportKey);
+  const updates = new Map(); // event id -> { event, fields }
+  const addUpdate = (event, field, value) => {
+    if (!updates.has(event.id)) updates.set(event.id, { event, fields: {} });
+    updates.get(event.id).fields[field] = value;
+  };
+
+  items.forEach(({ event, market, legIndex }) => {
+    const rows = rowsBySport.get(market.sportKey);
     if (!rows) return;
-    const row = findScoreRow(rows, event);
+    const row = findScoreRow(rows, market);
     const final = readFinalScore(row);
-    const result = gradeBet(event, final);
+    const result = gradeBet(market, final);
     if (!result) return;
     const grade = {
       result,
@@ -377,13 +509,214 @@ export async function gradePendingEvents(db, uid, events, fetchScoreRows, now = 
       awayTeam: final.awayTeam,
       homeScore: final.home,
       awayScore: final.away,
-      scoreSource: 'The Odds API final scores',
+      scoreSource: row.source || 'The Odds API final scores',
       scoreEventId: row?.id ?? null,
       gradedAt,
     };
-    event.derived = { ...(event.derived || {}), grade };
-    writes.push(eventsCol(db, uid).doc(event.id).update({ 'derived.grade': grade }));
+    if (legIndex == null) {
+      event.derived = { ...(event.derived || {}), grade };
+      addUpdate(event, 'derived.grade', grade);
+    } else {
+      event.derived = { ...(event.derived || {}), legGrades: { ...(event.derived?.legGrades || {}), [legIndex]: grade } };
+      addUpdate(event, `derived.legGrades.${legIndex}`, grade);
+    }
   });
+
+  // A parlay is graded once its legs decide it (any loss decides it at once).
+  updates.forEach(({ event }) => {
+    if (event.type !== 'parlay') return;
+    const results = event.legs.map((_, i) => event.derived?.legGrades?.[i]?.result ?? null);
+    const settled = settleParlay(results, event.legs.map(l => l.odds));
+    if (!settled) return;
+    const grade = { result: settled.result, effectiveDecimal: settled.effectiveDecimal, gradedAt };
+    event.derived = { ...event.derived, grade };
+    addUpdate(event, 'derived.grade', grade);
+  });
+
+  const writes = [...updates.values()].map(({ event, fields }) => eventsCol(db, uid).doc(event.id).update(fields));
   await Promise.all(writes);
   return writes.length;
+}
+
+// ---- Grading personal (unverified) bets ---------------------------------
+// Stateless: grades board bets from the user's own tracker with the same
+// rules and score sources, writes nothing. The result is still the user's
+// self-reported record — only ledger entries are "verified".
+export const MAX_GRADE_REQUEST = 30;
+const KEY_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+export function sanitizeGradeRequest(input) {
+  const list = Array.isArray(input) ? input.slice(0, MAX_GRADE_REQUEST) : [];
+  return list.map(raw => {
+    const item = raw && typeof raw === 'object' ? raw : {};
+    const key = String(item.key ?? '');
+    const sportKey = String(item.sportKey ?? '');
+    const marketKey = String(item.marketKey ?? '');
+    const gameId = item.gameId == null ? '' : String(item.gameId);
+    const point = finiteOrNull(item.outcomePoint);
+    const text = (v) => (typeof v === 'string' && v.length <= 80 ? v : null);
+    if (!KEY_RE.test(key) || !SPORT_RE.test(sportKey) || !MARKETS.has(marketKey)) return null;
+    if (gameId && !ID_RE.test(gameId)) return null;
+    if (Number.isNaN(point)) return null;
+    const outcomeName = text(item.outcomeName);
+    if (!outcomeName || !Number.isFinite(Date.parse(item.commenceTime || ''))) return null;
+    return {
+      key, gameId: gameId || null, sportKey, marketKey, outcomeName, outcomePoint: point,
+      commenceTime: new Date(Date.parse(item.commenceTime)).toISOString(),
+      homeTeam: text(item.homeTeam), awayTeam: text(item.awayTeam),
+    };
+  }).filter(Boolean);
+}
+
+export async function gradeUnverified(items, fetchScoreRows, now = Date.now()) {
+  const due = items.filter(item => {
+    if (!isAutoGradeable(item)) return false;
+    const start = Date.parse(item.commenceTime);
+    return now - start >= GRADE_AFTER_MS && now - start <= GRADE_GIVE_UP_MS;
+  });
+  const sports = [...new Set(due.map(i => i.sportKey))].slice(0, 8);
+  const rowsBySport = new Map();
+  await Promise.all(sports.map(async sport => {
+    const dates = [...new Set(due.filter(i => i.sportKey === sport).map(i => etDateKey(i.commenceTime)).filter(Boolean))];
+    try { rowsBySport.set(sport, await fetchScoreRows(sport, { dates })); } catch { rowsBySport.set(sport, null); }
+  }));
+  const grades = {};
+  due.forEach(item => {
+    const rows = rowsBySport.get(item.sportKey);
+    if (!rows) return;
+    const row = findScoreRow(rows, item);
+    const final = readFinalScore(row);
+    const result = gradeBet(item, final);
+    if (!result) return;
+    grades[item.key] = {
+      result,
+      homeTeam: final.homeTeam,
+      awayTeam: final.awayTeam,
+      homeScore: final.home,
+      awayScore: final.away,
+      scoreSource: row.source || 'The Odds API final scores',
+    };
+  });
+  return grades;
+}
+
+// ---- Public sharing ------------------------------------------------------
+// Opt-in. A handle maps to one user (ledger_handles/{handle} → uid). The
+// public view never includes stakes: v2 entries drop their private stake
+// reveal (the stake commitment keeps them verifiable); older v1 entries,
+// whose stake is inside the hash, are sent redacted and verified by linkage.
+
+export function normalizeHandle(value) {
+  const handle = String(value ?? '').trim().toLowerCase();
+  return HANDLE_RE.test(handle) ? handle : null;
+}
+
+export async function setSharing(db, uid, { enabled, handle: rawHandle }) {
+  const headRef = db.collection(LEDGER_COLLECTION).doc(uid);
+  return db.runTransaction(async (tx) => {
+    const headSnap = await tx.get(headRef);
+    const head = headSnap.exists ? headSnap.data() : {};
+    const current = head.sharing || {};
+
+    if (!enabled) {
+      if (current.handle) tx.delete(db.collection(HANDLE_COLLECTION).doc(current.handle));
+      tx.set(headRef, { sharing: { enabled: false, handle: null, since: null } }, { merge: true });
+      return { enabled: false, handle: null };
+    }
+
+    const handle = normalizeHandle(rawHandle);
+    if (!handle) {
+      throw new LedgerRejection('invalid_handle', 'Handles are 3–20 characters: lowercase letters, numbers and underscores.');
+    }
+    const handleRef = db.collection(HANDLE_COLLECTION).doc(handle);
+    const owner = await tx.get(handleRef);
+    if (owner.exists && owner.data().uid !== uid) {
+      throw new LedgerRejection('handle_taken', 'That handle is taken. Try another one.');
+    }
+    if (current.handle && current.handle !== handle) {
+      tx.delete(db.collection(HANDLE_COLLECTION).doc(current.handle));
+    }
+    const since = current.enabled && current.handle === handle && current.since ? current.since : new Date().toISOString();
+    tx.set(handleRef, { uid, handle, since });
+    tx.set(headRef, { sharing: { enabled: true, handle, since } }, { merge: true });
+    return { enabled: true, handle, since };
+  });
+}
+
+export async function getSharing(db, uid) {
+  const snap = await db.collection(LEDGER_COLLECTION).doc(uid).get();
+  const sharing = snap.exists ? snap.data().sharing : null;
+  return sharing?.enabled ? { enabled: true, handle: sharing.handle, since: sharing.since } : { enabled: false, handle: null };
+}
+
+// Only the private stake reveal is withheld. Everything else, including
+// clientBetId, is part of the hashed contents and must stay for viewers to
+// verify each entry.
+export function toPublicEvent(event) {
+  const out = { ...event };
+  delete out.private;
+  if ('wager' in out) {
+    // v1 entry: the stake is part of the hashed contents. Drop it and mark the
+    // entry so viewers verify it by its chain links instead.
+    delete out.wager;
+    out.redacted = true;
+  }
+  return out;
+}
+
+// Returns { handle, since, events } for a public handle, or null.
+export async function loadPublicRecord(db, rawHandle) {
+  const handle = normalizeHandle(rawHandle);
+  if (!handle) return null;
+  const mapping = await db.collection(HANDLE_COLLECTION).doc(handle).get();
+  if (!mapping.exists) return null;
+  const { uid } = mapping.data();
+  const sharing = await getSharing(db, uid);
+  if (!sharing.enabled || sharing.handle !== handle) return null;
+  const events = await loadEvents(db, uid);
+  return { handle, since: sharing.since, ledgerId: await ledgerIdFor(uid), events: events.map(toPublicEvent) };
+}
+
+// ---- Public anchors ------------------------------------------------------
+// A daily fingerprint over every ledger's latest entry, published outside
+// EdgeFinder (committed to the public GitHub repo by a scheduled workflow).
+// Once a day's anchor is out, nobody — EdgeFinder included — can rewrite any
+// record's history before that point without the mismatch being visible.
+// Ledgers are listed by an opaque id, never by user id.
+
+export async function ledgerIdFor(uid) {
+  return sha256Hex(`edgefinder-ledger:${uid}`);
+}
+
+export async function computeAnchor(db, now = Date.now()) {
+  const snap = await db.collection(LEDGER_COLLECTION).get();
+  const heads = [];
+  for (const doc of snap.docs) {
+    const head = doc.data();
+    if (!head?.headHash || !Number.isInteger(head.seq)) continue;
+    heads.push({ ledgerId: await ledgerIdFor(doc.id), seq: head.seq, headHash: head.headHash });
+  }
+  heads.sort((a, b) => (a.ledgerId < b.ledgerId ? -1 : 1));
+  return {
+    version: 1,
+    generatedAt: new Date(now).toISOString(),
+    ledgers: heads.length,
+    anchor: await sha256Hex(canonicalJson(heads)),
+    heads,
+  };
+}
+
+// Sports with verified bets starting within `windowMs` — the only odds a
+// scheduled close capture needs to fetch.
+export async function sportsNeedingCloses(db, now = Date.now(), windowMs = 4 * 60 * 60 * 1000) {
+  const snap = await db.collection(OPEN_COLLECTION)
+    .where('commenceTime', '<=', new Date(now + windowMs).toISOString())
+    .limit(1000)
+    .get();
+  const sports = new Set();
+  snap.docs.forEach(doc => {
+    const open = doc.data();
+    if (Date.parse(open.commenceTime) > now) sports.add(open.sportKey);
+  });
+  return [...sports];
 }

@@ -93,7 +93,7 @@ function MarketWatchlist({ games, injuries, watchlist, onToggleWatchlist }) {
   );
 }
 
-export default function ProTools({ games = [], injuries = {}, watchlist = [], onToggleWatchlist = () => {} }) {
+export default function ProTools({ games = [], injuries = {}, watchlist = [], onToggleWatchlist = () => {}, parlay = null, onTrackBet = null }) {
   const { tier } = useAuth();
   const isPro = tier === 'pro';
   const [activeTool, setActiveTool] = useState('PARLAY');
@@ -145,9 +145,9 @@ export default function ProTools({ games = [], injuries = {}, watchlist = [], on
             <span>{TOOLS.find(tool => tool.key === activeTool)?.label}</span>
           </div>
           <Suspense fallback={<ToolFallback />}>
-            {activeTool === 'PARLAY' && <ParlayBuilder />}
+            {activeTool === 'PARLAY' && <ParlayBuilder parlay={parlay} />}
             {activeTool === 'ARB' && <ArbitrageScanner games={games} />}
-            {activeTool === 'ALERTS' && <EdgeAlerts />}
+            {activeTool === 'ALERTS' && <EdgeAlerts onTrackBet={onTrackBet} />}
             {activeTool === 'WATCHLIST' && (
               <MarketWatchlist
                 games={games}

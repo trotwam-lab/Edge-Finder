@@ -11,8 +11,30 @@ const FRESH_WINDOW_MS = 15 * 60 * 1000;
 const RETRY_DELAYS_MS = [30 * 1000, 2 * 60 * 1000];
 const VERIFIABLE_MARKETS = new Set(['h2h', 'spreads', 'totals']);
 
+function isVerifiableMarket(m) {
+  if (!m?.gameId || !m.sportKey || !VERIFIABLE_MARKETS.has(m.marketKey) || !m.outcomeName) return false;
+  if (!isAutoGradeable(m)) return false;
+  if (!Number.isFinite(Number(m.odds))) return false;
+  return m.marketKey === 'h2h' || m.outcomePoint != null;
+}
+
+function isFresh(bet, now) {
+  const created = Number(bet.id);
+  return Number.isFinite(created) && now - created <= FRESH_WINDOW_MS && created <= now + 60 * 1000;
+}
+
 export function isVerifiableBet(bet, now = Date.now()) {
   if (!bet || bet.deleted || bet.status !== 'pending') return false;
+  if (bet.type === 'Parlay') {
+    const legs = Array.isArray(bet.legs) ? bet.legs : [];
+    if (legs.length < 2 || legs.length > 10 || !(Number(bet.wager) > 0) || !isFresh(bet, now)) return false;
+    if (!legs.every(l => !l.manual && isVerifiableMarket(l))) return false;
+    if (new Set(legs.map(l => l.gameId)).size !== legs.length) return false;
+    return legs.every(l => {
+      const start = Date.parse(l.commenceTime || '');
+      return !Number.isFinite(start) || start > now;
+    });
+  }
   if (!bet.gameId || !bet.sportKey || !VERIFIABLE_MARKETS.has(bet.marketKey) || !bet.outcomeName) return false;
   if (!isAutoGradeable(bet)) return false;
   if (bet.player) return false;
@@ -76,7 +98,7 @@ export function useVerifiedLedger({ user, bets, setBets }) {
       if (status !== 200 || !Array.isArray(data?.events)) throw new Error(data?.error || `HTTP ${status}`);
       // Independent check in this browser — we don't take the server's word.
       const chain = await verifyChain(data.events);
-      setState({ status: 'ready', events: data.events, chain, error: null, serverTime: data.serverTime });
+      setState({ status: 'ready', events: data.events, chain, sharing: data.sharing || null, ledgerId: data.ledgerId || null, error: null, serverTime: data.serverTime });
     } catch (error) {
       setState(prev => ({ ...prev, status: 'error', error: error.message || 'Could not load your verified record.' }));
     } finally {
@@ -116,7 +138,19 @@ export function useVerifiedLedger({ user, bets, setBets }) {
       try {
         const { status, data } = await authedFetch(user, 'POST', {
           action: 'record',
-          bet: {
+          bet: bet.type === 'Parlay' ? {
+            clientBetId: String(bet.id),
+            wager: Number(bet.wager),
+            legs: bet.legs.map(l => ({
+              gameId: l.gameId,
+              sportKey: l.sportKey,
+              marketKey: l.marketKey,
+              outcomeName: l.outcomeName,
+              outcomePoint: l.outcomePoint ?? null,
+              odds: Number(l.odds),
+              bookKey: l.bookKey || null,
+            })),
+          } : {
             clientBetId: String(bet.id),
             gameId: bet.gameId,
             sportKey: bet.sportKey,
@@ -166,8 +200,8 @@ export function useVerifiedLedger({ user, bets, setBets }) {
     if (state.status !== 'ready') return;
     const voided = new Set(state.events.filter(e => e.type === 'void').map(e => e.betEventId));
     const results = new Map(state.events
-      .filter(e => e.type === 'bet' && !voided.has(e.id) && e.derived?.grade?.result)
-      .map(e => [String(e.clientBetId), e.derived.grade]));
+      .filter(e => (e.type === 'bet' || e.type === 'parlay') && !voided.has(e.id) && e.derived?.grade?.result)
+      .map(e => [String(e.clientBetId), { ...e.derived.grade, parlay: e.type === 'parlay' ? e : null }]));
     if (!results.size) return;
     setBets(prev => {
       let changed = false;
@@ -175,13 +209,20 @@ export function useVerifiedLedger({ user, bets, setBets }) {
         const grade = results.get(String(bet.id));
         if (!grade || bet.deleted || bet.status !== 'pending') return bet;
         changed = true;
+        // A parlay with pushed legs pays its reduced price.
+        const profit = grade.result === 'won' && grade.effectiveDecimal
+          ? Number(((Number(bet.wager) || 0) * (grade.effectiveDecimal - 1)).toFixed(2))
+          : settleProfit(bet, grade.result);
+        const detail = grade.parlay
+          ? Object.values(grade.parlay.derived?.legGrades || {}).map(g => g.result).join(' · ')
+          : `${grade.awayTeam} ${grade.awayScore} @ ${grade.homeTeam} ${grade.homeScore}`;
         return {
           ...bet,
           status: grade.result,
-          profit: settleProfit(bet, grade.result),
+          profit,
           settledDate: todayStr(),
           gradedBy: 'auto',
-          gradeDetail: `${grade.awayTeam} ${grade.awayScore} @ ${grade.homeTeam} ${grade.homeScore}`,
+          gradeDetail: detail,
           updatedAt: Date.now(),
         };
       });
@@ -193,7 +234,7 @@ export function useVerifiedLedger({ user, bets, setBets }) {
   useEffect(() => {
     if (state.status !== 'ready') return undefined;
     const now = Date.now();
-    const waiting = state.events.some(e => e.type === 'bet' && !e.derived?.grade && Date.parse(e.commenceTime) < now);
+    const waiting = state.events.some(e => (e.type === 'bet' || e.type === 'parlay') && !e.derived?.grade && Date.parse(e.commenceTime) < now);
     if (!waiting) return undefined;
     const timer = setInterval(refresh, 10 * 60 * 1000);
     return () => clearInterval(timer);
@@ -213,13 +254,27 @@ export function useVerifiedLedger({ user, bets, setBets }) {
     }
   }, [user, refresh]);
 
+  const updateSharing = useCallback(async ({ enabled, handle }) => {
+    if (!user) return { ok: false, message: 'Please sign in again.' };
+    try {
+      const { status, data } = await authedFetch(user, 'POST', { action: 'share', enabled: Boolean(enabled), handle });
+      if (status === 200 && data?.ok) {
+        setState(prev => ({ ...prev, sharing: data.sharing }));
+        return { ok: true };
+      }
+      return { ok: false, message: data?.message || data?.error || 'Could not update sharing.' };
+    } catch {
+      return { ok: false, message: 'Could not reach the server. Try again.' };
+    }
+  }, [user]);
+
   const derived = useMemo(() => {
     const voided = new Set(state.events.filter(e => e.type === 'void').map(e => e.betEventId));
     const byClientId = new Map(state.events
-      .filter(e => e.type === 'bet')
+      .filter(e => e.type === 'bet' || e.type === 'parlay')
       .map(e => [String(e.clientBetId), { ...e, voided: voided.has(e.id) }]));
     return { byClientId, stats: computeLedgerStats(state.events) };
   }, [state.events]);
 
-  return { ...state, ...derived, refresh, voidVerifiedBet };
+  return { ...state, ...derived, refresh, voidVerifiedBet, updateSharing };
 }

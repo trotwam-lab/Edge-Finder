@@ -8,6 +8,8 @@ import { useAlerts } from './hooks/useAlerts.js';
 import { useCloudBets } from './hooks/useCloudBets.js';
 import { useClosingLineCapture } from './hooks/useClosingLineCapture.js';
 import { useVerifiedLedger } from './hooks/useVerifiedLedger.js';
+import { useAutoGrade } from './hooks/useAutoGrade.js';
+import { usePushAlerts } from './hooks/usePushAlerts.js';
 import Header from './components/Header.jsx';
 import SportFilter from './components/SportFilter.jsx';
 import GameCard from './components/GameCard.jsx';
@@ -21,6 +23,8 @@ import { isGameLive, getGameStatus } from './utils/live-status.js';
 import { buildMarketDisagreement } from './utils/odds-math.js';
 import { useNow } from './hooks/useNow.js';
 import { clearCachedData, removeKey } from './utils/storage.js';
+import { FREE_BET_LIMIT, todayStr } from './utils/bets.js';
+import { MAX_PARLAY_LEGS, combinedDecimal, decimalToAmerican } from './utils/parlay.js';
 import VerifyEmailBanner from './components/VerifyEmailBanner.jsx';
 import AccountSecurity from './components/AccountSecurity.jsx';
 
@@ -308,6 +312,76 @@ export default function BettingApp() {
   // Server-verified record: verifies new board bets and brings final results
   // back into the tracker, on every tab.
   const ledger = useVerifiedLedger({ user, bets, setBets });
+  // Personal board bets that aren't verified still grade themselves from
+  // final scores (same rules); verified ones are graded via the ledger.
+  const verifiedIds = useMemo(() => new Set(ledger.byClientId.keys()), [ledger.byClientId]);
+  useAutoGrade({ user, bets, setBets, verifiedIds });
+
+  // Background line-move alerts follow the starred games that are on the board.
+  const pushWatch = useMemo(() => watchlist
+    .map(id => games.find(g => g.id === id))
+    .filter(Boolean)
+    .map(g => ({ gameId: g.id, sportKey: g.sport_key }))
+    .slice(0, 50), [watchlist, games]);
+  const pushAlerts = usePushAlerts({ user, watch: pushWatch });
+
+  // Parlay slip: legs picked from the board ("+ Parlay"), priced and tracked
+  // in Tools → Parlay Builder. One leg per game — books don't price
+  // same-game legs as independent, so a second pick from a game replaces it.
+  const [parlaySlip, setParlaySlip] = usePersistentState('edgefinder_parlay_slip', []);
+  const parlaySlipRef = useRef(parlaySlip);
+  parlaySlipRef.current = parlaySlip;
+  const addToParlay = useCallback((leg) => {
+    const current = parlaySlipRef.current;
+    const replaced = current.some(l => l.gameId === leg.gameId);
+    const next = [...current.filter(l => l.gameId !== leg.gameId), { ...leg, id: `${leg.gameId}:${leg.marketKey}:${leg.outcomeName}:${leg.outcomePoint ?? ''}` }]
+      .slice(-MAX_PARLAY_LEGS);
+    parlaySlipRef.current = next;
+    setParlaySlip(next);
+    return { count: next.length, replaced };
+  }, [setParlaySlip]);
+  const removeFromParlay = useCallback((id) => setParlaySlip(prev => prev.filter(l => l.id !== id)), [setParlaySlip]);
+  const clearParlay = useCallback(() => setParlaySlip([]), [setParlaySlip]);
+  const atBetLimit = tier !== 'pro' && bets.filter(b => !b.deleted).length >= FREE_BET_LIMIT;
+
+  // Track a parlay from the builder. Board legs keep their market fields so
+  // the parlay can be verified and auto-graded; typed-in legs make it
+  // self-reported.
+  const trackParlay = useCallback(({ legs, stake }) => {
+    const decimal = combinedDecimal(legs.map(l => Number(l.odds)));
+    if (!decimal || !(stake > 0)) return false;
+    const starts = legs.map(l => Date.parse(l.commenceTime || '')).filter(Number.isFinite);
+    const bet = {
+      id: Date.now(),
+      updatedAt: Date.now(),
+      type: 'Parlay',
+      game: legs.map(l => l.game || l.label).join(' + '),
+      pick: `${legs.length}-leg parlay`,
+      odds: decimalToAmerican(decimal),
+      wager: Number(stake),
+      date: todayStr(),
+      status: 'pending',
+      profit: null,
+      settledDate: null,
+      commenceTime: starts.length ? new Date(Math.min(...starts)).toISOString() : null,
+      legs: legs.map(l => ({
+        label: l.pick || l.label,
+        game: l.game || null,
+        odds: Number(l.odds),
+        gameId: l.gameId ?? null,
+        sportKey: l.sportKey ?? null,
+        marketKey: l.marketKey ?? null,
+        outcomeName: l.outcomeName ?? null,
+        outcomePoint: l.outcomePoint ?? null,
+        commenceTime: l.commenceTime ?? null,
+        manual: !l.gameId,
+      })),
+    };
+    setBets(prev => [bet, ...prev]);
+    setParlaySlip(prev => prev.filter(l => !legs.some(x => x.id === l.id)));
+    setActiveTab('TRACKER');
+    return true;
+  }, [setBets, setParlaySlip]);
 
   const toggleWatchlist = useCallback((id) => {
     setWatchlist(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -536,6 +610,8 @@ export default function BettingApp() {
           onNavigate={setActiveTab}
           onSelectGame={handleSelectGame}
           onRefresh={manualRefresh}
+          setPendingBet={handleSetPendingBet}
+          bets={bets}
         />
       )}
       {activeTab === 'GAMES' && (
@@ -605,6 +681,7 @@ export default function BettingApp() {
                             injuries={injuries}
                             gameLineHistory={gameLineHistory}
                             setPendingBet={handleSetPendingBet}
+                            onAddToParlay={addToParlay}
                             logoMap={teamLogoMap}
                           />
                           {expandedGame === game.id && (
@@ -656,6 +733,8 @@ export default function BettingApp() {
             injuries={injuries}
             watchlist={watchlist}
             onToggleWatchlist={toggleWatchlist}
+            parlay={{ slip: parlaySlip, remove: removeFromParlay, clear: clearParlay, track: trackParlay, atBetLimit }}
+            onTrackBet={handleSetPendingBet}
           />
         </Suspense>
       )}
@@ -761,6 +840,43 @@ export default function BettingApp() {
             {watchlist.length > 0 && (
               <button onClick={() => { if (confirm('Clear entire watchlist?')) setWatchlist([]); }} style={{ padding: '6px 14px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: '6px', color: '#f87171', fontSize: '11px', cursor: 'pointer' }}>Clear Watchlist</button>
             )}
+          </div>
+          <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', marginBottom: '4px' }}>Alerts when EdgeFinder is closed</div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.6 }}>
+                  Get a notification on this device when the spread on a starred game moves 1+ point or the total 1.5+ points (checked about every 10 minutes, using the median across books).
+                </div>
+              </div>
+              {(pushAlerts.status === 'on' || pushAlerts.status === 'off' || pushAlerts.status === 'working') && (
+                <button
+                  onClick={pushAlerts.status === 'on' ? pushAlerts.disable : pushAlerts.enable}
+                  disabled={pushAlerts.status === 'working'}
+                  role="switch"
+                  aria-checked={pushAlerts.status === 'on'}
+                  aria-label="Background line-move alerts"
+                  style={{
+                    width: '42px', height: '24px', borderRadius: '12px', flexShrink: 0, padding: '2px',
+                    border: pushAlerts.status === 'on' ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(71,85,105,0.4)',
+                    background: pushAlerts.status === 'on' ? 'rgba(34,197,94,0.25)' : 'rgba(30,41,59,0.6)',
+                    cursor: pushAlerts.status === 'working' ? 'progress' : 'pointer', display: 'flex', alignItems: 'center',
+                    justifyContent: pushAlerts.status === 'on' ? 'flex-end' : 'flex-start',
+                  }}
+                >
+                  <span style={{ width: '16px', height: '16px', borderRadius: '50%', background: pushAlerts.status === 'on' ? '#22c55e' : '#64748b' }} />
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: '11px', marginTop: '8px', color: pushAlerts.error ? '#f87171' : '#94a3b8' }}>
+              {pushAlerts.error
+                || (pushAlerts.status === 'on' && `On for this device · watching ${pushWatch.length} starred game${pushWatch.length === 1 ? '' : 's'} on the board.`)
+                || (pushAlerts.status === 'unsupported' && 'This browser can\'t receive background alerts. On iPhone, add EdgeFinder to your Home Screen (Share → Add to Home Screen) and open it from there.')
+                || (pushAlerts.status === 'denied' && 'Notifications are blocked for EdgeFinder. Allow them in your browser or phone settings, then come back here.')
+                || (pushAlerts.status === 'unavailable' && 'Background alerts aren\'t switched on for EdgeFinder yet.')
+                || (pushAlerts.status === 'checking' && 'Checking this device…')
+                || 'Off. Star games on the board, then turn this on.'}
+            </div>
           </div>
           <div style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.2)', borderRadius: '12px', marginBottom: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>

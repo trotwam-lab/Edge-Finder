@@ -25,10 +25,23 @@ Bets logged from the board (basketball, football, baseball and hockey moneylines
 - **Real prices only.** The line must be on the board right now (same feed as `/api/odds`). A claimed price better than every book is recorded at the best real price instead.
 - **Tamper-evident.** Every entry stores a SHA-256 hash of its contents plus the previous entry's hash (`src/utils/ledger.js`). The browser re-verifies the whole chain on every load and flags any edit, deletion or reordering.
 - **No hiding losers.** Entries can't be edited or deleted. A void is only allowed within 10 minutes of logging and before kick-off, and the void is itself a permanent entry.
-- **Nothing typed in.** The closing line is the edge scan's no-vig consensus just before kick-off. Results come from final scores (`src/utils/grading.js`); anything that can't be graded with certainty is left ungraded rather than guessed.
+- **Nothing typed in.** The closing line is the edge scan's no-vig consensus just before kick-off. Results come from final scores (`src/utils/grading.js`): The Odds API first, with ESPN's scoreboard filling only games it lacks (`api/_scores.js`). Anything that can't be graded with certainty is left ungraded rather than guessed.
+- **Personal bets grade themselves too.** Unverified board bets in the tracker are graded with the same rules (`action: 'grade'`, no writes) but stay labelled self-reported.
 - **Honest stats.** The Verified Record panel uses only ledger data, with flat 1-unit staking, CLV against the no-vig close, and actual-vs-expected results ("skill vs. luck"). The personal tracker stays editable and labels unverified bets "self-reported".
 
-Storage is `bet_ledger/{uid}` (+ `events`) and `ledger_open`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
+- **Parlays.** Lines added with **+ Parlay** on the board build a slip in Tools → Parlay Builder. A parlay of board legs from different games is verified leg by leg (same rules as single bets; the server computes the combined price), gets a no-vig close per leg, and grades itself: any losing leg loses it, and pushed legs drop out of the price. Same-game and typed-in parlays are tracked as self-reported.
+- **Shareable proof.** Users can opt in to a public page at `/r/<handle>`. Stakes stay private: from ledger v2 each stake is stored as a salted SHA-256 commitment, so shared entries still verify in the viewer's browser.
+- **Public anchors.** Once a day the `Ledger upkeep` workflow commits a fingerprint of every ledger's latest entry to the `ledger-anchors` branch of this public repo. Record pages check themselves against `anchors/latest.json` fetched straight from GitHub, so history before an anchor can't be rewritten unnoticed, even by EdgeFinder.
+- **Closing lines on a schedule.** The same workflow asks `/api/ledger-maintenance?task=closes` every 10 minutes to record closes for verified bets starting soon. It only fetches odds for sports that need them.
+
+**To switch on the scheduled jobs:** in GitHub → Settings → Secrets and variables → Actions, add the variable `EDGEFINDER_BASE_URL` (the production site URL). Optionally add a secret `LEDGER_CRON_SECRET`, and put the same value in Vercel's environment variables. Until the URL is set, both jobs skip cleanly.
+
+Storage is `bet_ledger/{uid}` (+ `events`), `ledger_open` and `ledger_handles`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
+
+## Background line-move alerts (web push)
+Users can turn on **Settings → Alerts when EdgeFinder is closed**. Every 10 minutes the `Ledger upkeep` workflow calls `/api/ledger-maintenance?task=alerts`. For each subscriber it checks their starred pregame games and sends one notification when the median spread across books moves 1+ point or the total 1.5+ points since the last alert. The first check only records a starting line. Dead device subscriptions are removed automatically. Storage is `push_subscriptions/{uid}`, Admin-only.
+
+It is **off until VAPID keys are configured**. Generate a pair once with `npx web-push generate-vapid-keys`, then add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (e.g. `mailto:admin@edgefinderdaily.com`) to Vercel's environment variables. iPhone users must add EdgeFinder to their Home Screen first (an iOS requirement).
 
 ## Local development
 1. Install dependencies:
