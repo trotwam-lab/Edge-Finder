@@ -18,6 +18,18 @@ EdgeFinder is a live sports-betting intelligence dashboard: it compares odds acr
 
 The receipts pipeline snapshots each day's flagged edges (Firestore collection `edge_receipts`, one doc per ET date) as a side effect of the `/api/edges` scan, keeps observing their no-vig consensus until game start, and `/api/edge-receipts` serves the graded record publicly — it is the product's proof-of-work and requires the Firebase Admin env vars below.
 
+## Verified bet record (anti-cheat)
+Bets logged from the board (basketball, football, baseball and hockey moneylines, spreads and totals) are verified by the server and written to an append-only ledger that no client can write or edit:
+
+- **Server time, pregame only.** `/api/verified-bets` stamps the bet with the server clock and refuses it once the game has started.
+- **Real prices only.** The line must be on the board right now (same feed as `/api/odds`). A claimed price better than every book is recorded at the best real price instead.
+- **Tamper-evident.** Every entry stores a SHA-256 hash of its contents plus the previous entry's hash (`src/utils/ledger.js`). The browser re-verifies the whole chain on every load and flags any edit, deletion or reordering.
+- **No hiding losers.** Entries can't be edited or deleted. A void is only allowed within 10 minutes of logging and before kick-off, and the void is itself a permanent entry.
+- **Nothing typed in.** The closing line is the edge scan's no-vig consensus just before kick-off. Results come from final scores (`src/utils/grading.js`); anything that can't be graded with certainty is left ungraded rather than guessed.
+- **Honest stats.** The Verified Record panel uses only ledger data, with flat 1-unit staking, CLV against the no-vig close, and actual-vs-expected results ("skill vs. luck"). The personal tracker stays editable and labels unverified bets "self-reported".
+
+Storage is `bet_ledger/{uid}` (+ `events`) and `ledger_open`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
+
 ## Local development
 1. Install dependencies:
    ```bash

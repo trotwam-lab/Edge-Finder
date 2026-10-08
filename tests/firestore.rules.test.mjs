@@ -27,6 +27,12 @@ const cases = [
   ['other users cannot write bets', () => assertFails(setDoc(doc(bob, 'users/alice/data/bets'), { bets: [] }))],
   ['signed-out users are denied', () => assertFails(getDoc(doc(anon, 'users/alice/data/bets')))],
   ['clients cannot write receipts', () => assertFails(setDoc(doc(alice, 'edge_receipts/2026-09-23'), { x: 1 }))],
+  // The verified bet ledger is server-written only — even its owner can't
+  // touch it from the client, or the record would not be trustworthy.
+  ['owner cannot write own verified ledger', () => assertFails(setDoc(doc(alice, 'bet_ledger/alice/events/b_1'), { odds: 500 }))],
+  ['owner cannot rewrite ledger head', () => assertFails(setDoc(doc(alice, 'bet_ledger/alice'), { seq: 0 }))],
+  ['owner cannot read ledger directly (served via API)', () => assertFails(getDoc(doc(alice, 'bet_ledger/alice/events/b_1')))],
+  ['clients cannot touch the open-bets index', () => assertFails(setDoc(doc(alice, 'ledger_open/alice__b_1'), { x: 1 }))],
 ];
 
 let failed = 0;

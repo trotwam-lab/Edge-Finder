@@ -6,6 +6,7 @@
 import { getRequestTier, isProTier } from './_auth.js';
 import { getAdminDb } from './_firebaseAdmin.js';
 import { probIndexKey, updateReceiptsSnapshot } from './_receipts.js';
+import { updateLedgerCloses } from './_ledger.js';
 import {
   fetchSportsGameOddsEvents,
   isSportsGameOddsEnabled,
@@ -387,6 +388,14 @@ export default async function handler(req, res) {
             await updateReceiptsSnapshot(getAdminDb(), allEdges, probIndex);
       } catch (e) {
             console.warn('Receipts snapshot failed:', e.message);
+      }
+
+      // Same no-vig consensus becomes the closing line for verified bets.
+      // Bookkeeping only — never allowed to break the edge feed.
+      try {
+            await updateLedgerCloses(getAdminDb(), probIndex);
+      } catch (e) {
+            console.warn('Ledger close update failed:', e.message);
       }
 
       cache.data = allEdges;

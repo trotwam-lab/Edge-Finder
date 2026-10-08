@@ -35,6 +35,7 @@ import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
 import { scanLocalStorageForBets, loadCloudSnapshots } from '../hooks/useCloudBets.js';
 import WeeklyRecap from './WeeklyRecap.jsx';
+import VerifiedRecord from './VerifiedRecord.jsx';
 
 // Constants
 const BET_TYPES = ['Spread', 'Moneyline', 'Total', 'Prop', 'Future', 'Other'];
@@ -61,6 +62,15 @@ const STATUS_FILTERS = [
 ];
 
 // Helpers
+function readSavedUnitSize() {
+  try {
+    const value = Number(JSON.parse(localStorage.getItem('edgefinder_bankroll_settings'))?.unitSize);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function formatMoney(val) {
   if (val === null || val === undefined) return '—';
   const sign = val >= 0 ? '+' : '';
@@ -90,7 +100,7 @@ const inputStyle = {
 
 // Bets state lives in App (useCloudBets) so closing-line auto-capture keeps
 // running app-wide even when this tab isn't mounted; see useClosingLineCapture.
-export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets }) {
+export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, ledger }) {
   const { tier, user } = useAuth();
   const isPro = tier === 'pro';
   
@@ -293,8 +303,11 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
     // ROI = Net Profit ÷ Total Amount Wagered × 100
     const roi = totalWagered > 0 ? (netPL / totalWagered) * 100 : 0;
 
-    // Units: 1 unit = average wager size across all settled bets
-    const avgWager = total > 0 ? totalWagered / total : 100;
+    // Units: the unit size set in setup (same rule as Weekly Recap and the
+    // Kelly tool), falling back to the average wager when none is saved.
+    const savedUnit = readSavedUnitSize();
+    const unitSource = savedUnit ? 'saved' : 'average';
+    const avgWager = savedUnit || (total > 0 ? totalWagered / total : 100);
     const units = avgWager > 0 ? netPL / avgWager : 0;
 
     // Per-sport breakdown for ROI panel
@@ -364,7 +377,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
       : 0;
 
     return {
-      wins, losses, pushes, total, totalWagered, netPL, winPct, roi, units, avgWager, sportBreakdown,
+      wins, losses, pushes, total, totalWagered, netPL, winPct, roi, units, avgWager, unitSource, sportBreakdown,
       timing: {
         recordedBets: timedBets.length,
         totalBets: filteredBets.length,
@@ -426,6 +439,10 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
   // cloud merge ever "resurrecting" a deleted bet, and it preserves the record
   // in the local archive so the user can always recover it if needed.
   function deleteBet(id) {
+    const verified = ledger?.byClientId?.get(String(id));
+    if (verified && !verified.voided && !window.confirm(
+      'This removes the bet from your personal tracker only. It stays on your verified record, because verified bets can\'t be deleted. Within 10 minutes of logging it (and before the game starts) you can void it from the Verified Record panel instead. Remove it from your tracker?',
+    )) return;
     setBets(prev => prev.map(b => b.id === id ? { ...b, deleted: true, deletedAt: Date.now(), updatedAt: Date.now() } : b));
   }
 
@@ -595,6 +612,9 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
       {/* WEEKLY RECAP */}
       <WeeklyRecap bets={bets} getTimingValue={getTimingValue} />
 
+      {/* VERIFIED RECORD — server ledger, independent of the editable tracker */}
+      <VerifiedRecord ledger={ledger} />
+
       {/* STATS */}
       <div style={{
         display: 'grid',
@@ -634,7 +654,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
               ROI &amp; UNITS BREAKDOWN
             </div>
             <div style={{ fontSize: '10px', color: '#475569' }}>
-              1u = ${stats.avgWager.toFixed(0)} avg wager
+              1u = ${stats.avgWager.toFixed(0)} {stats.unitSource === 'saved' ? 'your unit size' : 'avg wager'}
             </div>
           </div>
 
@@ -1252,7 +1272,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
             PENDING ({pendingBets.length})
           </div>
           {pendingBets.map(bet => (
-            <BetCard key={bet.id} bet={bet} onSettle={settleBet} onDelete={deleteBet} onSetTimingOdds={setTimingOdds} isPending />
+            <BetCard key={bet.id} bet={bet} verified={ledger?.byClientId?.get(String(bet.id))} onSettle={settleBet} onDelete={deleteBet} onSetTimingOdds={setTimingOdds} isPending />
           ))}
         </div>
       )}
@@ -1268,7 +1288,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
               {dateLabel}
             </div>
             {bets.map(bet => (
-              <BetCard key={bet.id} bet={bet} onSettle={settleBet} onDelete={deleteBet} onSetTimingOdds={setTimingOdds} />
+              <BetCard key={bet.id} bet={bet} verified={ledger?.byClientId?.get(String(bet.id))} onSettle={settleBet} onDelete={deleteBet} onSetTimingOdds={setTimingOdds} />
             ))}
           </div>
         ))
@@ -1284,7 +1304,27 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets })
 }
 
 // Bet Card Component
-function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
+// Trust label for a tracker row. "Verified" comes only from the server
+// ledger (never from fields on the bet, which the user can edit).
+function VerificationBadge({ bet, verified }) {
+  const chip = (label, color, title) => (
+    <span title={title} style={{
+      fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 700,
+      background: `${color}22`, color, display: 'inline-flex', alignItems: 'center', gap: '3px',
+    }}>{label}</span>
+  );
+  if (verified) {
+    if (verified.voided) return chip('VOIDED', '#94a3b8', 'Voided before kick-off. The void is part of your verified record.');
+    return chip('✓ VERIFIED', '#22c55e', `Recorded by the server ${new Date(verified.recordedAt).toLocaleString()} at ${formatOdds(verified.odds)} (${verified.bookTitle}). Entry #${verified.seq}.`);
+  }
+  const v = bet.verification;
+  if (v?.status === 'verifying' || v?.status === 'retry') return chip('VERIFYING…', '#38bdf8', 'Checking this bet against the live market.');
+  if (v?.status === 'rejected') return chip('NOT VERIFIED', '#f59e0b', v.message || 'This bet could not be verified.');
+  if (v?.status === 'failed') return chip('NOT VERIFIED', '#f59e0b', v.message || 'The verification service was unreachable.');
+  return chip('SELF-REPORTED', '#64748b', 'Entered by you and not verified by the server. Only bets logged from the board before kick-off can be verified.');
+}
+
+function BetCard({ bet, verified, onSettle, onDelete, onSetTimingOdds, isPending }) {
   const statusColors = {
     pending: '#f59e0b', won: '#22c55e', lost: '#ef4444', push: '#64748b',
   };
@@ -1335,6 +1375,17 @@ function BetCard({ bet, onSettle, onDelete, onSetTimingOdds, isPending }) {
           </div>
           <div style={{ fontSize: '12px', color: '#94a3b8' }}>
             {bet.pick} @ {formatOdds(bet.odds)} • ${bet.wager}
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
+            <VerificationBadge bet={bet} verified={verified} />
+            {bet.gradedBy === 'auto' && (
+              <span style={{ fontSize: '10px', color: '#64748b' }} title="Graded automatically from the final score">
+                Auto-graded{bet.gradeDetail ? ` · ${bet.gradeDetail}` : ''}
+              </span>
+            )}
+            {bet.verification?.status === 'rejected' && bet.verification.message && (
+              <span style={{ fontSize: '10px', color: '#f59e0b' }}>{bet.verification.message}</span>
+            )}
           </div>
           {hasTiming && !editingTiming && (
             <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

@@ -46,6 +46,11 @@ This repo is being standardised around the working Firebase login/subscriber flo
 - adding a sport = adding a registry entry; see `research/README.md`
 - Python tooling only — not part of the Vite build or Vercel functions
 
+- `api/verified-bets.js` + `api/_ledger.js` — verified bet ledger: market-checked, server-timestamped, hash-chained; closes fed from the edge scan, results from final scores
+- `src/utils/ledger.js` — chain hashing/verification and record stats, shared by server and browser
+- `src/utils/grading.js` — deterministic bet grading from final scores (shared, unit tested)
+- `src/hooks/useVerifiedLedger.js` — auto-verifies new board bets, re-checks the chain in the browser, carries results into the tracker
+- `api/_oddsFeed.js` — the one upstream odds fetch shared by `/api/odds` and verification
 - `api/_http.js` — CORS allowlist + per-IP rate limit for every public route
 - `api/_sharedCache.js` — cross-instance Firestore cache for odds/props upstream calls
 - `api/revoke-sessions.js` — "sign out of all devices"
