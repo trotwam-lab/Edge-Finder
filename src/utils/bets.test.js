@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   toLocalDateStr, parseBetDate, calculateCLV, getPointCLV, getTimingValue,
-  gradeTiming, getRelativeDate, getBetSport, settleProfit,
+  gradeTiming, getRelativeDate, getBetSport, settleProfit, formatMoney,
 } from './bets.js';
 
 afterEach(() => vi.useRealTimers());
@@ -67,5 +67,14 @@ describe('settlement and sport detection', () => {
     expect(getBetSport({ sportKey: 'mma_mixed_martial_arts' })).toBe('UFC');
     expect(getBetSport({ game: 'Yankees @ Red Sox' })).toBe('MLB');
     expect(getBetSport({ game: 'Unknown FC' })).toBe('Other');
+  });
+});
+
+describe('formatMoney', () => {
+  it('always shows the sign, so a loss never relies on colour alone', () => {
+    expect(formatMoney(12.5)).toBe('+$12.50');
+    expect(formatMoney(-100)).toBe('-$100.00');
+    expect(formatMoney(0)).toBe('+$0.00');
+    expect(formatMoney(null)).toBe('—');
   });
 });

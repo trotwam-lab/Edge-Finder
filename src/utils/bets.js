@@ -31,6 +31,14 @@ export function parseBetDate(value) {
   return new Date(value);
 }
 
+// Signed money: +$12.50 / -$100.00 (a loss always shows its minus sign, not
+// just a red colour). Null shows a dash.
+export function formatMoney(val) {
+  if (val === null || val === undefined || Number.isNaN(Number(val))) return '—';
+  const n = Number(val);
+  return `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
+}
+
 export function formatOdds(odds) {
   if (odds === null || odds === undefined || Number.isNaN(Number(odds))) return '—';
   return odds > 0 ? `+${odds}` : `${odds}`;

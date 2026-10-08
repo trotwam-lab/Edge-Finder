@@ -51,6 +51,13 @@ This repo is being standardised around the working Firebase login/subscriber flo
 - `src/utils/grading.js` — deterministic bet grading from final scores (shared, unit tested)
 - `src/hooks/useVerifiedLedger.js` — auto-verifies new board bets, re-checks the chain in the browser, carries results into the tracker
 - `api/_oddsFeed.js` — the one upstream odds fetch shared by `/api/odds` and verification
+- `api/ledger-maintenance.js` — scheduled tasks: daily public anchor, closing-line capture, background alerts (driven by `.github/workflows/ledger-upkeep.yml`)
+- `api/_scores.js` — final scores (The Odds API, ESPN fallback) used for grading
+- `api/_consensus.js` — no-vig consensus math (same as the edge scan)
+- `api/push.js` + `api/_alerts.js` — web-push subscriptions and line-move alerts (off until VAPID keys are set)
+- `src/components/PublicRecord.jsx` — public `/r/<handle>` record page; `src/components/verified/RecordParts.jsx` shared record UI
+- `src/utils/parlay.js`, `insights.js`, `edgeMath.js`, `teams.js` — pure, unit-tested logic for parlays, tracker insights, edge explanations/Kelly and league detection
+- `src/components/tracker/BetCard.jsx` — one tracker row (split out of `BetTracker.jsx`)
 - `api/_http.js` — CORS allowlist + per-IP rate limit for every public route
 - `api/_sharedCache.js` — cross-instance Firestore cache for odds/props upstream calls
 - `api/revoke-sessions.js` — "sign out of all devices"
