@@ -108,8 +108,50 @@ function getTeamScore(scoreData, teamName) {
   return row?.score ?? null;
 }
 
+// ============================================================
+// Board snapshot — the last board seen, saved so the next open paints
+// instantly from disk while fresh odds load behind it. Tied to the signed-in
+// user (so a Pro board is never shown to someone else on a shared device) and
+// dropped once it is too old to be useful.
+// ============================================================
+const SNAPSHOT_KEY = 'edgefinder_board_snapshot';
+const SNAPSHOT_MAX_AGE = 30 * 60 * 1000;
+const SNAPSHOT_MAX_CHARS = 3 * 1024 * 1024;
+
+function readBoardSnapshot() {
+  try {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return null;
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    if (snap?.uid !== uid || !Array.isArray(snap.games) || !snap.games.length) return null;
+    if (!(Date.now() - snap.ts < SNAPSHOT_MAX_AGE)) return null;
+    return snap;
+  } catch {
+    return null;
+  }
+}
+
+function writeBoardSnapshot(games, injuries) {
+  try {
+    const uid = auth.currentUser?.uid;
+    if (!uid || !games.length) return;
+    const raw = JSON.stringify({ uid, ts: Date.now(), games, injuries });
+    if (raw.length > SNAPSHOT_MAX_CHARS) {
+      localStorage.removeItem(SNAPSHOT_KEY); // too big to keep; never leave a stale one behind
+      return;
+    }
+    localStorage.setItem(SNAPSHOT_KEY, raw);
+  } catch {}
+}
+
 export function useOdds({ filter, enabledSports = null, refreshInterval: defaultInterval = 120 }) {
-    const [games, setGames] = useState([]);
+    // Painted from the last session's board when there is one (see snapshot
+    // helpers above); live data replaces it as soon as it arrives.
+    const snapshotRef = useRef(undefined);
+    if (snapshotRef.current === undefined) snapshotRef.current = readBoardSnapshot();
+    const [games, setGames] = useState(() => snapshotRef.current?.games || []);
     const [playerProps, setPlayerProps] = useState([]);
     // Props load in the background after game odds, so the Props tab needs
     // its own flag to tell "still loading" apart from "no props posted".
@@ -118,9 +160,9 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     // persisting thousands of outcomes to localStorage was what made phones
     // janky before, and movement is a same-session signal anyway.
     const [propHistory, setPropHistory] = useState({});
-    const [injuries, setInjuries] = useState({});
+    const [injuries, setInjuries] = useState(() => snapshotRef.current?.injuries || {});
     const [historicOdds, setHistoricOdds] = usePersistentState('edgefinder_historic_openers', {});
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !snapshotRef.current);
     const [error, setError] = useState(null);
     const [lastUpdate, setLastUpdate] = useState(null);
     const [isConnected, setIsConnected] = useState(true);
@@ -330,7 +372,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   }, []);
 
   const loadData = useCallback(async (isInitial = false) => {
-        if (isInitial) setLoading(true);
+        if (isInitial && !snapshotRef.current) setLoading(true);
         setError(null);
         inFlightRef.current += 1;
         setRefreshing(true);
@@ -481,6 +523,14 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           const newGames = sportResults.flatMap(result => result.games);
 
+          // The saved board was only a placeholder: once live data is in, drop
+          // any of its games that are no longer on the feed.
+          if (isInitial && snapshotRef.current && newGames.length) {
+                  const liveIds = new Set(newGames.map(g => g.id));
+                  setGames(prev => prev.filter(g => liveIds.has(g.id)));
+                  snapshotRef.current = null;
+          }
+
 
           // Auto-capture opening lines + line history in ONE state update
           // each. The old per-game setState loops created a fresh copy of the
@@ -547,6 +597,15 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                            if (inFlightRef.current === 0) setRefreshing(false);
                                    }
   }, [mergeGames, fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveCatalog, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+
+  // Save the board for the next open. Debounced and skipped until live data has
+  // loaded, so a placeholder is never written back and serialization stays off
+  // the critical path.
+  useEffect(() => {
+        if (!lastUpdate || !games.length) return undefined;
+        const timer = setTimeout(() => writeBoardSnapshot(games, injuries), 2000);
+        return () => clearTimeout(timer);
+  }, [games, injuries, lastUpdate]);
 
   // Initial load
   useEffect(() => {
