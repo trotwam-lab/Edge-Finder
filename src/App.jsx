@@ -36,6 +36,7 @@ const tabLoaders = {
   BetTracker: () => import('./components/BetTracker.jsx'),
 };
 
+const NO_GAMES = [];
 const OLD_ONBOARDING_SPORT_DEFAULTS = ['NBA', 'NFL', 'MLB', 'NHL'];
 
 function sameSet(a = [], b = []) {
@@ -308,7 +309,9 @@ export default function BettingApp() {
   // state lived in the Tracker tab, the close was only captured if the user
   // happened to be sitting on that tab when the game kicked off.
   const [bets, setBets] = useCloudBets('edgefinder_bets', []);
-  useClosingLineCapture(bets, setBets, games, historicOdds, playerProps);
+  // The saved board shown while live odds load is a placeholder, not a price
+  // observation — closing lines are only captured from live data.
+  useClosingLineCapture(bets, setBets, lastUpdate ? games : NO_GAMES, historicOdds, playerProps);
   // Server-verified record: verifies new board bets and brings final results
   // back into the tracker, on every tab.
   const ledger = useVerifiedLedger({ user, bets, setBets });

@@ -14,6 +14,7 @@ import {
   transformSgoEventToOddsApiGame,
 } from './_sportsgameodds.js';
 import { guardRequest } from './_http.js';
+import { ODDS_TTL, loadSportOdds } from './_oddsFeed.js';
 
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
@@ -50,19 +51,45 @@ const TRACKED_SPORTS = [
     'rugbyleague_nrl',
   ];
 
+// The catalog only changes when a season starts or ends, so it is reused
+// across scans instead of being re-fetched every 60s. A failed lookup is not
+// cached, and the last good catalog keeps serving if a later refresh fails.
+const CATALOG_TTL = 30 * 60 * 1000;
+let catalogCache = { data: null, ts: 0 };
+
 async function getScannableSports(apiKey) {
+    if (catalogCache.data && Date.now() - catalogCache.ts < CATALOG_TTL) return catalogCache.data;
     try {
-          const res = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${apiKey}`);
-          if (!res.ok) return null;
+          const res = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${apiKey}`, {
+                  signal: AbortSignal.timeout(10000),
+          });
+          if (!res.ok) return catalogCache.data;
           const catalog = await res.json();
-          if (!Array.isArray(catalog)) return null;
+          if (!Array.isArray(catalog)) return catalogCache.data;
           const scannable = catalog.filter(s =>
                   s?.active && !s.has_outrights && s.group !== 'Politics'
           );
-          return scannable.length ? scannable : null;
+          if (!scannable.length) return catalogCache.data;
+          catalogCache = { data: scannable, ts: Date.now() };
+          return scannable;
     } catch {
-          return null;
+          return catalogCache.data;
     }
+}
+
+// Run `worker` over `items` with at most `limit` in flight, keeping results in
+// input order so the scan stays deterministic.
+async function mapWithConcurrency(items, limit, worker) {
+    const results = new Array(items.length);
+    let next = 0;
+    const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+          while (next < items.length) {
+                const i = next++;
+                results[i] = await worker(items[i], i);
+          }
+    });
+    await Promise.all(runners);
+    return results;
 }
 
 const SPORT_LABELS = {
@@ -356,16 +383,29 @@ export default async function handler(req, res) {
       const sportsToScan = (await getScannableSports(apiKey))
         || TRACKED_SPORTS.map(key => ({ key, title: SPORT_LABELS[key] || key, group: '' }));
 
-      for (const sport of sportsToScan) {
+      // Odds come through the same shared cache the board uses, fetched a few
+      // sports at a time: the old one-by-one loop made the scan as slow as the
+      // sum of every upstream call, and each instance re-paid for data the
+      // board had already pulled. 30s matches the board's freshness, which
+      // keeps closing-line observations as current as before.
+      const SCAN_CONCURRENCY = 4;
+      const scanned = await mapWithConcurrency(sportsToScan, SCAN_CONCURRENCY, async (sport) => {
               try {
-                        const url = `https://api.the-odds-api.com/v4/sports/${sport.key}/odds?apiKey=${apiKey}&regions=us,us2&markets=h2h,spreads,totals&oddsFormat=american`;
-                        const response = await fetch(url);
-                        if (!response.ok) {
-                                    console.warn(`Odds API error for ${sport.key}: ${response.status}`);
-                                    continue;
+                        const result = await loadSportOdds(sport.key, { maxAgeMs: ODDS_TTL });
+                        if (!result.ok) {
+                                    console.warn(`Odds API error for ${sport.key}: ${result.status}`);
+                                    return [];
                         }
-                        const games = await response.json();
-                        for (const game of games) {
+                        return Array.isArray(result.data) ? result.data : [];
+              } catch (e) {
+                        console.warn(`Edge scan failed for ${sport.key}:`, e.message);
+                        return [];
+              }
+      });
+
+      sportsToScan.forEach((sport, i) => {
+              try {
+                        for (const game of scanned[i]) {
                                     // Pregame only. In-play lines move faster than the 60s scan
                                     // refreshes, so a stale book mid-game reads as a big edge
                                     // that is already gone. Skipping live games here also keeps
@@ -378,28 +418,26 @@ export default async function handler(req, res) {
               } catch (e) {
                         console.warn(`Edge scan failed for ${sport.key}:`, e.message);
               }
-      }
+      });
       }
 
       // Sort all edges by EV descending
       allEdges.sort((a, b) => b.ev - a.ev);
 
       // Record today's edges + refresh closing lines for the public track
-      // record ("Yesterday's Receipts"). Never let receipts bookkeeping break
-      // the edge feed itself.
-      try {
-            await updateReceiptsSnapshot(getAdminDb(), allEdges, probIndex);
-      } catch (e) {
-            console.warn('Receipts snapshot failed:', e.message);
-      }
-
-      // Same no-vig consensus becomes the closing line for verified bets.
-      // Bookkeeping only — never allowed to break the edge feed.
-      try {
-            await updateLedgerCloses(getAdminDb(), probIndex);
-      } catch (e) {
-            console.warn('Ledger close update failed:', e.message);
-      }
+      // record ("Yesterday's Receipts") and for verified bets (the same
+      // no-vig consensus becomes their closing line). The two touch different
+      // collections, so they run together. Bookkeeping only — never allowed
+      // to break the edge feed itself.
+      const db = getAdminDb();
+      await Promise.all([
+        updateReceiptsSnapshot(db, allEdges, probIndex).catch(e => {
+          console.warn('Receipts snapshot failed:', e.message);
+        }),
+        updateLedgerCloses(db, probIndex).catch(e => {
+          console.warn('Ledger close update failed:', e.message);
+        }),
+      ]);
 
       cache.data = allEdges;
         cache.ts = Date.now();
