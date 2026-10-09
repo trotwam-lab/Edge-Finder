@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-09T13:22:29.366Z",
+  "ledgers": 1,
+  "anchor": "0ea0cd6a675b006e3b1ab2e34f2b7fe30416e134494d7ed72dc61763e42f7f60",
+  "heads": [
+    {
+      "ledgerId": "d474cde885633064c41d0a0e309e2bd351ae758a300591e5bfe015c21b16fa4a",
+      "seq": 7,
+      "headHash": "eedfc55aacc938d7591bee57c75daf623d27113ea410de8f52fbd91fa0eacf8a"
+    }
+  ]
+}
