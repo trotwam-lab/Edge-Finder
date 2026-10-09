@@ -320,6 +320,15 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   // ============================================================
   // Main data loader
   // ============================================================
+  // Replace games by id, keep the rest (a sport's odds arrive independently).
+  const mergeGames = useCallback((incoming) => {
+        setGames(prev => {
+                const updated = new Map(prev.map(g => [g.id, g]));
+                incoming.forEach(g => updated.set(g.id, g));
+                return Array.from(updated.values());
+        });
+  }, []);
+
   const loadData = useCallback(async (isInitial = false) => {
         if (isInitial) setLoading(true);
         setError(null);
@@ -361,59 +370,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                   if (extraMatch) sportsToLoad = [extraMatch];
           }
 
-          const sportResults = await Promise.all(sportsToLoad.map(async ([sportName, sportKey]) => {
-                    try {
-                                const oddsData = await fetchOdds(sportKey);
-                                if (!Array.isArray(oddsData) || oddsData.length === 0) {
-                                        // No games listed — skip scores/injuries/live-status so an
-                                        // idle sport costs one request instead of four.
-                                        setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
-                                        return { games: [], injuriesByTeam: {} };
-                                }
-                                const [scoresData, injuryList, liveEvents] = await Promise.all([
-                                              fetchScores(sportKey),
-                                              fetchInjuries(sportKey),
-                                              fetchLiveStatus(sportKey),
-                                            ]);
-
-                      const gamesWithScores = oddsData.map(game => {
-                                    const scoreData = findScoreForGame(scoresData, game);
-                                    const liveStatus = findLiveStatusForGame(liveEvents, game);
-                                    return {
-                                                    ...game,
-                                                    scores: scoreData?.scores?.length ? scoreData.scores : null,
-                                                    // ESPN is authoritative for completion when present.
-                                                    completed: liveStatus ? liveStatus.completed : (scoreData?.completed || false),
-                                                    homeScore: getTeamScore(scoreData, game.home_team) ?? liveStatus?.homeScore ?? null,
-                                                    awayScore: getTeamScore(scoreData, game.away_team) ?? liveStatus?.awayScore ?? null,
-                                                    liveStatus: liveStatus || null,
-                                    };
-                      });
-
-          const sportInjuriesByTeam = {};
-          injuryList.forEach(inj => {
-            const sportPrefix = sportKey.split('_')[0]; // 'basketball', 'americanfootball', etc.
-            const fullKey = `${sportPrefix}:${inj.team}`;
-            const shortKey = `${sportPrefix}:${inj.teamShort}`;
-            [fullKey, fullKey.toLowerCase(), shortKey, shortKey.toLowerCase(), inj.team, inj.team?.toLowerCase()]
-              .filter(Boolean)
-              .forEach(key => {
-                if (!sportInjuriesByTeam[key]) sportInjuriesByTeam[key] = [];
-                sportInjuriesByTeam[key].push(inj);
-              });
-          });
-                      setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
-                      return { games: gamesWithScores, injuriesByTeam: sportInjuriesByTeam };
-                    } catch (e) {
-                                console.warn(`Failed to load ${sportName}:`, e.message);
-                                return { games: [], injuriesByTeam: {} };
-                    }
-          }));
-
-          const newGames = sportResults.flatMap(result => result.games);
-          const injuriesByTeam = sportResults.reduce((acc, result) => ({ ...acc, ...result.injuriesByTeam }), {});
-
-          // Fetch player props in the background so the Games tab can render as soon as game odds are ready.
+          // Props are independent of game odds, so they start now and load in
+          // parallel with the board instead of waiting for the slowest sport.
           const refreshProps = async () => {
             const PROPS_SPORTS = ['basketball_nba', 'basketball_wnba', 'americanfootball_nfl', 'americanfootball_ncaaf', 'icehockey_nhl', 'baseball_mlb'];
             const PROPS_NAME_MAP = { basketball_nba: 'NBA', basketball_wnba: 'WNBA', americanfootball_nfl: 'NFL', americanfootball_ncaaf: 'NCAAF', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
@@ -455,16 +413,74 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
           };
           refreshProps();
 
-          // Merge new games with existing (replace by id, keep others)
-          setGames(prev => {
-                    if (isInitial) return newGames;
-                    const updated = new Map(prev.map(g => [g.id, g]));
-                    newGames.forEach(g => updated.set(g.id, g));
-                    return Array.from(updated.values());
-          });
+          const sportResults = await Promise.all(sportsToLoad.map(async ([sportName, sportKey]) => {
+                    try {
+                                const oddsData = await fetchOdds(sportKey);
+                                if (!Array.isArray(oddsData) || oddsData.length === 0) {
+                                        // No games listed — skip scores/injuries/live-status so an
+                                        // idle sport costs one request instead of four.
+                                        setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
+                                        return { games: [], injuriesByTeam: {} };
+                                }
+                                // First paint: show the odds as soon as this sport has
+                                // them; scores/injuries/live status fill in right after.
+                                // Only games that haven't started: a started game needs its
+                                // ESPN status first or it could flash a wrong LIVE badge.
+                                // (Refreshes skip this so live scores never blink off.)
+                                if (isInitial) {
+                                        const now = Date.now();
+                                        const upcoming = oddsData.filter(g => Date.parse(g.commence_time) > now);
+                                        if (upcoming.length) {
+                                                mergeGames(upcoming);
+                                                setLoading(false);
+                                        }
+                                }
+                                const [scoresData, injuryList, liveEvents] = await Promise.all([
+                                              fetchScores(sportKey),
+                                              fetchInjuries(sportKey),
+                                              fetchLiveStatus(sportKey),
+                                            ]);
 
-          // Merge injuries
-          setInjuries(prev => isInitial ? injuriesByTeam : { ...prev, ...injuriesByTeam });
+                      const gamesWithScores = oddsData.map(game => {
+                                    const scoreData = findScoreForGame(scoresData, game);
+                                    const liveStatus = findLiveStatusForGame(liveEvents, game);
+                                    return {
+                                                    ...game,
+                                                    scores: scoreData?.scores?.length ? scoreData.scores : null,
+                                                    // ESPN is authoritative for completion when present.
+                                                    completed: liveStatus ? liveStatus.completed : (scoreData?.completed || false),
+                                                    homeScore: getTeamScore(scoreData, game.home_team) ?? liveStatus?.homeScore ?? null,
+                                                    awayScore: getTeamScore(scoreData, game.away_team) ?? liveStatus?.awayScore ?? null,
+                                                    liveStatus: liveStatus || null,
+                                    };
+                      });
+
+          const sportInjuriesByTeam = {};
+          injuryList.forEach(inj => {
+            const sportPrefix = sportKey.split('_')[0]; // 'basketball', 'americanfootball', etc.
+            const fullKey = `${sportPrefix}:${inj.team}`;
+            const shortKey = `${sportPrefix}:${inj.teamShort}`;
+            [fullKey, fullKey.toLowerCase(), shortKey, shortKey.toLowerCase(), inj.team, inj.team?.toLowerCase()]
+              .filter(Boolean)
+              .forEach(key => {
+                if (!sportInjuriesByTeam[key]) sportInjuriesByTeam[key] = [];
+                sportInjuriesByTeam[key].push(inj);
+              });
+          });
+                      setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
+                      // Publish per sport so one slow league never holds up the board.
+                      mergeGames(gamesWithScores);
+                      setInjuries(prev => ({ ...prev, ...sportInjuriesByTeam }));
+                      setLoading(false);
+                      return { games: gamesWithScores, injuriesByTeam: sportInjuriesByTeam };
+                    } catch (e) {
+                                console.warn(`Failed to load ${sportName}:`, e.message);
+                                return { games: [], injuriesByTeam: {} };
+                    }
+          }));
+
+          const newGames = sportResults.flatMap(result => result.games);
+
 
           // Auto-capture opening lines + line history in ONE state update
           // each. The old per-game setState loops created a fresh copy of the
@@ -530,7 +546,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                                            inFlightRef.current = Math.max(0, inFlightRef.current - 1);
                                            if (inFlightRef.current === 0) setRefreshing(false);
                                    }
-  }, [fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveCatalog, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
+  }, [mergeGames, fetchOdds, fetchScores, fetchInjuries, fetchLiveStatus, fetchPlayerProps, getSportsToFetch, getActiveCatalog, filter, enabledSports, refreshInterval, setGameLineHistory, setHistoricOdds]);
 
   // Initial load
   useEffect(() => {
