@@ -108,12 +108,23 @@ async function getTierFromFirestore(uid) {
   return null;
 }
 
+let stripeClient = null;
+let stripeClientKey = '';
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!stripeClient || stripeClientKey !== key) {
+    stripeClient = new Stripe(key);
+    stripeClientKey = key;
+  }
+  return stripeClient;
+}
+
 async function getTierFromStripe(email) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !process.env.STRIPE_SECRET_KEY) return null;
 
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = getStripe();
     const customers = await stripe.customers.list({ email: normalizedEmail, limit: 1 });
     const customer = customers.data[0];
     if (!customer) return null;
@@ -133,8 +144,55 @@ async function getTierFromStripe(email) {
       : null;
   } catch (error) {
     console.warn('Stripe tier fallback failed:', error.message);
-    return null;
+    // undefined (not null) marks a failed lookup, so callers can tell "no
+    // subscription" apart from "could not check" and avoid remembering it.
+    return undefined;
   }
+}
+
+// Every odds/props/edges request resolves the caller's tier, and for anyone
+// without a Firestore tier record that means a Firestore read plus two Stripe
+// round-trips — per request, per sport, per refresh. The token is still
+// verified on every call; only the plan lookup behind it is remembered, and
+// only briefly so an upgrade or cancellation shows up within seconds.
+const TIER_CACHE_TTL_MS = 30 * 1000;
+const TIER_CACHE_MAX = 2000;
+const tierCache = new Map();
+
+export function resetTierCache() {
+  tierCache.clear();
+}
+
+async function lookupPlanTier(decoded, email, tokenEmail) {
+  const cacheKey = `${decoded.uid}|${email}`;
+  const hit = tierCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < TIER_CACHE_TTL_MS) return hit.value;
+
+  let value = null;
+  let cacheable = true;
+  // Firestore needs real service-account credentials; if those are broken
+  // we still want the verified Stripe lookup below to run.
+  try {
+    const firestoreTier = await getTierFromFirestore(decoded.uid);
+    if (firestoreTier) value = { ...firestoreTier, email: tokenEmail };
+  } catch (firestoreError) {
+    console.warn('Firestore tier lookup failed:', firestoreError.message);
+    cacheable = false; // transient failures must not stick
+  }
+
+  if (!value) {
+    const stripeTier = await getTierFromStripe(email);
+    if (stripeTier === undefined) cacheable = false;
+    value = stripeTier
+      ? { ...stripeTier, uid: decoded.uid, email }
+      : { tier: 'free', source: 'verified-free', uid: decoded.uid, email: tokenEmail };
+  }
+
+  if (cacheable) {
+    if (tierCache.size >= TIER_CACHE_MAX) tierCache.delete(tierCache.keys().next().value);
+    tierCache.set(cacheKey, { value, ts: Date.now() });
+  }
+  return value;
 }
 
 export async function getRequestTier(req) {
@@ -166,19 +224,7 @@ export async function getRequestTier(req) {
       return { tier: 'pro', source: 'complimentary', uid: decoded.uid, email };
     }
 
-    // Firestore needs real service-account credentials; if those are broken
-    // we still want the verified Stripe lookup below to run.
-    try {
-      const firestoreTier = await getTierFromFirestore(decoded.uid);
-      if (firestoreTier) return { ...firestoreTier, email: tokenEmail };
-    } catch (firestoreError) {
-      console.warn('Firestore tier lookup failed:', firestoreError.message);
-    }
-
-    const stripeTier = await getTierFromStripe(email);
-    if (stripeTier) return { ...stripeTier, uid: decoded.uid, email };
-
-    return { tier: 'free', source: 'verified-free', uid: decoded.uid, email: tokenEmail };
+    return await lookupPlanTier(decoded, email, tokenEmail);
   } catch (error) {
     // SECURITY: when token verification fails, the X-EdgeFinder-Email header
     // is the only identity left and it is attacker-controlled — recovering

@@ -13,6 +13,8 @@ import { guardRequest } from './_http.js';
 const TTL = 20 * 1000; // 20s — live status needs to stay fresh during games
 const ERROR_TTL = 5 * 60 * 1000; // 5min — don't re-hammer a path ESPN is rejecting
 const cache = new Map();
+// Same payload for every caller; a short CDN window collapses simultaneous polls.
+const PUBLIC_CACHE = 'public, s-maxage=10, stale-while-revalidate=20';
 
 // Marquee detection — ordered by importance, first match wins.
 const MARQUEE_RULES = [
@@ -131,7 +133,7 @@ export default async function handler(req, res) {
   if (guardRequest(req, res, { route: 'live-status' })) return;
 
   const { sport = 'basketball_nba' } = req.query || {};
-  const sportPath = SPORT_PATHS[sport];
+  const sportPath = Object.hasOwn(SPORT_PATHS, sport) ? SPORT_PATHS[sport] : null;
   if (!sportPath) {
     // Not an ESPN-mapped sport — return empty so the client falls back cleanly.
     return res.status(200).json({ sport, supported: false, events: [] });
@@ -141,6 +143,7 @@ export default async function handler(req, res) {
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.ts < (hit.ttl ?? TTL)) {
     res.setHeader('X-Cache', 'HIT');
+    res.setHeader('Cache-Control', PUBLIC_CACHE);
     return res.status(200).json(hit.data);
   }
 
@@ -152,6 +155,7 @@ export default async function handler(req, res) {
     const payload = { sport, supported: true, generatedAt: new Date().toISOString(), events };
     cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: TTL });
     res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', PUBLIC_CACHE);
     return res.status(200).json(payload);
   } catch (err) {
     console.error(`live-status error: ${sport} (${sportPath}): ${err.message}`);

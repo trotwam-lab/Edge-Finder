@@ -273,15 +273,17 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     } catch { return []; }
   }, []);
 
+  // Resolves to null (not []) when the request fails, so a network blip keeps
+  // the sport's previous board instead of blanking it and its movement history.
   const fetchPlayerProps = useCallback(async (sport) => {
         try {
                 const headers = await getAuthHeaders();
                 const res = await fetch(`/api/props?sport=${sport}&limit=4&maxProps=1200`, { headers });
-                if (!res.ok) return [];
+                if (!res.ok) return null;
                 const allProps = await res.json();
-                return Array.isArray(allProps) ? allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey })) : [];
+                return Array.isArray(allProps) ? allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey })) : null;
         } catch {
-                return [];
+                return null;
         }
   }, []);
 
@@ -432,16 +434,18 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                   return await fetchPlayerProps(sportKey);
                 } catch (e) {
                   console.warn('Props fetch failed for ' + sportKey + ':', e.message);
-                  return [];
+                  return null;
                 }
               }));
-              const allProps = propsBySport.flat();
-              setPropHistory(prev => appendPropHistory(prev, allProps, { refreshedSports: propsToFetch }));
+              // Sports whose request failed keep their previous props/history.
+              const refreshedSports = propsToFetch.filter((_, i) => Array.isArray(propsBySport[i]));
+              const allProps = propsBySport.filter(Array.isArray).flat();
+              setPropHistory(prev => appendPropHistory(prev, allProps, { refreshedSports }));
               setPlayerProps(prev =>
                 isInitial
                   ? allProps
                   : [
-                      ...prev.filter(p => !propsToFetch.some(s => p.sport === s || p.id?.startsWith(s))),
+                      ...prev.filter(p => !refreshedSports.some(s => p.sport === s || p.id?.startsWith(s))),
                       ...allProps,
                     ]
               );

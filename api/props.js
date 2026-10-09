@@ -164,8 +164,14 @@ export default async function handler(req, res) {
     const allProps = [];
     let quotaHit = false;
 
-    // Step 2: Fetch props for up to 8 upcoming events
-    for (const event of events.slice(0, 8)) {
+    // Step 2: Fetch props for up to 8 upcoming events, a few at a time. The
+    // old one-by-one loop made the board as slow as every upstream call
+    // added together; small batches keep the burst gentle on the rate limit
+    // and let a quota failure stop the remaining batches.
+    const PROP_BATCH_SIZE = 4;
+    const upcoming = events.slice(0, 8);
+    const fetchEventProps = async (event) => {
+      const eventProps = [];
       try {
         const oddsRes = await fetch(
           `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=${ODDS_REGIONS}&markets=${markets.join(',')}&oddsFormat=american`,
@@ -177,12 +183,11 @@ export default async function handler(req, res) {
             // Quota is gone — every remaining event would 429 too.
             quotaBackoffUntil = Date.now() + BACKOFF_MS;
             quotaHit = true;
-            break;
           }
-          continue;
+          return eventProps;
         }
         const oddsData = await oddsRes.json();
-        if (!oddsData.bookmakers?.length) continue;
+        if (!oddsData.bookmakers?.length) return eventProps;
 
         oddsData.bookmakers.forEach(bookmaker => {
           markets.forEach(marketKey => {
@@ -190,7 +195,7 @@ export default async function handler(req, res) {
             if (!market?.outcomes) return;
             market.outcomes.forEach(outcome => {
               if (!outcome.description) return;
-              allProps.push({
+              eventProps.push({
                 id: `${event.id}-${bookmaker.key}-${marketKey}-${outcome.description}-${outcome.name}-${outcome.point}`,
                 player:     outcome.description,
                 market:     marketKey,
@@ -211,6 +216,12 @@ export default async function handler(req, res) {
       } catch (err) {
         console.warn(`Error fetching props for ${event.id}:`, err.message);
       }
+      return eventProps;
+    };
+
+    for (let i = 0; i < upcoming.length && !quotaHit; i += PROP_BATCH_SIZE) {
+      const batch = await Promise.all(upcoming.slice(i, i + PROP_BATCH_SIZE).map(fetchEventProps));
+      batch.forEach(eventProps => allProps.push(...eventProps));
     }
 
     // Quota died before any props landed: keep the previous board alive

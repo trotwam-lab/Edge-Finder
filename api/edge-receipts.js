@@ -13,6 +13,8 @@ const cache = { data: null, ts: 0 };
 const TTL = 2 * 60 * 1000; // 2 minutes — this data changes slowly
 
 const COLLECTION = 'edge_receipts';
+// Public and identical for every caller, so the CDN can serve repeat loads.
+const PUBLIC_CACHE = 'public, s-maxage=120, stale-while-revalidate=300';
 
 function publicEdge(entry) {
   return {
@@ -87,6 +89,7 @@ export default async function handler(req, res) {
 
   if (cache.data && Date.now() - cache.ts < TTL) {
     res.setHeader('X-Cache', 'HIT');
+    res.setHeader('Cache-Control', PUBLIC_CACHE);
     return res.status(200).json(cache.data);
   }
 
@@ -145,6 +148,7 @@ export default async function handler(req, res) {
     cache.data = payload;
     cache.ts = Date.now();
     res.setHeader('X-Cache', 'MISS');
+    res.setHeader('Cache-Control', PUBLIC_CACHE);
     return res.status(200).json(payload);
   } catch (e) {
     console.error('edge-receipts failed:', e.message);

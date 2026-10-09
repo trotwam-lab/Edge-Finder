@@ -125,9 +125,12 @@ async function getGenericGameResearch(homeTeam, awayTeam, sport, gameDate) {
     }
   }
 
+  // Both teams resolve against the same league roster — fetch it once.
+  let teamsRequest = null;
   async function resolveTeamId(teamName) {
     const normalized = teamName.toLowerCase().trim();
-    const teamsData = await safeFetch(`${ESPN_BASE}/teams`);
+    teamsRequest ||= safeFetch(`${ESPN_BASE}/teams`);
+    const teamsData = await teamsRequest;
     if (!teamsData || !Array.isArray(teamsData.sports?.[0]?.leagues?.[0]?.teams)) {
       return null;
     }
@@ -269,6 +272,35 @@ export async function getGameResearch(homeTeam, awayTeam, sport, gameDate) {
   return getGenericGameResearch(homeTeam, awayTeam, sport, gameDate);
 }
 
+// Research is identical for every caller and expensive (the MLB module alone
+// fans out to several upstreams), so finished results are kept briefly and
+// concurrent requests for the same matchup share one in-flight build. Lineup
+// confirmations flip close to first pitch/tip, hence the short window.
+const RESULT_TTL = 5 * 60 * 1000;
+const DEGRADED_TTL = 60 * 1000; // unsupported/unmatched: retry sooner
+const RESULT_CACHE_MAX = 300;
+const resultCache = new Map(); // key -> { data, ts, ttl }
+const resultInflight = new Map(); // key -> Promise<data>
+
+async function getGameResearchCached(homeTeam, awayTeam, sport, gameDate) {
+  const key = [sport, homeTeam, awayTeam, gameDate].map(v => String(v).toLowerCase().trim()).join('|');
+  const hit = resultCache.get(key);
+  if (hit && Date.now() - hit.ts < hit.ttl) return hit.data;
+  if (resultInflight.has(key)) return resultInflight.get(key);
+
+  const pending = getGameResearch(homeTeam, awayTeam, sport, gameDate)
+    .then((data) => {
+      if (data) {
+        if (resultCache.size >= RESULT_CACHE_MAX) resultCache.delete(resultCache.keys().next().value);
+        resultCache.set(key, { data, ts: Date.now(), ttl: data.supported === false ? DEGRADED_TTL : RESULT_TTL });
+      }
+      return data;
+    })
+    .finally(() => resultInflight.delete(key));
+  resultInflight.set(key, pending);
+  return pending;
+}
+
 // Vercel serverless handler
 export default async function handler(req, res) {
   if (guardRequest(req, res, { route: 'game-research', rateLimit: 120 })) return;
@@ -277,12 +309,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const {
-      homeTeam,
-      awayTeam,
-      sport = 'basketball_nba',
-      commenceTime,
-    } = req.query || {};
+    const query = req.query || {};
+    // A repeated query key arrives as an array; use the first value.
+    const first = (v) => (Array.isArray(v) ? v[0] : v);
+    const homeTeam = first(query.homeTeam);
+    const awayTeam = first(query.awayTeam);
+    const sport = first(query.sport) ?? 'basketball_nba';
+    const commenceTime = first(query.commenceTime);
 
     if (!homeTeam || !awayTeam) {
       return res.status(400).json({ error: 'Missing homeTeam or awayTeam query parameter.' });
@@ -295,11 +328,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid sport parameter.' });
     }
 
-    const gameDate = commenceTime
-      ? new Date(commenceTime).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
+    if (String(homeTeam).length > 100 || String(awayTeam).length > 100) {
+      return res.status(400).json({ error: 'Team name too long.' });
+    }
 
-    const data = await getGameResearch(homeTeam, awayTeam, sport, gameDate);
+    const start = commenceTime ? new Date(commenceTime) : new Date();
+    if (Number.isNaN(start.getTime())) {
+      return res.status(400).json({ error: 'Invalid commenceTime parameter.' });
+    }
+    const gameDate = start.toISOString().split('T')[0];
+
+    const data = await getGameResearchCached(homeTeam, awayTeam, sport, gameDate);
+    if (data?.supported !== false) res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
     return res.status(200).json(data);
   } catch (error) {
     console.error('Game research API error:', error);
