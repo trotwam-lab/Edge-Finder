@@ -5,6 +5,14 @@ import './mobile.css'
 import { AuthProvider, AuthLoadingScreen, hasSessionHint } from './AuthGate.jsx'
 import AuthGate from './AuthGate.jsx'
 import PWAUpdatePrompt from './PWAUpdatePrompt.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { recoverFromStaleBuild } from './utils/chunk-recovery.js'
+
+// Vite fires this when a code file can't be preloaded (stale build after a
+// deploy, dropped connection). Self-heal once instead of leaving a dead screen.
+window.addEventListener('vite:preloadError', () => {
+  recoverFromStaleBuild()
+})
 
 // The signed-in dashboard (and Firestore with it) is its own chunk, so the
 // landing page never pays to parse it. Returning users start fetching it right
@@ -42,9 +50,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <PWAUpdatePrompt />
     <AuthProvider>
       <AuthGate>
-        <Suspense fallback={<AuthLoadingScreen label="Loading your board…" />}>
-          <App />
-        </Suspense>
+        <ErrorBoundary fullScreen>
+          <Suspense fallback={<AuthLoadingScreen label="Loading your board…" />}>
+            <App />
+          </Suspense>
+        </ErrorBoundary>
       </AuthGate>
     </AuthProvider>
   </React.StrictMode>

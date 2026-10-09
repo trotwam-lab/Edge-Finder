@@ -27,6 +27,8 @@ import { FREE_BET_LIMIT, todayStr } from './utils/bets.js';
 import { MAX_PARLAY_LEGS, combinedDecimal, decimalToAmerican } from './utils/parlay.js';
 import VerifyEmailBanner from './components/VerifyEmailBanner.jsx';
 import AccountSecurity from './components/AccountSecurity.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { importWithRetry } from './utils/chunk-recovery.js';
 
 const tabLoaders = {
   PropsView: () => import('./components/PropsView.jsx'),
@@ -45,11 +47,11 @@ function sameSet(a = [], b = []) {
   return b.every(item => values.has(item));
 }
 
-const PropsView = lazy(tabLoaders.PropsView);
-const ProTools = lazy(tabLoaders.ProTools);
-const GameDetails = lazy(tabLoaders.GameDetails);
-const DailyProReport = lazy(tabLoaders.DailyProReport);
-const BetTracker = lazy(tabLoaders.BetTracker);
+const PropsView = lazy(() => importWithRetry(tabLoaders.PropsView));
+const ProTools = lazy(() => importWithRetry(tabLoaders.ProTools));
+const GameDetails = lazy(() => importWithRetry(tabLoaders.GameDetails));
+const DailyProReport = lazy(() => importWithRetry(tabLoaders.DailyProReport));
+const BetTracker = lazy(() => importWithRetry(tabLoaders.BetTracker));
 
 function TabFallback({ label = 'Loading...' }) {
   return (
@@ -539,9 +541,10 @@ export default function BettingApp() {
     // Suspense fallback is the snappier trade there.
     if (window.matchMedia?.('(max-width: 768px)')?.matches) return;
     const warmTabs = () => {
-      tabLoaders.PropsView();
-      tabLoaders.BetTracker();
-      tabLoaders.ProTools();
+      // Warm-ups are best effort; a failed one just loads on demand later.
+      tabLoaders.PropsView().catch(() => {});
+      tabLoaders.BetTracker().catch(() => {});
+      tabLoaders.ProTools().catch(() => {});
     };
     if ('requestIdleCallback' in window) {
       const idleId = window.requestIdleCallback(warmTabs, { timeout: 2500 });
@@ -601,6 +604,7 @@ export default function BettingApp() {
         alertsApi={alertsApi}
       />
       <VerifyEmailBanner user={user} />
+      <ErrorBoundary resetKey={activeTab}>
       {activeTab === 'HOME' && (
         <HomeDashboard
           games={games}
@@ -950,6 +954,7 @@ export default function BettingApp() {
           </div>
         </main>
       )}
+      </ErrorBoundary>
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );
