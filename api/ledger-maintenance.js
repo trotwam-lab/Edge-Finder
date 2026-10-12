@@ -6,7 +6,7 @@
 // POST ?task=closes  → records closing lines for verified bets starting soon,
 //                      without waiting for someone to load the dashboard.
 //                      Only fetches odds for sports that actually have such
-//                      bets. Protected by LEDGER_CRON_SECRET when it is set.
+//                      bets. Protected by LEDGER_CRON_SECRET.
 // POST ?task=alerts  → sends background line-move alerts for watched games
 //                      (web push; off until VAPID keys are configured).
 
@@ -24,7 +24,7 @@ const ANCHOR_TTL = 5 * 60 * 1000;
 
 function authorized(req) {
   const secret = process.env.LEDGER_CRON_SECRET;
-  if (!secret) return true; // capturing a close is idempotent and cheap to repeat
+  if (!secret) return false;
   const header = req.headers?.authorization || '';
   const provided = header.startsWith('Bearer ') ? header.slice(7) : req.headers?.['x-cron-secret'];
   const a = Buffer.from(String(provided || ''));

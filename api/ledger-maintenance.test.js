@@ -71,6 +71,15 @@ describe('ledger anchors', () => {
 });
 
 describe('scheduled close capture', () => {
+  it('fails closed when the cron secret is not configured', async () => {
+    const db = createFakeFirestore();
+    const loadSportOdds = vi.fn();
+    const r = res();
+    await handler(req('POST', 'closes'), r, { db, loadSportOdds });
+    expect(r.statusCode).toBe(401);
+    expect(loadSportOdds).not.toHaveBeenCalled();
+  });
+
   it('captures closes for bets starting soon, and respects the secret', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
@@ -91,10 +100,11 @@ describe('scheduled close capture', () => {
   });
 
   it('does nothing (and fetches nothing) when no bets start soon', async () => {
+    process.env.LEDGER_CRON_SECRET = 'shh';
     const db = createFakeFirestore();
     const loadSportOdds = vi.fn();
     const r = res();
-    await handler(req('POST', 'closes'), r, { db, loadSportOdds });
+    await handler(req('POST', 'closes', { authorization: 'Bearer shh' }), r, { db, loadSportOdds });
     expect(r.body).toMatchObject({ ok: true, sports: [] });
     expect(loadSportOdds).not.toHaveBeenCalled();
   });

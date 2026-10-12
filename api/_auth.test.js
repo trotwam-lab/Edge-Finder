@@ -17,9 +17,9 @@ describe('isEmailTrusted', () => {
     expect(await isEmailTrusted({ uid: 'u', email: 'a@b.c', email_verified: false }, { lookupCreatedAt: after })).toBe(false);
   });
 
-  it('falls back to trusting when creation time cannot be looked up', async () => {
-    expect(await isEmailTrusted({ uid: 'u', email: 'a@b.c' }, { lookupCreatedAt: () => Promise.resolve(undefined) })).toBe(true);
-    expect(await isEmailTrusted({ uid: 'u', email: 'a@b.c' }, { lookupCreatedAt: () => Promise.reject(new Error('x')) })).toBe(true);
+  it('fails closed when creation time cannot be looked up', async () => {
+    expect(await isEmailTrusted({ uid: 'u', email: 'a@b.c' }, { lookupCreatedAt: () => Promise.resolve(undefined) })).toBe(false);
+    expect(await isEmailTrusted({ uid: 'u', email: 'a@b.c' }, { lookupCreatedAt: () => Promise.reject(new Error('x')) })).toBe(false);
   });
 
   it('never trusts a missing email', async () => {
