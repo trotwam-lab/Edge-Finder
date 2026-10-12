@@ -7,21 +7,27 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
-// Your web app's Firebase configuration
+// Firebase web configuration is public by design, but keeping it in deployment
+// environment variables avoids committing provider-shaped keys and makes
+// rotation/restriction changes independent of source releases.
 const firebaseConfig = {
-  apiKey: "AIzaSyDjJdLghs8ycbkQZhUVIuvnQ92IyhM3xmQ",
-  authDomain: "edgefinder-9d42e.firebaseapp.com",
-  projectId: "edgefinder-9d42e",
-  storageBucket: "edgefinder-9d42e.firebasestorage.app",
-  messagingSenderId: "245989656973",
-  appId: "1:245989656973:web:61aeb07f555ecfa3b215c4",
-  measurementId: "G-7YFFZ71VN6"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize the Firebase app
-export const app = initializeApp(firebaseConfig);
+const missingFirebaseConfig = Object.entries(firebaseConfig)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+if (missingFirebaseConfig.length) {
+  throw new Error(`Missing Firebase web configuration: ${missingFirebaseConfig.join(', ')}`);
+}
 
-// Auth — handles user login/signup
+export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Helper: check a user's subscription tier by calling our API endpoint.
@@ -40,6 +46,6 @@ export async function getUserTier() {
     return data.tier || 'free';
   } catch (err) {
     console.error('Error fetching user tier:', err);
-    return 'free'; // Default to free if anything goes wrong
+    return 'free';
   }
 }
