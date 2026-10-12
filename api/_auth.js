@@ -33,7 +33,9 @@ export const FRIEND_EMAILS = [
 // trust an email the caller actually owns. Firebase password sign-up does not
 // verify addresses, so an unverified account could claim a listed friend's or
 // a subscriber's email. Accounts created before this rule shipped keep their
-// access; newer accounts need a verified email.
+// access; newer accounts need a verified email. If Firebase Admin cannot
+// establish an account's age, fail closed: availability problems must never
+// turn an unverified address into an entitlement.
 export const EMAIL_TRUST_CUTOFF = Date.parse('2026-09-24T00:00:00Z');
 const creationTimeCache = new Map();
 
@@ -53,13 +55,11 @@ export async function isEmailTrusted(decoded, { lookupCreatedAt = getAccountCrea
   if (decoded.email_verified === true) return true;
   try {
     const createdAt = await lookupCreatedAt(decoded.uid);
-    // No admin credentials to check with: keep the previous behaviour rather
-    // than demoting every existing complimentary/Stripe account.
-    if (createdAt === undefined) return true;
+    if (createdAt === undefined) return false;
     return createdAt < EMAIL_TRUST_CUTOFF;
   } catch (error) {
     console.warn('Account creation lookup failed:', error.message);
-    return true;
+    return false;
   }
 }
 

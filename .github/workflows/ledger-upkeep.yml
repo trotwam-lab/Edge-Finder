@@ -11,8 +11,8 @@ name: Ledger upkeep
 # Setup (Settings → Secrets and variables → Actions):
 #  * variable EDGEFINDER_BASE_URL — the production site, e.g. https://edgefinderdaily.com
 #    (both jobs skip cleanly while it is unset)
-#  * secret LEDGER_CRON_SECRET — optional; must match the Vercel env var of
-#    the same name when set
+#  * secret LEDGER_CRON_SECRET — required; must match the Vercel env var of
+#    the same name
 
 on:
   schedule:
@@ -42,6 +42,7 @@ jobs:
           CRON_SECRET: ${{ secrets.LEDGER_CRON_SECRET }}
         run: |
           if [ -z "$BASE_URL" ]; then echo "::notice::EDGEFINDER_BASE_URL is not set — skipping."; exit 0; fi
+          if [ -z "$CRON_SECRET" ]; then echo "::error::LEDGER_CRON_SECRET is not set."; exit 1; fi
           curl -fsS --max-time 60 -X POST "${BASE_URL%/}/api/ledger-maintenance?task=closes" \
             -H "Authorization: Bearer ${CRON_SECRET}"
           # Background line-move alerts (no-op until VAPID keys are set on Vercel).
