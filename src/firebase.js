@@ -20,7 +20,9 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-const missingFirebaseConfig = Object.entries(firebaseConfig)
+const requiredFirebaseConfig = Object.entries(firebaseConfig)
+  .filter(([key]) => key !== 'measurementId');
+const missingFirebaseConfig = requiredFirebaseConfig
   .filter(([, value]) => !value)
   .map(([key]) => key);
 if (missingFirebaseConfig.length) {
