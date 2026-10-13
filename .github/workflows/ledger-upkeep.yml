@@ -64,7 +64,7 @@ jobs:
         run: |
           if [ -z "$BASE_URL" ]; then echo "::notice::EDGEFINDER_BASE_URL is not set — skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.config.outputs.skip != 'true'
 
       - name: Fetch and publish today's anchor
