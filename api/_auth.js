@@ -33,11 +33,17 @@ export const FRIEND_EMAILS = [
 // trust an email the caller actually owns. Firebase password sign-up does not
 // verify addresses, so an unverified account could claim a listed friend's or
 // a subscriber's email. Accounts created before this rule shipped keep their
-// access; newer accounts need a verified email. If Firebase Admin cannot
-// establish an account's age, fail closed: availability problems must never
-// turn an unverified address into an entitlement.
+// access; newer accounts need a verified email. Legacy complimentary/admin
+// accounts are migrated to an exact uid allowlist in LEGACY_PRO_UIDS. That
+// keeps the curated friends list working when Firebase Admin cannot read the
+// client project's user directory without trusting a claimed email. If neither
+// the uid migration nor Firebase Admin establishes legacy status, fail closed.
 export const EMAIL_TRUST_CUTOFF = Date.parse('2026-09-24T00:00:00Z');
 const creationTimeCache = new Map();
+
+function getLegacyProUids(raw = process.env.LEGACY_PRO_UIDS || '') {
+  return new Set(raw.split(',').map(uid => uid.trim()).filter(Boolean));
+}
 
 async function getAccountCreatedAt(uid) {
   if (creationTimeCache.has(uid)) return creationTimeCache.get(uid);
@@ -50,9 +56,13 @@ async function getAccountCreatedAt(uid) {
   return value;
 }
 
-export async function isEmailTrusted(decoded, { lookupCreatedAt = getAccountCreatedAt } = {}) {
+export async function isEmailTrusted(decoded, {
+  lookupCreatedAt = getAccountCreatedAt,
+  legacyProUids = getLegacyProUids(),
+} = {}) {
   if (!decoded?.email) return false;
   if (decoded.email_verified === true) return true;
+  if (decoded.uid && legacyProUids.has(decoded.uid)) return true;
   try {
     const createdAt = await lookupCreatedAt(decoded.uid);
     if (createdAt === undefined) return false;
