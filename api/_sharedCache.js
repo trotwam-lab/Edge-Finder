@@ -1,11 +1,13 @@
-// api/_sharedCache.js — cross-instance response cache in Firestore.
+// api/_sharedCache.js — optional cross-instance response cache in Firestore.
 //
 // Each serverless instance keeps its own in-memory cache, so cold starts and
 // parallel instances each paid for their own upstream odds call. This stores
 // the last good upstream payload (gzipped) in Firestore so every instance can
-// reuse it. It uses the Admin SDK (which bypasses security rules; clients
-// cannot read the collection) and silently no-ops when Admin credentials are
-// missing, leaving the per-instance cache as before.
+// reuse it. It is deliberately OPT-IN: normal board polling can easily spend
+// the free Firestore read quota, and the verified-bet ledger shares that same
+// database. When disabled, route-local memory and CDN caches continue to work.
+// Enable only on a Firestore project with billing/quota sized for cache traffic
+// by setting FIRESTORE_SHARED_CACHE_ENABLED=true.
 
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { getAdminDb } from './_firebaseAdmin.js';
@@ -23,6 +25,7 @@ function docId(key) {
 // "no shared cache" instead of failing the request.
 function resolveDb(options) {
   if (options && 'db' in options) return options.db;
+  if (process.env.FIRESTORE_SHARED_CACHE_ENABLED !== 'true') return null;
   try {
     return getAdminDb();
   } catch (error) {

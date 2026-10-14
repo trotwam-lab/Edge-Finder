@@ -45,6 +45,11 @@ function rejection(res, error) {
   return res.status(422).json({ verified: false, reason: error.reason, message: error.message, details: error.details ?? null });
 }
 
+// Public records are read-only and identical for every viewer. Let Vercel's
+// CDN absorb repeat views instead of charging the verified ledger one
+// Firestore read per event for every page load. Owner records remain no-store.
+const PUBLIC_RECORD_CACHE = 'public, s-maxage=60, stale-while-revalidate=300';
+
 export default async function handler(req, res, deps = {}) {
   if (guardRequest(req, res, { route: 'verified-bets', methods: ['GET', 'POST'], rateLimit: 60 })) return;
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -57,6 +62,7 @@ export default async function handler(req, res, deps = {}) {
     try {
       const record = await loadPublicRecord(publicDb, req.query.handle);
       if (!record) return res.status(404).json({ error: 'No public record with that name.' });
+      res.setHeader('Cache-Control', PUBLIC_RECORD_CACHE);
       return res.status(200).json({
         available: true,
         handle: record.handle,
