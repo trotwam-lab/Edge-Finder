@@ -40,6 +40,8 @@ const MARKETS_BY_SPORT = {
 };
 
 const DEFAULT_MARKETS = ['player_points','player_rebounds','player_assists'];
+const PROP_FETCH_CONCURRENCY = 2;
+const TRANSIENT_RETRIES = 2;
 
 function getMarkets(sport) {
   return MARKETS_BY_SPORT[sport] || DEFAULT_MARKETS;
@@ -73,6 +75,53 @@ function clampInt(value, fallback, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(Math.floor(parsed), max);
+}
+
+async function readUpstreamErrorCode(response) {
+  try {
+    const payload = await response.json();
+    return String(payload?.error_code || payload?.code || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function isQuotaExhaustionCode(code) {
+  return /usage|credit|quota/i.test(code || '');
+}
+
+function retryDelayMs(response, attempt) {
+  const seconds = Number(response.headers?.get?.('retry-after'));
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 2000);
+  return Math.min(400 * (attempt + 1), 1200);
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithTransient429Retry(url, options) {
+  let response;
+  let errorCode = '';
+  for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt += 1) {
+    response = await fetch(url, options);
+    if (response.status !== 429) return { response, errorCode: '' };
+    errorCode = await readUpstreamErrorCode(response);
+    if (isQuotaExhaustionCode(errorCode) || attempt === TRANSIENT_RETRIES) break;
+    await wait(retryDelayMs(response, attempt));
+  }
+  return { response, errorCode };
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 const DAILY_SLATE_SPORTS = new Set([
@@ -138,7 +187,7 @@ export default async function handler(req, res) {
       res.setHeader('X-Cache', 'STALE');
       return res.json(isPro ? cached.data : buildFreePropsPreview(cached.data));
     }
-    return res.json([]);
+    return res.status(503).json({ error: 'Props temporarily unavailable', reason });
   };
 
   // The Odds API quota is shared across every route; once it 429s, more calls
@@ -174,14 +223,14 @@ export default async function handler(req, res) {
     const markets = getMarkets(sport);
 
     // Step 1: Get upcoming events for this sport
-    const eventsRes = await fetch(
+    const { response: eventsRes, errorCode: eventsErrorCode } = await fetchWithTransient429Retry(
       `https://api.the-odds-api.com/v4/sports/${sport}/events?apiKey=${API_KEY}`,
       { signal: AbortSignal.timeout(10000) }
     );
     if (!eventsRes.ok) {
-      if (eventsRes.status === 429) quotaBackoffUntil = Date.now() + BACKOFF_MS;
+      if (eventsRes.status === 429 && isQuotaExhaustionCode(eventsErrorCode)) quotaBackoffUntil = Date.now() + BACKOFF_MS;
       console.error(`Props events fetch failed for ${sport}: ${eventsRes.status}`);
-      return serveDegraded(`upstream-${eventsRes.status}`);
+      return serveDegraded(eventsRes.status === 429 && !isQuotaExhaustionCode(eventsErrorCode) ? 'rate-limited' : `upstream-${eventsRes.status}`);
     }
     const events = await eventsRes.json();
     if (!events || events.length === 0) {
@@ -194,30 +243,31 @@ export default async function handler(req, res) {
 
     const allProps = [];
     let quotaHit = false;
+    let scanIncomplete = false;
 
     // Step 2: fetch the complete current slate. Daily leagues are bounded to
     // the earliest game's 18-hour window so future dates do not burn prop
     // quota, while the event limit still protects serverless execution.
-    const PROP_BATCH_SIZE = 4;
     const upcoming = selectPropEvents(events, sport, eventLimit);
     const fetchEventProps = async (event) => {
       const eventProps = [];
+      if (quotaHit) return { props: eventProps, ok: false };
       try {
-        const oddsRes = await fetch(
+        const { response: oddsRes, errorCode } = await fetchWithTransient429Retry(
           `https://api.the-odds-api.com/v4/sports/${sport}/events/${event.id}/odds?apiKey=${API_KEY}&regions=${ODDS_REGIONS}&markets=${markets.join(',')}&oddsFormat=american`,
           { signal: AbortSignal.timeout(10000) }
         );
         if (!oddsRes.ok) {
           console.warn(`Props failed for ${event.id}: ${oddsRes.status}`);
-          if (oddsRes.status === 429) {
-            // Quota is gone — every remaining event would 429 too.
+          if (oddsRes.status === 429 && isQuotaExhaustionCode(errorCode)) {
             quotaBackoffUntil = Date.now() + BACKOFF_MS;
             quotaHit = true;
           }
-          return eventProps;
+          scanIncomplete = true;
+          return { props: eventProps, ok: false };
         }
         const oddsData = await oddsRes.json();
-        if (!oddsData.bookmakers?.length) return eventProps;
+        if (!oddsData.bookmakers?.length) return { props: eventProps, ok: true };
 
         oddsData.bookmakers.forEach(bookmaker => {
           markets.forEach(marketKey => {
@@ -245,19 +295,20 @@ export default async function handler(req, res) {
         });
       } catch (err) {
         console.warn(`Error fetching props for ${event.id}:`, err.message);
+        scanIncomplete = true;
+        return { props: eventProps, ok: false };
       }
-      return eventProps;
+      return { props: eventProps, ok: true };
     };
 
-    for (let i = 0; i < upcoming.length && !quotaHit; i += PROP_BATCH_SIZE) {
-      const batch = await Promise.all(upcoming.slice(i, i + PROP_BATCH_SIZE).map(fetchEventProps));
-      batch.forEach(eventProps => allProps.push(...eventProps));
-    }
+    const eventResults = await mapWithConcurrency(upcoming, PROP_FETCH_CONCURRENCY, fetchEventProps);
+    eventResults.forEach(result => allProps.push(...(result?.props || [])));
 
-    // Quota died before any props landed: keep the previous board alive
-    // rather than caching an empty one over it.
-    if (quotaHit && allProps.length === 0) {
-      return serveDegraded('quota-backoff');
+    // Never label or cache a partial scan as a complete board. This was the
+    // remaining failure after #61: one transient 429 in a later batch left
+    // the first few games cached as if the entire slate had succeeded.
+    if (quotaHit || scanIncomplete || eventResults.some(result => !result?.ok)) {
+      return serveDegraded(quotaHit ? 'quota-backoff' : 'incomplete-scan');
     }
 
     cache[cacheKey] = { data: allProps, ts: Date.now(), ttl: TTL };
@@ -266,6 +317,7 @@ export default async function handler(req, res) {
     res.setHeader('X-EdgeFinder-Events-Available', String(events.length));
     res.setHeader('X-EdgeFinder-Events-Scanned', String(upcoming.length));
     res.setHeader('X-EdgeFinder-Props-Total', String(allProps.length));
+    res.setHeader('X-EdgeFinder-Scan-Complete', 'true');
     setTierHeaders(res, tierInfo);
     return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
   } catch (err) {
