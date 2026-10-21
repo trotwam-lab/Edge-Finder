@@ -89,8 +89,17 @@ describe('props route (Odds API path)', () => {
     }],
   });
 
-  it('gathers every event, in event order', async () => {
-    const events = Array.from({ length: 10 }, (_, i) => ({ id: `e${i}`, home_team: 'H', away_team: 'A', commence_time: 't' }));
+  it('gathers the complete daily slate, in event order, without scanning future dates', async () => {
+    const firstStart = Date.parse('2026-10-21T23:00:00Z');
+    const events = [
+      ...Array.from({ length: 11 }, (_, i) => ({
+        id: `e${i}`,
+        home_team: 'H',
+        away_team: 'A',
+        commence_time: new Date(firstStart + i * 20 * 60 * 1000).toISOString(),
+      })),
+      { id: 'e11', home_team: 'H', away_team: 'A', commence_time: '2026-10-22T23:10:00Z' },
+    ];
     global.fetch = vi.fn(async (url) => {
       if (String(url).endsWith(`/events?apiKey=test-key`)) return okJson(events);
       return eventOdds(String(url).match(/events\/(e\d+)\//)[1]);
@@ -102,12 +111,19 @@ describe('props route (Odds API path)', () => {
     await handler({ ...req({ sport: 'basketball_nba' }), headers: { 'x-forwarded-for': '9.9.9.9', 'x-edgefinder-email': 'admin@edgefinderdaily.com' } }, res);
     delete process.env.ALLOW_EMAIL_TIER_FALLBACK;
     expect(res.statusCode).toBe(200);
-    // Only the first 8 events are priced, and order follows the event list.
-    expect(res.body.map(p => p.gameId)).toEqual(['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']);
+    expect(res.body.map(p => p.gameId)).toEqual(['e0', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9', 'e10']);
+    expect(res.headers['X-EdgeFinder-Events-Available']).toBe('12');
+    expect(res.headers['X-EdgeFinder-Events-Scanned']).toBe('11');
+    expect(global.fetch).toHaveBeenCalledTimes(12);
   });
 
   it('stops fetching further batches once the quota is gone', async () => {
-    const events = Array.from({ length: 8 }, (_, i) => ({ id: `e${i}`, home_team: 'H', away_team: 'A', commence_time: 't' }));
+    const events = Array.from({ length: 12 }, (_, i) => ({
+      id: `e${i}`,
+      home_team: 'H',
+      away_team: 'A',
+      commence_time: new Date(Date.parse('2026-10-21T23:00:00Z') + i * 20 * 60 * 1000).toISOString(),
+    }));
     global.fetch = vi.fn(async (url) => {
       if (String(url).endsWith(`/events?apiKey=test-key`)) return okJson(events);
       return { ok: false, status: 429, json: async () => ({}) };
