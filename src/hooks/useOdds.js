@@ -420,7 +420,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
             const PROPS_SPORTS = ['basketball_nba', 'basketball_wnba', 'americanfootball_nfl', 'americanfootball_ncaaf', 'icehockey_nhl', 'baseball_mlb'];
             const PROPS_NAME_MAP = { basketball_nba: 'NBA', basketball_wnba: 'WNBA', americanfootball_nfl: 'NFL', americanfootball_ncaaf: 'NCAAF', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
             const propsToFetch = PROPS_SPORTS.filter(s =>
-              !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
+              (!enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])) &&
+              (!activeKeys || activeKeys.has(s))
             );
             if (propsToFetch.length === 0) {
               setPlayerProps([]);
@@ -433,14 +434,20 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
             // the current board on screen.
             if (isInitial) setPropsLoading(true);
             try {
-              const propsBySport = await Promise.all(propsToFetch.map(async (sportKey) => {
-                try {
-                  return await fetchPlayerProps(sportKey);
-                } catch (e) {
-                  console.warn('Props fetch failed for ' + sportKey + ':', e.message);
-                  return null;
-                }
-              }));
+              const propsBySport = [];
+              // Two leagues at a time prevents the client from multiplying
+              // each route's event scan into a large provider burst.
+              for (let index = 0; index < propsToFetch.length; index += 2) {
+                const batch = await Promise.all(propsToFetch.slice(index, index + 2).map(async (sportKey) => {
+                  try {
+                    return await fetchPlayerProps(sportKey);
+                  } catch (e) {
+                    console.warn('Props fetch failed for ' + sportKey + ':', e.message);
+                    return null;
+                  }
+                }));
+                propsBySport.push(...batch);
+              }
               // Sports whose request failed keep their previous props/history.
               const refreshedSports = propsToFetch.filter((_, i) => Array.isArray(propsBySport[i]));
               const allProps = propsBySport.filter(Array.isArray).flat();
