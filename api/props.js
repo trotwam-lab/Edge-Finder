@@ -12,15 +12,17 @@ import { guardRequest } from './_http.js';
 import { freshestEntry, isFresh, writeSharedCache } from './_sharedCache.js';
 
 const cache = {};
-const TTL = 60 * 1000;             // 1 minute for live prop boards
+const TTL = 5 * 60 * 1000;         // props move slower than core game lines
 const EMPTY_TTL = 10 * 60 * 1000;  // 10 minutes when a sport has no events (off-season)
 const BACKOFF_MS = 5 * 60 * 1000;  // pause upstream calls after a 429 (quota exhausted)
 let quotaBackoffUntil = 0;
 const FREE_BOOKS = new Set(['fanduel', 'draftkings', 'betmgm']);
 const FREE_PLAYER_LIMIT = 3;
-const ODDS_REGIONS = 'us,us2';
-const SGO_DEFAULT_EVENT_LIMIT = 4;
-const SGO_MAX_EVENT_LIMIT = 12;
+// One US region covers the books displayed by the app and halves the
+// per-market cost of the Odds API fallback.
+const ODDS_REGIONS = 'us';
+const DEFAULT_EVENT_LIMIT = 20;
+const MAX_EVENT_LIMIT = 24;
 const SGO_DEFAULT_PROP_LIMIT = 1200;
 const SGO_MAX_PROP_LIMIT = 2500;
 
@@ -73,6 +75,35 @@ function clampInt(value, fallback, max) {
   return Math.min(Math.floor(parsed), max);
 }
 
+const DAILY_SLATE_SPORTS = new Set([
+  'basketball_nba',
+  'basketball_wnba',
+  'basketball_ncaab',
+  'basketball_wncaab',
+  'icehockey_nhl',
+  'baseball_mlb',
+]);
+const DAILY_SLATE_WINDOW_MS = 18 * 60 * 60 * 1000;
+
+function selectPropEvents(events, sport, limit) {
+  const chronological = [...events].sort((a, b) => {
+    const aTime = Date.parse(a.commence_time);
+    const bTime = Date.parse(b.commence_time);
+    if (!Number.isFinite(aTime) || !Number.isFinite(bTime)) return 0;
+    return aTime - bTime;
+  });
+
+  if (!DAILY_SLATE_SPORTS.has(sport) || chronological.length === 0) {
+    return chronological.slice(0, limit);
+  }
+
+  const firstStart = Date.parse(chronological[0].commence_time);
+  if (!Number.isFinite(firstStart)) return chronological.slice(0, limit);
+  return chronological
+    .filter(event => Date.parse(event.commence_time) <= firstStart + DAILY_SLATE_WINDOW_MS)
+    .slice(0, limit);
+}
+
 export default async function handler(req, res) {
   if (guardRequest(req, res, { route: 'props', rateLimit: 120 })) return;
 
@@ -85,13 +116,11 @@ export default async function handler(req, res) {
 
   if (!API_KEY && !useSportsGameOdds) return res.status(500).json({ error: 'API key not configured' });
 
-  const eventLimit = useSportsGameOdds
-    ? clampInt(req.query.limit, SGO_DEFAULT_EVENT_LIMIT, SGO_MAX_EVENT_LIMIT)
-    : null;
+  const eventLimit = clampInt(req.query.limit, DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT);
   const propLimit = useSportsGameOdds
     ? clampInt(req.query.maxProps, SGO_DEFAULT_PROP_LIMIT, SGO_MAX_PROP_LIMIT)
     : null;
-  const cacheKey = `props-${useSportsGameOdds ? `sgo-${eventLimit}-${propLimit}` : 'oddsapi'}-${sport}`;
+  const cacheKey = `props-v2-${useSportsGameOdds ? `sgo-${eventLimit}-${propLimit}` : `oddsapi-${eventLimit}`}-${sport}`;
   let cached = cache[cacheKey];
   if (!isFresh(cached, TTL)) cached = await freshestEntry(cache, cacheKey);
   if (isFresh(cached, TTL)) {
@@ -136,6 +165,8 @@ export default async function handler(req, res) {
       await writeSharedCache(cacheKey, cache[cacheKey]);
       res.setHeader('X-Cache', 'MISS');
       res.setHeader('X-EdgeFinder-Upstream', 'sportsgameodds');
+      res.setHeader('X-EdgeFinder-Events-Scanned', String(result.data.length));
+      res.setHeader('X-EdgeFinder-Props-Total', String(allProps.length));
       setTierHeaders(res, tierInfo);
       return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
     }
@@ -164,12 +195,11 @@ export default async function handler(req, res) {
     const allProps = [];
     let quotaHit = false;
 
-    // Step 2: Fetch props for up to 8 upcoming events, a few at a time. The
-    // old one-by-one loop made the board as slow as every upstream call
-    // added together; small batches keep the burst gentle on the rate limit
-    // and let a quota failure stop the remaining batches.
+    // Step 2: fetch the complete current slate. Daily leagues are bounded to
+    // the earliest game's 18-hour window so future dates do not burn prop
+    // quota, while the event limit still protects serverless execution.
     const PROP_BATCH_SIZE = 4;
-    const upcoming = events.slice(0, 8);
+    const upcoming = selectPropEvents(events, sport, eventLimit);
     const fetchEventProps = async (event) => {
       const eventProps = [];
       try {
@@ -233,6 +263,9 @@ export default async function handler(req, res) {
     cache[cacheKey] = { data: allProps, ts: Date.now(), ttl: TTL };
     await writeSharedCache(cacheKey, cache[cacheKey]);
     res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-EdgeFinder-Events-Available', String(events.length));
+    res.setHeader('X-EdgeFinder-Events-Scanned', String(upcoming.length));
+    res.setHeader('X-EdgeFinder-Props-Total', String(allProps.length));
     setTierHeaders(res, tierInfo);
     return res.json(isPro ? allProps : buildFreePropsPreview(allProps));
   } catch (err) {

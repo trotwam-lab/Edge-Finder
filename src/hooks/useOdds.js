@@ -117,6 +117,7 @@ function getTeamScore(scoreData, teamName) {
 const SNAPSHOT_KEY = 'edgefinder_board_snapshot';
 const SNAPSHOT_MAX_AGE = 30 * 60 * 1000;
 const SNAPSHOT_MAX_CHARS = 3 * 1024 * 1024;
+const PROPS_REFRESH_MS = 5 * 60 * 1000;
 
 function readBoardSnapshot() {
   try {
@@ -178,6 +179,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [sportLastUpdated, setSportLastUpdated] = useState({});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
+    const lastPropsRefreshRef = useRef(0);
     const hasCompletedInitialLoadRef = useRef(false);
 
   // One-time storage hygiene. These maps are keyed by game id and games churn
@@ -320,7 +322,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   const fetchPlayerProps = useCallback(async (sport) => {
         try {
                 const headers = await getAuthHeaders();
-                const res = await fetch(`/api/props?sport=${sport}&limit=4&maxProps=1200`, { headers });
+                const res = await fetch(`/api/props?sport=${sport}&limit=20&maxProps=2500`, { headers });
                 if (!res.ok) return null;
                 const allProps = await res.json();
                 return Array.isArray(allProps) ? allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey })) : null;
@@ -425,6 +427,8 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
               setPropsLoading(false);
               return;
             }
+            if (!isInitial && Date.now() - lastPropsRefreshRef.current < PROPS_REFRESH_MS) return;
+            lastPropsRefreshRef.current = Date.now();
             // Only the first load shows a spinner; background refreshes keep
             // the current board on screen.
             if (isInitial) setPropsLoading(true);
