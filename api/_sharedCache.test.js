@@ -52,13 +52,27 @@ describe('shared cache', () => {
 });
 
 describe('shared cache without usable credentials', () => {
+  it('is opt-in when no database is injected', async () => {
+    const { vi } = await import('vitest');
+    vi.resetModules();
+    const getAdminDb = vi.fn(() => { throw new Error('must not be called'); });
+    vi.doMock('./_firebaseAdmin.js', () => ({ getAdminDb }));
+    const mod = await import('./_sharedCache.js');
+    expect(await mod.readSharedCache('k')).toBeNull();
+    expect(await mod.writeSharedCache('k', { data: [], ts: 1 })).toBe(false);
+    expect(getAdminDb).not.toHaveBeenCalled();
+    vi.doUnmock('./_firebaseAdmin.js');
+  });
+
   it('does not throw when the admin database cannot be created', async () => {
     const { vi } = await import('vitest');
     vi.resetModules();
+    vi.stubEnv('FIRESTORE_SHARED_CACHE_ENABLED', 'true');
     vi.doMock('./_firebaseAdmin.js', () => ({ getAdminDb: () => { throw new Error('bad key'); } }));
     const mod = await import('./_sharedCache.js');
     expect(await mod.readSharedCache('k')).toBeNull();
     expect(await mod.writeSharedCache('k', { data: [], ts: 1 })).toBe(false);
     vi.doUnmock('./_firebaseAdmin.js');
+    vi.unstubAllEnvs();
   });
 });

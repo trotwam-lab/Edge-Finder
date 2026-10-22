@@ -117,6 +117,7 @@ function getTeamScore(scoreData, teamName) {
 const SNAPSHOT_KEY = 'edgefinder_board_snapshot';
 const SNAPSHOT_MAX_AGE = 30 * 60 * 1000;
 const SNAPSHOT_MAX_CHARS = 3 * 1024 * 1024;
+const PROPS_REFRESH_MS = 5 * 60 * 1000;
 
 function readBoardSnapshot() {
   try {
@@ -178,6 +179,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
     const [sportLastUpdated, setSportLastUpdated] = useState({});
     const [gameLineHistory, setGameLineHistory] = usePersistentState('edgefinder_game_lines', {});
     const rotationIndexRef = useRef(0);
+    const lastPropsRefreshRef = useRef(0);
     const hasCompletedInitialLoadRef = useRef(false);
 
   // One-time storage hygiene. These maps are keyed by game id and games churn
@@ -320,7 +322,7 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
   const fetchPlayerProps = useCallback(async (sport) => {
         try {
                 const headers = await getAuthHeaders();
-                const res = await fetch(`/api/props?sport=${sport}&limit=4&maxProps=1200`, { headers });
+                const res = await fetch(`/api/props?sport=${sport}&limit=20&maxProps=2500`, { headers });
                 if (!res.ok) return null;
                 const allProps = await res.json();
                 return Array.isArray(allProps) ? allProps.map(prop => ({ ...prop, book: prop.bookTitle || prop.bookKey })) : null;
@@ -418,25 +420,34 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
             const PROPS_SPORTS = ['basketball_nba', 'basketball_wnba', 'americanfootball_nfl', 'americanfootball_ncaaf', 'icehockey_nhl', 'baseball_mlb'];
             const PROPS_NAME_MAP = { basketball_nba: 'NBA', basketball_wnba: 'WNBA', americanfootball_nfl: 'NFL', americanfootball_ncaaf: 'NCAAF', icehockey_nhl: 'NHL', baseball_mlb: 'MLB' };
             const propsToFetch = PROPS_SPORTS.filter(s =>
-              !enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])
+              (!enabledSports || enabledSports.includes(PROPS_NAME_MAP[s])) &&
+              (!activeKeys || activeKeys.has(s))
             );
             if (propsToFetch.length === 0) {
               setPlayerProps([]);
               setPropsLoading(false);
               return;
             }
+            if (!isInitial && Date.now() - lastPropsRefreshRef.current < PROPS_REFRESH_MS) return;
+            lastPropsRefreshRef.current = Date.now();
             // Only the first load shows a spinner; background refreshes keep
             // the current board on screen.
             if (isInitial) setPropsLoading(true);
             try {
-              const propsBySport = await Promise.all(propsToFetch.map(async (sportKey) => {
-                try {
-                  return await fetchPlayerProps(sportKey);
-                } catch (e) {
-                  console.warn('Props fetch failed for ' + sportKey + ':', e.message);
-                  return null;
-                }
-              }));
+              const propsBySport = [];
+              // Two leagues at a time prevents the client from multiplying
+              // each route's event scan into a large provider burst.
+              for (let index = 0; index < propsToFetch.length; index += 2) {
+                const batch = await Promise.all(propsToFetch.slice(index, index + 2).map(async (sportKey) => {
+                  try {
+                    return await fetchPlayerProps(sportKey);
+                  } catch (e) {
+                    console.warn('Props fetch failed for ' + sportKey + ':', e.message);
+                    return null;
+                  }
+                }));
+                propsBySport.push(...batch);
+              }
               // Sports whose request failed keep their previous props/history.
               const refreshedSports = propsToFetch.filter((_, i) => Array.isArray(propsBySport[i]));
               const allProps = propsBySport.filter(Array.isArray).flat();
