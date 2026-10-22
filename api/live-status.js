@@ -129,47 +129,91 @@ async function fetchScoreboard(sportPath) {
   return res.json();
 }
 
-export default async function handler(req, res) {
-  if (guardRequest(req, res, { route: 'live-status' })) return;
+const inflight = new Map();
+const MAX_BATCH_SPORTS = 16;
+const BATCH_CONCURRENCY = 4;
+const SPORT_RE = /^[a-z0-9_]{2,64}$/;
 
-  const { sport = 'basketball_nba' } = req.query || {};
+// One sport's live-status payload, cached per instance. Concurrent asks for
+// the same sport share one ESPN call. Returns { payload, cacheStatus }.
+async function getLiveStatus(sport) {
   const sportPath = Object.hasOwn(SPORT_PATHS, sport) ? SPORT_PATHS[sport] : null;
   if (!sportPath) {
     // Not an ESPN-mapped sport — return empty so the client falls back cleanly.
-    return res.status(200).json({ sport, supported: false, events: [] });
+    return { payload: { sport, supported: false, events: [] }, cacheStatus: 'NONE' };
   }
 
   const cacheKey = `live-${sport}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.ts < (hit.ttl ?? TTL)) {
-    res.setHeader('X-Cache', 'HIT');
-    res.setHeader('Cache-Control', PUBLIC_CACHE);
-    return res.status(200).json(hit.data);
+    return { payload: hit.data, cacheStatus: 'HIT' };
+  }
+  if (inflight.has(cacheKey)) return inflight.get(cacheKey);
+
+  const pending = (async () => {
+    try {
+      const data = await fetchScoreboard(sportPath);
+      const events = (data?.events || [])
+        .map(ev => normalizeEvent(ev, sport, sportPath))
+        .filter(Boolean);
+      const payload = { sport, supported: true, generatedAt: new Date().toISOString(), events };
+      cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: TTL });
+      return { payload, cacheStatus: 'MISS' };
+    } catch (err) {
+      console.error(`live-status error: ${sport} (${sportPath}): ${err.message}`);
+      // Transient blip with a previous good payload: keep serving it briefly so
+      // live scores don't blank out mid-game.
+      if (hit?.data?.events?.length) {
+        cache.set(cacheKey, { data: hit.data, ts: Date.now(), ttl: 60 * 1000 });
+        return { payload: hit.data, cacheStatus: 'STALE' };
+      }
+      // No good data (e.g. ESPN rejects this path outright): soft-fail with empty
+      // events and cache the failure so the path isn't refetched every 20s.
+      const payload = { sport, supported: true, error: err.message, events: [] };
+      cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: ERROR_TTL });
+      return { payload, cacheStatus: 'ERROR' };
+    }
+  })().finally(() => inflight.delete(cacheKey));
+  inflight.set(cacheKey, pending);
+  return pending;
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await worker(items[i]);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+export default async function handler(req, res) {
+  if (guardRequest(req, res, { route: 'live-status' })) return;
+
+  // Batch mode (?sports=a,b,c): one request for a whole slice of the board
+  // instead of one function call per sport, with ESPN calls paced inside it.
+  if (req.query?.sports != null) {
+    const sports = [...new Set(String(req.query.sports).split(',').map(s => s.trim()).filter(Boolean))];
+    if (!sports.length || sports.length > MAX_BATCH_SPORTS || !sports.every(s => SPORT_RE.test(s))) {
+      return res.status(400).json({ error: `Invalid sports list (1-${MAX_BATCH_SPORTS} sport keys)` });
+    }
+    const results = await mapWithConcurrency(sports, BATCH_CONCURRENCY, getLiveStatus);
+    const body = { sports: {} };
+    sports.forEach((sport, i) => { body.sports[sport] = results[i].payload; });
+    // Only let the CDN hold a batch when every sport in it is real data.
+    if (results.every(r => r.cacheStatus === 'HIT' || r.cacheStatus === 'MISS' || r.cacheStatus === 'NONE')) {
+      res.setHeader('Cache-Control', PUBLIC_CACHE);
+    }
+    return res.status(200).json(body);
   }
 
-  try {
-    const data = await fetchScoreboard(sportPath);
-    const events = (data?.events || [])
-      .map(ev => normalizeEvent(ev, sport, sportPath))
-      .filter(Boolean);
-    const payload = { sport, supported: true, generatedAt: new Date().toISOString(), events };
-    cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: TTL });
-    res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', PUBLIC_CACHE);
-    return res.status(200).json(payload);
-  } catch (err) {
-    console.error(`live-status error: ${sport} (${sportPath}): ${err.message}`);
-    // Transient blip with a previous good payload: keep serving it briefly so
-    // live scores don't blank out mid-game.
-    if (hit?.data?.events?.length) {
-      cache.set(cacheKey, { data: hit.data, ts: Date.now(), ttl: 60 * 1000 });
-      res.setHeader('X-Cache', 'STALE');
-      return res.status(200).json(hit.data);
-    }
-    // No good data (e.g. ESPN rejects this path outright): soft-fail with empty
-    // events and cache the failure so the path isn't refetched every 20s.
-    const payload = { sport, supported: true, error: err.message, events: [] };
-    cache.set(cacheKey, { data: payload, ts: Date.now(), ttl: ERROR_TTL });
-    return res.status(200).json(payload);
-  }
+  const { sport = 'basketball_nba' } = req.query || {};
+  const { payload, cacheStatus } = await getLiveStatus(String(sport));
+  if (cacheStatus === 'HIT' || cacheStatus === 'MISS' || cacheStatus === 'STALE') res.setHeader('X-Cache', cacheStatus);
+  if (cacheStatus === 'HIT' || cacheStatus === 'MISS') res.setHeader('Cache-Control', PUBLIC_CACHE);
+  return res.status(200).json(payload);
 }

@@ -37,16 +37,6 @@ function isLiveOrUpcoming(game) {
   return s.isLive || s.isUpcoming;
 }
 
-function formatGameTime(value) {
-  if (!value) return 'TBD';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'TBD';
-  const today = new Date().toDateString() === date.toDateString();
-  return today
-    ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    : date.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-}
-
 function greeting() {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -575,7 +565,7 @@ export default function HomeDashboard({
                   <WatchStar gameId={game.id} watchlist={watchlist} onToggleWatchlist={onToggleWatchlist} />
                 </div>
                 <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
-                  {game.sport_title || game.sport_key} · {formatGameTime(game.commence_time)}
+                  {game.sport_title || game.sport_key} · {formatStartTime(game.commence_time)}
                 </div>
               </div>
             ))}

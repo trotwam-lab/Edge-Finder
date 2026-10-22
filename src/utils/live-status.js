@@ -68,19 +68,45 @@ function parseTime(value) {
   return Number.isFinite(t) ? t : null;
 }
 
-function formatClockTime(date) {
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// Building a locale formatter is expensive (toLocaleTimeString builds one per
+// call), and start times are rendered for every game several times per board
+// render — profiling showed it was ~40% of all main-thread time. Formatters
+// are created once and rebuilt every minute so a timezone change still shows.
+const FORMATTER_TTL_MS = 60 * 1000;
+let formatters = null;
+// Labels depend only on the start time and on which day "today" is.
+const labelCache = new Map();
+const LABEL_CACHE_MAX = 5000;
+function getFormatters(now = Date.now()) {
+  if (!formatters || now - formatters.createdAt > FORMATTER_TTL_MS) {
+    formatters = {
+      createdAt: now,
+      clock: new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }),
+      weekdayClock: new Intl.DateTimeFormat([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }),
+    };
+    labelCache.clear();
+  }
+  return formatters;
+}
+
+function dayKey(date) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 // Human friendly start time: "7:05 PM" today, "Sat 1:00 PM" another day.
 export function formatStartTime(value) {
   const t = parseTime(value);
   if (t == null) return 'TBD';
+  const { clock, weekdayClock } = getFormatters();
+  const today = dayKey(new Date());
+  const key = `${t}|${today}`;
+  const hit = labelCache.get(key);
+  if (hit !== undefined) return hit;
   const date = new Date(t);
-  const sameDay = new Date().toDateString() === date.toDateString();
-  return sameDay
-    ? formatClockTime(date)
-    : date.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const label = dayKey(date) === today ? clock.format(date) : weekdayClock.format(date);
+  if (labelCache.size >= LABEL_CACHE_MAX) labelCache.clear();
+  labelCache.set(key, label);
+  return label;
 }
 
 // Short countdown for games starting very soon ("12m", "1h 5m").

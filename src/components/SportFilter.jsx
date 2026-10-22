@@ -42,6 +42,9 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
   }, [enabledSports, counts, games]);
 
   // Keep the selected chip visible (scrolls the strip only, never the page).
+  // Measuring forces a layout of the whole page, so it only runs when the
+  // selected chip can actually have moved — not on every board update.
+  const activeIndex = sports.indexOf(filter);
   useEffect(() => {
     const el = activeRef.current;
     const strip = stripRef.current;
@@ -52,7 +55,7 @@ export default function SportFilter({ filter, setFilter, searchTerm, setSearchTe
     const viewRight = viewLeft + strip.clientWidth;
     if (left < viewLeft) strip.scrollTo({ left: Math.max(0, left - 12), behavior: 'smooth' });
     else if (right > viewRight) strip.scrollTo({ left: right - strip.clientWidth + 12, behavior: 'smooth' });
-  }, [filter, sports]);
+  }, [filter, activeIndex]);
 
   const totalGames = games.length;
 

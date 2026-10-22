@@ -302,6 +302,23 @@ export function buildTeamVisuals(game, sport, logoMap = {}) {
   };
 }
 
+// One shared formatter instead of toLocaleString per player per render (it
+// builds a new locale formatter on every call). Rebuilt each minute so a
+// timezone change still shows; output is identical.
+let monthDayTimeFormat = null;
+let monthDayTimeFormatAt = 0;
+function formatMonthDayTime(date) {
+  if (Number.isNaN(date.getTime())) {
+    return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  const now = Date.now();
+  if (!monthDayTimeFormat || now - monthDayTimeFormatAt > 60 * 1000) {
+    monthDayTimeFormat = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    monthDayTimeFormatAt = now;
+  }
+  return monthDayTimeFormat.format(date);
+}
+
 export function getPropTimingState({ gameStatus, commenceTime }) {
   const started = gameStatus?.started ?? (commenceTime ? Date.parse(commenceTime) <= Date.now() : false);
   const completed = gameStatus?.completed ?? false;
@@ -336,16 +353,11 @@ export function getPropTimingState({ gameStatus, commenceTime }) {
     const diffMinutes = Math.round(diffMs / 60000);
     const absMinutes = Math.abs(diffMinutes);
 
-    let detail = startsAt.toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-
+    let detail;
     if (diffMinutes >= 0 && diffMinutes <= 59) detail = `Starts in ${Math.max(1, diffMinutes)}m`;
     else if (diffMinutes >= 60 && diffMinutes <= 6 * 60) detail = `Starts in ${Math.round(diffMinutes / 60)}h`;
     else if (diffMinutes < 0 && absMinutes <= 15) detail = 'Starting now';
+    else detail = formatMonthDayTime(startsAt);
 
     return {
       key: 'pregame',

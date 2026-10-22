@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalizeTeamKey, getSportMeta } from './props.js';
 
 // Sport visual metadata used across Games, Props, and Edges views so every
@@ -127,18 +127,25 @@ export function getSportVisual(sportKey) {
 
 // Shared logo fetcher — keeps a sport->teamKey->logoUrl map in component state.
 // Loads once per unique sport the first time a game in that sport appears.
+// Requests are tracked in a ref: checking the (async) logo state let every
+// board update re-request sports whose logos were still in flight.
 export function useTeamLogos(games = []) {
   const [logoMap, setLogoMap] = useState({});
+  const requested = useRef(new Set());
+  const sportsKey = useMemo(
+    () => Array.from(new Set(games.map(g => g?.sport_key).filter(Boolean))).sort().join('|'),
+    [games]
+  );
 
   useEffect(() => {
-    const sports = Array.from(new Set(games.map(g => g?.sport_key).filter(Boolean)));
-    sports.forEach(async (sportKey) => {
-      if (logoMap[sportKey]) return;
+    sportsKey.split('|').filter(Boolean).forEach(async (sportKey) => {
+      if (requested.current.has(sportKey)) return;
       const meta = getSportMeta(sportKey);
       if (!meta.espnPath) return;
+      requested.current.add(sportKey);
       try {
         const res = await fetch(`/api/espn-assets?type=teams&path=${encodeURIComponent(meta.espnPath)}`);
-        if (!res.ok) return;
+        if (!res.ok) { requested.current.delete(sportKey); return; }
         const data = await res.json();
         const teams = data?.sports?.[0]?.leagues?.[0]?.teams || [];
         const next = {};
@@ -155,12 +162,11 @@ export function useTeamLogos(games = []) {
             .forEach(name => { next[normalizeTeamKey(name)] = logo; });
         });
         setLogoMap(prev => ({ ...prev, [sportKey]: next }));
-      } catch {}
+      } catch {
+        requested.current.delete(sportKey); // network blip — retry on a later board update
+      }
     });
-    // We intentionally depend on the sports list derived from games; logoMap
-    // is checked inline so we don't re-fetch for sports we already loaded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games.map(g => g?.sport_key).join('|')]);
+  }, [sportsKey]);
 
   return logoMap;
 }

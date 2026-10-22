@@ -3,7 +3,7 @@ import { Star, ChevronDown, ChevronUp, Share2, Lock, Target } from 'lucide-react
 import { getConsensusFairOdds, formatOdds, findBestOdds, calculateEV, calculateEdgeScore, getLineShoppingScore, getSpreadMoveSignal, buildMarketDisagreement } from '../utils/odds-math.js';
 import { BOOKMAKERS } from '../constants.js';
 import { useAuth } from '../AuthGate.jsx';
-import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
+import { getSportVisual } from '../utils/team-logos.js';
 import { getGameStatus, formatStartTime } from '../utils/live-status.js';
 
 function TeamLogo({ name, url, size = 26 }) {
@@ -52,17 +52,20 @@ function HoldBadge({ hold }) {
   );
 }
 
-// Memoized: the board renders dozens of these, and each one runs several
-// odds-math passes. Expanding one card or typing in search should only
-// re-render the cards whose inputs actually changed. The parent also passes a
-// minute `clock` prop (unused here) so memo lets "starts in 12m" labels refresh.
+const NO_ENTRIES = [];
+
+// Memoized: the board renders hundreds of these, and each one runs several
+// odds-math passes. Every prop is this game's own slice (its line history,
+// its teams' injuries, its logos, whether it is starred) — passing the
+// app-wide maps made every card re-render whenever any sport loaded. The
+// parent also passes a minute `clock` prop (unused here) so memo lets
+// "starts in 12m" labels refresh.
 function GameCard({
-  game, expanded, onToggle, watchlist, onToggleWatchlist,
-  injuries, gameLineHistory, setPendingBet, logoMap = {}, onAddToParlay,
+  game, expanded, onToggle, isWatched = false, onToggleWatchlist,
+  awayInjuries = NO_ENTRIES, homeInjuries = NO_ENTRIES, lineHistory = NO_ENTRIES,
+  setPendingBet, awayLogo = null, homeLogo = null, onAddToParlay,
 }) {
   const sportVisual = getSportVisual(game.sport_key);
-  const awayLogo = resolveTeamLogo(logoMap, game.sport_key, game.away_team);
-  const homeLogo = resolveTeamLogo(logoMap, game.sport_key, game.home_team);
   const { tier } = useAuth(); // Get tier for EV display
   const [copied, setCopied] = useState(false); // For share button "Copied!" tooltip
   const [showQuickPick, setShowQuickPick] = useState(false); // Quick-pick bet popover
@@ -92,7 +95,7 @@ function GameCard({
   const hasGameScore = status.homeScore != null && status.awayScore != null;
 
   // === EDGE SCORE™ — pro-only composite rating ===
-  const edgeScore = calculateEdgeScore(game, gameLineHistory);
+  const edgeScore = calculateEdgeScore(game, { [game.id]: lineHistory });
   // Map score to label + color for the badge
   const edgeBadge = edgeScore <= 40
     ? { label: 'LOW', color: '#64748b', bg: 'rgba(100,116,139,0.2)' }
@@ -104,7 +107,7 @@ function GameCard({
 
   // === TRENDING — free for all users ===
   // If line history has 3+ entries, the line is actively moving
-  const historyEntries = gameLineHistory[game.id] || [];
+  const historyEntries = lineHistory;
   const isTrending = historyEntries.length >= 3;
 
   // === SHARE — copy game summary to clipboard ===
@@ -130,15 +133,10 @@ function GameCard({
   const topShop = lineShopping.top;
 
   // Line movement
-  const history = gameLineHistory[game.id] || [];
+  const history = lineHistory;
   const spreadMoveSignal = getSpreadMoveSignal(game, history);
   const disagreement = buildMarketDisagreement(game);
 
-  // Injury counts
-  const awayKey = game.away_team?.split(' ')?.pop()?.toLowerCase();
-  const homeKey = game.home_team?.split(' ')?.pop()?.toLowerCase();
-  const awayInjuries = injuries[game.away_team?.toLowerCase()] || injuries[awayKey] || [];
-  const homeInjuries = injuries[game.home_team?.toLowerCase()] || injuries[homeKey] || [];
 
   const firstBook = game.bookmakers?.[0];
   const homeSpread = firstBook?.markets?.find(m => m.key === 'spreads')?.outcomes?.find(o => o.name === game.home_team);
@@ -186,12 +184,12 @@ function GameCard({
         {/* Watchlist star + Share button side by side */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
           <button onClick={(e) => { e.stopPropagation(); onToggleWatchlist(game.id); }}
-            aria-label={watchlist.includes(game.id) ? 'Remove from watchlist' : 'Add to watchlist'}
-            aria-pressed={watchlist.includes(game.id)}
-            title={watchlist.includes(game.id) ? 'Remove from watchlist' : 'Add to watchlist'}
+            aria-label={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
+            aria-pressed={isWatched}
+            title={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <Star size={18} color={watchlist.includes(game.id) ? '#fbbf24' : '#475569'}
-              fill={watchlist.includes(game.id) ? '#fbbf24' : 'none'} />
+            <Star size={18} color={isWatched ? '#fbbf24' : '#475569'}
+              fill={isWatched ? '#fbbf24' : 'none'} />
           </button>
           {/* Share button — copies game summary to clipboard (free for everyone) */}
           <div style={{ position: 'relative' }}>

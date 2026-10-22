@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Loader, Lock, ChevronDown, ChevronUp, X, Plus, Check, ShoppingCart, ArrowUpDown, Zap, RefreshCw } from 'lucide-react';
 import { useAuth } from '../AuthGate.jsx';
 import ProBanner from './ProBanner.jsx';
@@ -20,6 +20,7 @@ import {
   formatPropPick,
 } from '../utils/props.js';
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
+import { useProgressiveLimit } from '../hooks/useProgressiveLimit.js';
 
 const FREE_PLAYERS_LIMIT = 3;
 const MONO = 'JetBrains Mono, monospace';
@@ -328,7 +329,11 @@ function MarketBlock({ player, marketKey, mkt, onQuickAdd }) {
   );
 }
 
-function PlayerCard({ player, accent, expanded, onToggle, visibleMarkets, onQuickAdd, showGame }) {
+// Memoized with stable props, so expanding one player re-renders that card
+// only — not every card on the board.
+const PlayerCard = memo(function PlayerCard({ player, accent, expanded, onToggleKey, activeMarket, onQuickAdd, showGame }) {
+  const onToggle = () => onToggleKey(player.key);
+  const visibleMarkets = activeMarket === 'ALL' ? Object.keys(player.markets) : [activeMarket];
   const focus = player.focusMarket;
   const focusInsight = focus?.mkt.insights;
   const focusSide = focusInsight && (focusInsight.edgeOver ?? -Infinity) >= (focusInsight.edgeUnder ?? -Infinity) ? 'over' : 'under';
@@ -382,7 +387,7 @@ function PlayerCard({ player, accent, expanded, onToggle, visibleMarkets, onQuic
       )}
     </div>
   );
-}
+});
 
 function sortPlayers(list, sortBy) {
   const sorted = [...list];
@@ -406,6 +411,18 @@ function groupByGame(sportPlayers) {
     || (Date.parse(a.commenceTime || '') || Infinity) - (Date.parse(b.commenceTime || '') || Infinity)
     || String(a.game).localeCompare(String(b.game))
   ));
+}
+
+// The props board can be tens of thousands of rows. Aggregating it takes long
+// enough to feel on a phone, and the tab unmounts whenever the user leaves it,
+// so the last result is kept here: coming back to Props with the same data is
+// instant, and new data is aggregated exactly once.
+let lastAggregate = { props: null, history: null, players: null };
+function aggregateOnce(playerProps, propHistory) {
+  if (lastAggregate.props !== playerProps || lastAggregate.history !== propHistory) {
+    lastAggregate = { props: playerProps, history: propHistory, players: aggregatePlayerProps(playerProps, propHistory) };
+  }
+  return lastAggregate.players;
 }
 
 export default function PropsView({ playerProps = [], games = [], loading, propHistory, propClosingLines, setPendingBet, onRefresh, onNavigate }) {
@@ -466,7 +483,12 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
 
   useEffect(() => {
     const rosterTargets = [];
+    // Thousands of prop rows share a few dozen games; resolve each game once.
+    const seenGames = new Set();
     playerProps.forEach(prop => {
+      const gameKey = `${prop.sport}::${prop.game}`;
+      if (seenGames.has(gameKey)) return;
+      seenGames.add(gameKey);
       const sportTeams = teamIndexMap[prop.sport];
       if (!sportTeams) return;
       getGameTeamNames(prop.game).forEach(teamName => {
@@ -518,7 +540,7 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
 
   // Market math only depends on the feed; visuals are layered on separately
   // so logo/headshot arrivals don't recompute every market.
-  const aggregatedPlayers = useMemo(() => aggregatePlayerProps(playerProps, propHistory), [playerProps, propHistory]);
+  const aggregatedPlayers = useMemo(() => aggregateOnce(playerProps, propHistory), [playerProps, propHistory]);
 
   const players = useMemo(() => aggregatedPlayers.map(base => {
     const marketEntries = Object.entries(base.markets).map(([marketKey, mkt]) => ({ marketKey, mkt }));
@@ -613,8 +635,36 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
   );
 
   const visiblePlayerKeys = useMemo(() => sections.flatMap(section => section.visible.map(player => player.key)), [sections]);
+
+  // Hundreds of player cards render in chunks so opening the tab (or
+  // changing a filter) paints the first screen at once; the rest follow a
+  // few frames later. Every player still renders.
+  const [playerLimit] = useProgressiveLimit(
+    viewMode === 'all' ? visiblePlayerKeys.length : 0,
+    `${viewMode}|${activeSport}|${activeMarket}|${propSearch}|${sortBy}`,
+    { first: 20, step: 20 }
+  );
+  const shownSections = useMemo(() => {
+    let budget = playerLimit;
+    const out = [];
+    for (const section of sections) {
+      if (budget <= 0) break;
+      const visible = section.visible.slice(0, budget);
+      let groupBudget = budget;
+      const gameGroups = section.gameGroups
+        ? section.gameGroups.map(group => {
+          const players = group.players.slice(0, Math.max(0, groupBudget));
+          groupBudget -= group.players.length;
+          return players.length === group.players.length ? group : { ...group, players };
+        }).filter(group => group.players.length)
+        : null;
+      budget -= section.visible.length;
+      out.push({ ...section, visible, gameGroups, complete: visible.length === section.visible.length });
+    }
+    return out;
+  }, [sections, playerLimit]);
   const allExpanded = visiblePlayerKeys.length > 0 && visiblePlayerKeys.every(key => expandedPlayers.has(key));
-  const toggleExpand = key => setExpandedPlayers(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  const toggleExpand = useCallback(key => setExpandedPlayers(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; }), []);
   const toggleExpandAll = () => setExpandedPlayers(allExpanded ? new Set() : new Set(visiblePlayerKeys));
 
   const hasActiveFilters = activeSport !== 'ALL' || activeMarket !== 'ALL' || propSearch.trim() !== '';
@@ -656,8 +706,8 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
       accent={accent}
       showGame={showGame}
       expanded={expandedPlayers.has(player.key)}
-      onToggle={() => toggleExpand(player.key)}
-      visibleMarkets={activeMarket === 'ALL' ? Object.keys(player.markets) : [activeMarket]}
+      onToggleKey={toggleExpand}
+      activeMarket={activeMarket}
       onQuickAdd={setPendingModal}
     />
   );
@@ -796,7 +846,7 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {sections.map(section => {
+            {shownSections.map(section => {
               const meta = getSportMeta(section.sport);
               const visual = visualForSport(section.sport);
               return (
@@ -832,7 +882,7 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
                     </div>
                   )}
 
-                  {section.locked.length > 0 && <>
+                  {section.complete && section.locked.length > 0 && <>
                     <div style={{ position: 'relative', marginTop: '8px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', filter: 'blur(6px)', opacity: 0.4, pointerEvents: 'none' }} aria-hidden="true">
                         {section.locked.slice(0, 2).map(p => <div key={p.key} style={{ padding: '16px', background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: '12px' }}><div style={{ fontSize: '14px', fontWeight: 600, color: '#e2e8f0' }}>{p.name}</div><div style={{ fontSize: '11px', color: '#64748b' }}>{p.summaryMetrics.markets} markets</div></div>)}

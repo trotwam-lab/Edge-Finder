@@ -388,7 +388,7 @@ export default async function handler(req, res) {
       // sum of every upstream call, and each instance re-paid for data the
       // board had already pulled. 30s matches the board's freshness, which
       // keeps closing-line observations as current as before.
-      const SCAN_CONCURRENCY = 4;
+      const SCAN_CONCURRENCY = 3;
       const scanned = await mapWithConcurrency(sportsToScan, SCAN_CONCURRENCY, async (sport) => {
               try {
                         const result = await loadSportOdds(sport.key, { maxAgeMs: ODDS_TTL });

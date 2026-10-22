@@ -224,3 +224,29 @@ describe('game-research route', () => {
     expect(b.body).toEqual(a.body);
   });
 });
+
+describe('live-status batch mode', () => {
+  it('answers several sports in one call and marks unmapped sports unsupported', async () => {
+    vi.resetModules();
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ events: [] }) }));
+    const { default: handler } = await import('./live-status.js');
+    const res = fakeRes();
+    await handler(req({ sports: 'basketball_nba,baseball_kbo,constructor' }), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.sports.basketball_nba).toMatchObject({ supported: true, events: [] });
+    expect(res.body.sports.baseball_kbo).toMatchObject({ supported: false });
+    expect(res.body.sports.constructor).toMatchObject({ supported: false });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(res.headers['Cache-Control']).toMatch(/s-maxage/);
+  });
+
+  it('rejects malformed lists', async () => {
+    vi.resetModules();
+    global.fetch = vi.fn();
+    const { default: handler } = await import('./live-status.js');
+    const res = fakeRes();
+    await handler(req({ sports: 'a&b=c' }), res);
+    expect(res.statusCode).toBe(400);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

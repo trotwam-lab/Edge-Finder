@@ -18,10 +18,11 @@ import MobileNav from './components/MobileNav.jsx';
 import OnboardingCoach from './components/OnboardingCoach.jsx';
 import HomeDashboard from './components/HomeDashboard.jsx';
 import FirstRunSetup from './components/FirstRunSetup.jsx';
-import { useTeamLogos, SPORT_VISUALS, getSportVisual } from './utils/team-logos.js';
+import { useTeamLogos, SPORT_VISUALS, getSportVisual, resolveTeamLogo } from './utils/team-logos.js';
 import { isGameLive, getGameStatus } from './utils/live-status.js';
 import { buildMarketDisagreement } from './utils/odds-math.js';
 import { useNow } from './hooks/useNow.js';
+import { useProgressiveLimit } from './hooks/useProgressiveLimit.js';
 import { clearCachedData, removeKey } from './utils/storage.js';
 import { FREE_BET_LIMIT, todayStr } from './utils/bets.js';
 import { MAX_PARLAY_LEGS, combinedDecimal, decimalToAmerican } from './utils/parlay.js';
@@ -39,6 +40,8 @@ const tabLoaders = {
 };
 
 const NO_GAMES = [];
+// Cards rendered below a game the user jumps to, so it can scroll to the top.
+const JUMP_LOOKAHEAD_CARDS = 20;
 const OLD_ONBOARDING_SPORT_DEFAULTS = ['NBA', 'NFL', 'MLB', 'NHL'];
 
 function sameSet(a = [], b = []) {
@@ -80,10 +83,12 @@ function NextRefreshIn({ nextRefreshAt }) {
 }
 
 // Same team lookup GameCard uses, so the summary and the cards agree.
+// A shared empty list keeps memoized cards from re-rendering on a fresh [].
+const NO_INJURIES = Object.freeze([]);
 function teamInjuries(injuries, team) {
-  if (!team) return [];
+  if (!team) return NO_INJURIES;
   const lastWord = team.split(' ').pop()?.toLowerCase();
-  return injuries?.[team.toLowerCase()] || injuries?.[lastWord] || [];
+  return injuries?.[team.toLowerCase()] || injuries?.[lastWord] || NO_INJURIES;
 }
 
 // Only absences that actually move a line count as a flag — most rosters
@@ -293,10 +298,12 @@ export default function BettingApp() {
   // Enrich incoming bet with the historic opener price (if one was captured
   // when we first saw this game), so CLV can be computed automatically.
   // Stable identity so memoized game cards don't re-render on every update.
+  const historicOddsRef = useRef(historicOdds);
+  historicOddsRef.current = historicOdds;
   const handleSetPendingBet = useCallback((bet) => {
     let openingOdds = null;
     try {
-      const opener = bet.gameId ? historicOdds?.[bet.gameId] : null;
+      const opener = bet.gameId ? historicOddsRef.current?.[bet.gameId] : null;
       if (opener && bet.marketKey === 'h2h' && bet.outcomeName) {
         const match = opener.h2h?.find(o => o.name === bet.outcomeName);
         if (match?.price != null) openingOdds = match.price;
@@ -304,7 +311,7 @@ export default function BettingApp() {
     } catch {}
     setPendingBet({ ...bet, openingOdds });
     setActiveTab('TRACKER');
-  }, [historicOdds]);
+  }, []);
 
   // Bets live at app level (not inside BetTracker) so the closing-line
   // auto-capture below keeps observing the odds feed on EVERY tab. When this
@@ -518,16 +525,41 @@ export default function BettingApp() {
     });
   }, [filteredGames]);
 
+  // The Games tab renders its cards in chunks so switching to it never freezes
+  // on hundreds of cards at once; every game still renders, a few frames apart.
+  const boardTotal = activeTab === 'GAMES' ? filteredGames.length : 0;
+  const [boardLimit, ensureBoardRendered] = useProgressiveLimit(boardTotal, `${activeTab}|${filter}|${deferredSearchTerm}`);
+  const visibleGamesBySport = useMemo(() => {
+    let budget = boardLimit;
+    const sections = [];
+    for (const [sportKey, sportGames] of gamesBySport) {
+      if (budget <= 0) break;
+      sections.push([sportKey, sportGames, sportGames.slice(0, budget)]);
+      budget -= sportGames.length;
+    }
+    return sections;
+  }, [gamesBySport, boardLimit]);
+
   const teamLogoMap = useTeamLogos(games);
 
   useEffect(() => {
     const targetId = scrollToGameRef.current;
     if (!targetId || activeTab !== 'GAMES') return;
     const el = document.getElementById(`game-${targetId}`);
-    if (!el) return; // not rendered yet (e.g. still loading) — retry next render
+    if (!el) {
+      // Not rendered yet: render the board down past that game (a screenful
+      // below it, so the page is long enough to scroll it to the top), then retry.
+      let offset = 0;
+      for (const [, sportGames] of gamesBySport) {
+        const index = sportGames.findIndex(g => g.id === targetId);
+        if (index >= 0) { ensureBoardRendered(offset + index + 1 + JUMP_LOOKAHEAD_CARDS); break; }
+        offset += sportGames.length;
+      }
+      return;
+    }
     scrollToGameRef.current = null;
     el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [activeTab, gamesBySport, expandedGame]);
+  }, [activeTab, gamesBySport, expandedGame, boardLimit, ensureBoardRendered]);
 
   useEffect(() => {
     if (activeTab === 'EV_CALC' || activeTab === 'KELLY' || activeTab === 'EDGES_LINES') {
@@ -644,7 +676,7 @@ export default function BettingApp() {
             <GameBoardSkeleton />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-              {gamesBySport.map(([sportKey, sportGames]) => {
+              {visibleGamesBySport.map(([sportKey, sportGames, shownGames]) => {
                 const visual = getSportVisual(sportKey);
                 const liveCount = sportGames.filter(isGameLive).length;
                 return (
@@ -676,20 +708,22 @@ export default function BettingApp() {
                       <div style={{ flex: 1, height: '1px', background: `linear-gradient(to right, ${visual.color}55, transparent)` }} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {sportGames.map(game => (
+                      {shownGames.map(game => (
                         <div key={game.id} id={`game-${game.id}`} className="game-anchor">
                           <GameCard
                             game={game}
                             expanded={expandedGame === game.id}
                             onToggle={handleToggleGame}
                             clock={clock}
-                            watchlist={watchlist}
+                            isWatched={watchlist.includes(game.id)}
                             onToggleWatchlist={toggleWatchlist}
-                            injuries={injuries}
-                            gameLineHistory={gameLineHistory}
+                            awayInjuries={teamInjuries(injuries, game.away_team)}
+                            homeInjuries={teamInjuries(injuries, game.home_team)}
+                            lineHistory={gameLineHistory[game.id]}
                             setPendingBet={handleSetPendingBet}
                             onAddToParlay={addToParlay}
-                            logoMap={teamLogoMap}
+                            awayLogo={resolveTeamLogo(teamLogoMap, game.sport_key, game.away_team)}
+                            homeLogo={resolveTeamLogo(teamLogoMap, game.sport_key, game.home_team)}
                           />
                           {expandedGame === game.id && (
                             <Suspense fallback={<TabFallback label="Loading game details..." />}>
