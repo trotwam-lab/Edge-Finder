@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-29T13:08:36.909Z",
+  "generatedAt": "2026-10-30T13:01:19.821Z",
   "ledgers": 1,
-  "anchor": "12d2e537ef3ade14dd618e1757a01ca3764afea88ebd746b4a3d5948912757a1",
+  "anchor": "796e43cf156d1f37bbdff4df2dc23c50f6fbc31b9367cfc392712d1d83f8d048",
   "heads": [
     {
       "ledgerId": "d474cde885633064c41d0a0e309e2bd351ae758a300591e5bfe015c21b16fa4a",
-      "seq": 22,
-      "headHash": "d3b622ba09463180e50a4cb71cb3eb02b869f2d531c296ef4d01b5b88be3e5a8"
+      "seq": 25,
+      "headHash": "c802b29cc1222aa8a1f1d8895da236b41cd25ce4eaf111d8365f035e0e41f255"
     }
   ]
 }
