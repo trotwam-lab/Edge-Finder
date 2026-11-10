@@ -37,8 +37,8 @@ export default defineConfig({
         // Force new SW to take over immediately
         skipWaiting: true,
         clientsClaim: true,
-        // Cache version bump forces SW update on all clients
-        additionalManifestEntries: [{ url: '/cache-bust-v3', revision: Date.now().toString() }],
+        // Vite's hashed asset manifest already changes whenever the app does.
+        // Do not precache a synthetic URL: a 404 here aborts SW installation.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         // Background line-move alerts (web push) — see public/push-sw.js.
         importScripts: ['push-sw.js'],

@@ -15,6 +15,7 @@ import {
 } from './_sportsgameodds.js';
 import { guardRequest } from './_http.js';
 import { ODDS_TTL, loadSportOdds } from './_oddsFeed.js';
+import { dedupeRankedEdges } from './_edgeRanking.js';
 
 const cache = { data: null, ts: 0 };
 const TTL = 60 * 1000; // 60 seconds
@@ -155,7 +156,7 @@ const SGO_EDGE_EVENT_LIMIT = 20;
 const EDGE_LOOKAHEAD_DAYS = Number(process.env.EDGE_LOOKAHEAD_DAYS || 14);
 
 function buildFreeEdgesPreview(edges = []) {
-  return edges.slice(0, FREE_EDGE_PREVIEW_LIMIT).map(edge => ({
+  return dedupeRankedEdges(edges).slice(0, FREE_EDGE_PREVIEW_LIMIT).map(edge => ({
     sport: edge.sport,
     emoji: edge.emoji,
     game: edge.game,
@@ -439,12 +440,13 @@ export default async function handler(req, res) {
         }),
       ]);
 
-      cache.data = allEdges;
+      const rankedEdges = dedupeRankedEdges(allEdges);
+      cache.data = rankedEdges;
         cache.ts = Date.now();
 
       res.setHeader('X-Cache', 'MISS');
       res.setHeader('X-EdgeFinder-Tier', isPro ? 'pro' : 'free');
-        return res.status(200).json(isPro ? allEdges : buildFreeEdgesPreview(allEdges));
+        return res.status(200).json(isPro ? rankedEdges : buildFreeEdgesPreview(rankedEdges));
   } catch (e) {
         return res.status(500).json({ error: e.message });
   }

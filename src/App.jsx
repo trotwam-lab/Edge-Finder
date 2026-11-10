@@ -38,6 +38,16 @@ const tabLoaders = {
 
 const NO_GAMES = [];
 const OLD_ONBOARDING_SPORT_DEFAULTS = ['NBA', 'NFL', 'MLB', 'NHL'];
+const DESKTOP_GAME_RENDER_LIMIT = 80;
+const MOBILE_GAME_RENDER_LIMIT = 36;
+const GAME_RENDER_STEP = 80;
+
+function initialGameRenderLimit() {
+  if (typeof window === 'undefined') return DESKTOP_GAME_RENDER_LIMIT;
+  return window.matchMedia?.('(max-width: 768px)')?.matches
+    ? MOBILE_GAME_RENDER_LIMIT
+    : DESKTOP_GAME_RENDER_LIMIT;
+}
 
 function sameSet(a = [], b = []) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
@@ -219,6 +229,7 @@ export default function BettingApp() {
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [expandedGame, setExpandedGame] = useState(null);
   const [pendingBet, setPendingBet] = useState(null);
+  const [gameRenderLimit, setGameRenderLimit] = useState(initialGameRenderLimit);
 
   const [watchlist, setWatchlist] = usePersistentState('edgefinder_watchlist', []);
   const [manualOpeners, setManualOpeners] = usePersistentState('edgefinder_manual_openers', {});
@@ -402,9 +413,15 @@ export default function BettingApp() {
     setFilter('ALL');
     setSearchTerm('');
     setExpandedGame(game.id);
+    setGameRenderLimit(Math.max(initialGameRenderLimit(), games.length));
     scrollToGameRef.current = game.id;
     setActiveTab('GAMES');
   };
+
+  useEffect(() => {
+    if (scrollToGameRef.current) return;
+    setGameRenderLimit(initialGameRenderLimit());
+  }, [filter, deferredSearchTerm]);
 
   // New tab = start at the top, like a new page. The exception is jumping to
   // a specific game, which scrolls that card into view once it renders.
@@ -516,6 +533,25 @@ export default function BettingApp() {
     });
   }, [filteredGames]);
 
+  // Rendering every market card at once can create tens of thousands of DOM
+  // nodes on large slates. Keep the complete data set in memory, but reveal
+  // cards progressively so search, filtering and price calculations remain
+  // exact without freezing the browser.
+  const visibleGamesBySport = useMemo(() => {
+    let remaining = gameRenderLimit;
+    return gamesBySport.flatMap(([sportKey, sportGames]) => {
+      if (remaining <= 0) return [];
+      const visible = sportGames.slice(0, remaining);
+      remaining -= visible.length;
+      return [[sportKey, visible, sportGames.length, sportGames.filter(isGameLive).length]];
+    });
+  }, [gamesBySport, gameRenderLimit]);
+
+  const visibleGameCount = useMemo(
+    () => visibleGamesBySport.reduce((sum, [, sportGames]) => sum + sportGames.length, 0),
+    [visibleGamesBySport]
+  );
+
   const teamLogoMap = useTeamLogos(games);
 
   useEffect(() => {
@@ -525,7 +561,7 @@ export default function BettingApp() {
     if (!el) return; // not rendered yet (e.g. still loading) — retry next render
     scrollToGameRef.current = null;
     el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [activeTab, gamesBySport, expandedGame]);
+  }, [activeTab, visibleGamesBySport, expandedGame]);
 
   useEffect(() => {
     if (activeTab === 'EV_CALC' || activeTab === 'KELLY' || activeTab === 'EDGES_LINES') {
@@ -640,9 +676,8 @@ export default function BettingApp() {
             <GameBoardSkeleton />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-              {gamesBySport.map(([sportKey, sportGames]) => {
+              {visibleGamesBySport.map(([sportKey, sportGames, sportTotal, liveCount]) => {
                 const visual = getSportVisual(sportKey);
-                const liveCount = sportGames.filter(isGameLive).length;
                 return (
                   <div key={sportKey}>
                     <div style={{
@@ -660,7 +695,7 @@ export default function BettingApp() {
                           {visual.short}
                         </span>
                         <span style={{ fontSize: '10px', color: '#94a3b8' }}>
-                          {sportGames.length} game{sportGames.length !== 1 ? 's' : ''}
+                          {sportTotal} game{sportTotal !== 1 ? 's' : ''}
                         </span>
                         {liveCount > 0 && (
                           <span style={{
@@ -707,6 +742,15 @@ export default function BettingApp() {
                   </div>
                 );
               })}
+              {visibleGameCount < filteredGames.length && (
+                <button
+                  type="button"
+                  onClick={() => setGameRenderLimit(limit => limit + GAME_RENDER_STEP)}
+                  style={{ alignSelf: 'center', padding: '10px 18px', borderRadius: '8px', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.35)', color: '#c7d2fe', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Load more games · showing {visibleGameCount} of {filteredGames.length}
+                </button>
+              )}
               {filteredGames.length === 0 && !loading && (() => {
                 const emptyButton = { marginTop: '14px', padding: '8px 16px', borderRadius: '8px', background: 'var(--ef-accent-soft)', border: '1px solid var(--ef-accent-border)', color: 'var(--ef-cyan)', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--ef-font-body)' };
                 const empty = deferredSearchTerm

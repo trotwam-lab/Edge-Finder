@@ -310,6 +310,9 @@ export function WelcomeFooter() {
         {NAV_LINKS.map(([id, label]) => (
           <a key={id} href={`#${id}`} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.textMuted, textDecoration: "none" }}>{label}</a>
         ))}
+        <a href="/privacy.html" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.textMuted, textDecoration: "none" }}>Privacy</a>
+        <a href="/terms.html" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.textMuted, textDecoration: "none" }}>Terms &amp; Refunds</a>
+        <a href="mailto:admin@edgefinderdaily.com" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.textMuted, textDecoration: "none" }}>Contact</a>
       </nav>
       <p style={{ width: "100%", margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, color: COLORS.textDim, lineHeight: 1.6 }}>
         EdgeFinder is an odds-comparison and analytics tool — not a sportsbook, and not a picks service. Must be 21+ and in a jurisdiction where sports betting is legal. Gambling problem? Call 1-800-GAMBLER.

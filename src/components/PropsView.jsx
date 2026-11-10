@@ -22,7 +22,17 @@ import {
 import { getSportVisual, resolveTeamLogo } from '../utils/team-logos.js';
 
 const FREE_PLAYERS_LIMIT = 3;
+const DESKTOP_PROP_RENDER_LIMIT = 100;
+const MOBILE_PROP_RENDER_LIMIT = 50;
+const PROP_RENDER_STEP = 100;
 const MONO = 'JetBrains Mono, monospace';
+
+function initialPropRenderLimit() {
+  if (typeof window === 'undefined') return DESKTOP_PROP_RENDER_LIMIT;
+  return window.matchMedia?.('(max-width: 768px)')?.matches
+    ? MOBILE_PROP_RENDER_LIMIT
+    : DESKTOP_PROP_RENDER_LIMIT;
+}
 // Movement compares prop snapshots taken this session, so it fills in
 // after the first few refreshes.
 const SORT_OPTIONS = [
@@ -419,6 +429,7 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
   // on the full board by sport and game, then can toggle to Best Props.
   const [viewMode, setViewMode] = useState('all');
   const [expandedPlayers, setExpandedPlayers] = useState(() => new Set());
+  const [propRenderLimit, setPropRenderLimit] = useState(initialPropRenderLimit);
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   const [pendingModal, setPendingModal] = useState(null);
   const [logoMap, setLogoMap] = useState({});
@@ -586,26 +597,38 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
     });
   }, [sportScopedPlayers, propSearch, activeMarket]);
 
+  useEffect(() => {
+    setPropRenderLimit(initialPropRenderLimit());
+  }, [activeSport, activeMarket, propSearch, sortBy]);
+
   const sections = useMemo(() => {
     const bySport = new Map();
     filteredPlayers.forEach(player => {
       if (!bySport.has(player.sport)) bySport.set(player.sport, []);
       bySport.get(player.sport).push(player);
     });
-    return Array.from(bySport.entries()).map(([sport, sportPlayers]) => {
+    let remaining = propRenderLimit;
+    return Array.from(bySport.entries()).flatMap(([sport, sportPlayers]) => {
       const ordered = sortBy === 'default'
         ? [...sportPlayers].sort((a, b) => (TIMING_ORDER[a.timing.key] ?? 2) - (TIMING_ORDER[b.timing.key] ?? 2))
         : sortPlayers(sportPlayers, sortBy);
-      const visible = isPro ? ordered : ordered.slice(0, FREE_PLAYERS_LIMIT);
-      return {
+      const visible = isPro ? ordered.slice(0, remaining) : ordered.slice(0, FREE_PLAYERS_LIMIT);
+      if (isPro) remaining -= visible.length;
+      if (visible.length === 0 && isPro) return [];
+      return [{
         sport,
         total: sportPlayers.length,
         visible,
         locked: isPro ? [] : ordered.slice(FREE_PLAYERS_LIMIT),
         gameGroups: sortBy === 'default' ? groupByGame(visible) : null,
-      };
+      }];
     });
-  }, [filteredPlayers, sortBy, isPro]);
+  }, [filteredPlayers, sortBy, isPro, propRenderLimit]);
+
+  const visiblePlayerCount = useMemo(
+    () => sections.reduce((sum, section) => sum + section.visible.length, 0),
+    [sections]
+  );
 
   const propAlerts = useMemo(
     () => buildPropAlerts(filteredPlayers.filter(player => player.timing.key !== 'final'), propHistory, propClosingLines),
@@ -848,6 +871,15 @@ export default function PropsView({ playerProps = [], games = [], loading, propH
                 </section>
               );
             })}
+            {isPro && visiblePlayerCount < filteredPlayers.length && (
+              <button
+                type="button"
+                onClick={() => setPropRenderLimit(limit => limit + PROP_RENDER_STEP)}
+                style={{ alignSelf: 'center', padding: '10px 18px', borderRadius: '8px', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.35)', color: '#c7d2fe', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: MONO }}
+              >
+                Load more props · showing {visiblePlayerCount} of {filteredPlayers.length}
+              </button>
+            )}
           </div>
         )}
       </>}

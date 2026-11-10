@@ -129,10 +129,11 @@ export function findBestOdds(bookmakers, marketKey, outcomeName) {
     return best > -Infinity ? { price: best, book: bestBook } : null;
 }
 
-function americanOddsCost(odds) {
+function americanOddsProfitPerUnit(odds) {
     if (odds === undefined || odds === null || Number.isNaN(Number(odds))) return null;
     const price = Number(odds);
-    return price < 0 ? Math.abs(price) - 100 : 100 - price;
+    if (price === 0) return null;
+    return price > 0 ? price / 100 : 100 / Math.abs(price);
 }
 
 function marketLabel(marketKey) {
@@ -177,7 +178,7 @@ export function buildLineShoppingOpportunities(bookmakers, marketKeys = ['h2h', 
                     book: book.key,
                     bookTitle: book.title || book.key,
                     price: Number(outcome.price),
-                    cost: americanOddsCost(outcome.price),
+                    profitPerUnit: americanOddsProfitPerUnit(outcome.price),
                 });
             });
         });
@@ -186,10 +187,14 @@ export function buildLineShoppingOpportunities(bookmakers, marketKeys = ['h2h', 
     return Array.from(grouped.values())
         .filter(item => item.prices.length >= 2)
         .map(item => {
-            const prices = item.prices.filter(price => price.cost !== null);
-            const best = prices.reduce((winner, price) => price.cost < winner.cost ? price : winner, prices[0]);
-            const worst = prices.reduce((loser, price) => price.cost > loser.cost ? price : loser, prices[0]);
-            const centsSaved = Math.max(0, Math.round((worst.cost - best.cost) * 10) / 10);
+            const prices = item.prices.filter(price => price.profitPerUnit !== null);
+            if (prices.length < 2) return null;
+            const best = prices.reduce((winner, price) => price.profitPerUnit > winner.profitPerUnit ? price : winner, prices[0]);
+            const worst = prices.reduce((loser, price) => price.profitPerUnit < loser.profitPerUnit ? price : loser, prices[0]);
+            // “Cents saved” means the extra net profit returned per $1 staked.
+            // American odds are not a linear cents scale: -4,000 vs -100,000
+            // is only about 2.4 cents of payout value, not a 96,000-cent gap.
+            const centsSaved = Math.max(0, Math.round((best.profitPerUnit - worst.profitPerUnit) * 1000) / 10);
             return {
                 ...item,
                 label: formatOutcomeLabel(item),
@@ -199,6 +204,7 @@ export function buildLineShoppingOpportunities(bookmakers, marketKeys = ['h2h', 
                 bookCount: prices.length,
             };
         })
+        .filter(Boolean)
         .filter(item => item.centsSaved > 0)
         .sort((a, b) => b.centsSaved - a.centsSaved);
 }
