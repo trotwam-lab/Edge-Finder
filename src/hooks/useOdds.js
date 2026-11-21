@@ -73,6 +73,15 @@ async function getAuthHeaders() {
   }
 }
 
+// Remove games of freshly refreshed sports that their feed no longer lists.
+// Other sports' games are untouched (they weren't re-fetched). Returns `prev`
+// itself when nothing was removed, so React can skip the update.
+export function dropEndedGames(prev, refreshedSportKeys, freshGames) {
+  const listed = new Set(freshGames.map(g => g.id));
+  const next = prev.filter(g => !refreshedSportKeys.has(g.sport_key) || listed.has(g.id));
+  return next.length === prev.length ? prev : next;
+}
+
 function findScoreForGame(scoresData = [], game) {
   return scoresData.find(score => score?.id === game?.id) || scoresData.find(score => scoreMatchesGame(score, game));
 }
@@ -256,11 +265,15 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
         }
   }, []);
 
+  // `complete` is false when the server answered from stale cache or with an
+  // empty stand-in for an upstream failure — that reply can't be taken as
+  // proof that a game has left the board.
   const fetchOdds = useCallback(async (sport) => {
         const headers = await getAuthHeaders();
         const res = await fetch(`/api/odds?sport=${sport}&markets=h2h,spreads,totals`, { headers });
         if (!res.ok) throw new Error(`Odds API Error: ${res.status}`);
-        return res.json();
+        const data = await res.json();
+        return { data, complete: !res.headers.get('X-EdgeFinder-Degraded') };
   }, []);
 
   const fetchScores = useCallback(async (sport) => {
@@ -468,12 +481,12 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
 
           const sportResults = await Promise.all(sportsToLoad.map(async ([sportName, sportKey]) => {
                     try {
-                                const oddsData = await fetchOdds(sportKey);
+                                const { data: oddsData, complete } = await fetchOdds(sportKey);
                                 if (!Array.isArray(oddsData) || oddsData.length === 0) {
                                         // No games listed — skip scores/injuries/live-status so an
                                         // idle sport costs one request instead of four.
                                         setSportLastUpdated(prev => ({ ...prev, [sportName]: Date.now() }));
-                                        return { games: [], injuriesByTeam: {} };
+                                        return { games: [], injuriesByTeam: {}, sportKey, complete: complete && Array.isArray(oddsData) };
                                 }
                                 // First paint: show the odds as soon as this sport has
                                 // them; scores/injuries/live status fill in right after.
@@ -525,14 +538,24 @@ export function useOdds({ filter, enabledSports = null, refreshInterval: default
                       mergeGames(gamesWithScores);
                       setInjuries(prev => ({ ...prev, ...sportInjuriesByTeam }));
                       setLoading(false);
-                      return { games: gamesWithScores, injuriesByTeam: sportInjuriesByTeam };
+                      return { games: gamesWithScores, injuriesByTeam: sportInjuriesByTeam, sportKey, complete };
                     } catch (e) {
                                 console.warn(`Failed to load ${sportName}:`, e.message);
-                                return { games: [], injuriesByTeam: {} };
+                                return { games: [], injuriesByTeam: {}, sportKey, complete: false };
                     }
           }));
 
           const newGames = sportResults.flatMap(result => result.games);
+
+          // The odds feed drops a game once it's over. mergeGames only adds and
+          // replaces, so without this a finished game stayed on the board with
+          // its last ESPN status — "LIVE" with a frozen score — and kept the
+          // whole board on the 30s live cadence for the rest of the session.
+          // Only sports that answered with a complete, fresh list are pruned.
+          const refreshedSports = new Set(sportResults.filter(r => r.complete).map(r => r.sportKey));
+          if (refreshedSports.size) {
+                  setGames(prev => dropEndedGames(prev, refreshedSports, newGames));
+          }
 
           // The saved board was only a placeholder: once live data is in, drop
           // any of its games that are no longer on the feed.
