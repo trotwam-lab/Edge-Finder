@@ -27,7 +27,16 @@ describe('odds route', () => {
   afterEach(() => { delete process.env.ODDS_API_KEY; });
 
   it('rejects market lists that could pull extra paid markets or inject params', async () => {
-    for (const query of [{ sport: 'baseball_mlb', markets: 'h2h&apiKey=x' }, { sport: '../x' }, { sport: 'baseball_mlb', markets: 'a,b,c,d,e,f,g' }]) {
+    for (const query of [
+      { sport: 'baseball_mlb', markets: 'h2h&apiKey=x' },
+      { sport: '../x' },
+      { sport: 'baseball_mlb', markets: 'a,b,c,d,e,f,g' },
+      // Well-formed but not a board market: each would be its own uncached,
+      // multi-credit upstream call.
+      { sport: 'baseball_mlb', markets: 'h2h,player_points' },
+      { sport: 'baseball_mlb', markets: 'alternate_spreads' },
+      { sport: 'baseball_mlb', markets: '' },
+    ]) {
       const res = fakeRes();
       await handler(req(query), res);
       expect(res.statusCode).toBe(400);
@@ -44,6 +53,14 @@ describe('odds route', () => {
     const second = fakeRes();
     await handler(req({ sport: 'baseball_mlb' }), second);
     expect(second.headers['X-Cache']).toBe('HIT');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one cache entry across orderings of the same markets', async () => {
+    await handler(req({ sport: 'baseball_mlb', markets: 'h2h,spreads,totals' }), fakeRes());
+    const reordered = fakeRes();
+    await handler(req({ sport: 'baseball_mlb', markets: 'totals,h2h,spreads,h2h' }), reordered);
+    expect(reordered.headers['X-Cache']).toBe('HIT');
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
