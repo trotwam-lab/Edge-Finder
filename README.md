@@ -34,7 +34,7 @@ Bets logged from the board (basketball, football, baseball and hockey moneylines
 - **Public anchors.** Once a day the `Ledger upkeep` workflow commits a fingerprint of every ledger's latest entry to the `ledger-anchors` branch of this public repo. Record pages check themselves against `anchors/latest.json` fetched straight from GitHub, so history before an anchor can't be rewritten unnoticed, even by EdgeFinder.
 - **Closing lines on a schedule.** The same workflow asks `/api/ledger-maintenance?task=closes` every 10 minutes to record closes for verified bets starting soon. It only fetches odds for sports that need them.
 
-**To switch on the scheduled jobs:** in GitHub → Settings → Secrets and variables → Actions, add the variable `EDGEFINDER_BASE_URL` (the production site URL). Optionally add a secret `LEDGER_CRON_SECRET`, and put the same value in Vercel's environment variables. Until the URL is set, both jobs skip cleanly.
+**To switch on the scheduled jobs:** in GitHub → Settings → Secrets and variables → Actions, add the variable `EDGEFINDER_BASE_URL` (the production site URL). Also add a secret `LEDGER_CRON_SECRET` and put the same value in Vercel's environment variables: the closing-line and alert tasks refuse requests without it (the daily anchor doesn't need it). Until the URL is set, both jobs skip cleanly.
 
 Storage is `bet_ledger/{uid}` (+ `events`), `ledger_open` and `ledger_handles`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
 

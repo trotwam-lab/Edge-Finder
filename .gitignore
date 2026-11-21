@@ -23,3 +23,6 @@ test-local.html
 .env.check
 .env.temp
 .env.verify
+
+# Firebase emulator logs (written by `npm run test:rules`)
+*-debug.log
