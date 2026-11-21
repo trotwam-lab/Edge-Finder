@@ -38,6 +38,13 @@ Bets logged from the board (basketball, football, baseball and hockey moneylines
 
 Storage is `bet_ledger/{uid}` (+ `events`), `ledger_open` and `ledger_handles`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
 
+## Subscriptions (Stripe)
+`/api/stripe-webhook` keeps each account's plan (`users/{uid}`) in step with Stripe. Every event re-reads the account's subscriptions from Stripe, so late or out-of-order events can't leave a stale plan (`api/_subscriptions.js`). An account stays Pro while its subscription is `active`, `trialing` or `past_due` (Stripe still retrying a failed renewal) and drops to Free once Stripe ends it (`canceled`, `unpaid`, `paused`, …).
+
+In Stripe → Developers → Webhooks, the endpoint must send **`checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`** (`customer.subscription.paused`/`resumed` are handled too). Without `updated`, a renewal that fails for good is only caught by the daily check below.
+
+Once a day the `Ledger upkeep` workflow calls `/api/ledger-maintenance?task=subscriptions`, which re-checks every account linked to a Stripe customer — a safety net for missed webhooks. Accounts with no Stripe customer (complimentary or manual grants) are never touched.
+
 ## Background line-move alerts (web push)
 Users can turn on **Settings → Alerts when EdgeFinder is closed**. Every 10 minutes the `Ledger upkeep` workflow calls `/api/ledger-maintenance?task=alerts`. For each subscriber it checks their starred pregame games and sends one notification when the median spread across books moves 1+ point or the total 1.5+ points since the last alert. The first check only records a starting line. Dead device subscriptions are removed automatically. Storage is `push_subscriptions/{uid}`, Admin-only.
 

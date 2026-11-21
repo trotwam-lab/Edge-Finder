@@ -9,14 +9,20 @@
 //                      bets. Protected by LEDGER_CRON_SECRET.
 // POST ?task=alerts  → sends background line-move alerts for watched games
 //                      (web push; off until VAPID keys are configured).
+// POST ?task=subscriptions → daily: re-checks every account linked to a Stripe
+//                      customer against Stripe, so a subscription that lapsed
+//                      without a webhook still loses Pro (and a missed
+//                      checkout webhook still grants it).
 
 import { timingSafeEqual } from 'node:crypto';
+import Stripe from 'stripe';
 import { getAdminDb } from './_firebaseAdmin.js';
 import { guardRequest } from './_http.js';
 import { loadSportOdds } from './_oddsFeed.js';
 import { buildProbIndex } from './_consensus.js';
 import { computeAnchor, sportsNeedingCloses, updateLedgerCloses } from './_ledger.js';
 import { runLineAlerts } from './_alerts.js';
+import { reconcileSubscriptions } from './_subscriptions.js';
 
 const MAX_SPORTS_PER_RUN = 10;
 const anchorCache = { data: null, ts: 0 };
@@ -79,6 +85,20 @@ export default async function handler(req, res, deps = {}) {
     } catch (error) {
       console.error('line alerts failed:', error.message);
       return res.status(500).json({ error: 'Alert run failed.' });
+    }
+  }
+
+  if (task === 'subscriptions' && req.method === 'POST') {
+    if (!authorized(req)) return res.status(401).json({ error: 'Unauthorized' });
+    if (!db) return res.status(200).json({ available: false });
+    const stripe = deps.stripe || (process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null);
+    if (!stripe) return res.status(200).json({ available: false });
+    try {
+      const result = await reconcileSubscriptions({ stripe, db });
+      return res.status(200).json({ ok: true, ...result });
+    } catch (error) {
+      console.error('subscription reconcile failed:', error.message);
+      return res.status(500).json({ error: 'Subscription check failed.' });
     }
   }
 

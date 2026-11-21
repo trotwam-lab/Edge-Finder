@@ -1,5 +1,6 @@
 import { getAuth } from 'firebase-admin/auth';
 import { getAdminApp, getAdminDb, getTokenVerifierApp } from './_firebaseAdmin.js';
+import { PRO_STATUSES } from './_subscriptions.js';
 import Stripe from 'stripe';
 
 export const ADMIN_EMAILS = ['admin@edgefinderdaily.com', 'wamelite@yahoo.com', 'wamclawd@gmail.com'];
@@ -145,8 +146,9 @@ async function getTierFromStripe(email) {
       limit: 10,
     });
 
+    // Same rule as the webhook (see PRO_STATUSES in _subscriptions.js).
     const activeSubscription = subscriptions.data.find(subscription =>
-      ['active', 'trialing'].includes(subscription.status)
+      PRO_STATUSES.includes(subscription.status)
     );
 
     return activeSubscription
