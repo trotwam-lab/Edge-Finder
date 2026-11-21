@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, getDoc, getDocs, setDoc, onSnapshot, collection } from 'firebase/firestore';
 import { db } from '../firestore.js';
 import { useAuth } from '../AuthGate.jsx';
+import { canonicalJson } from '../utils/ledger.js';
+
+const SAVE_DEBOUNCE_MS = 1500;
 
 /**
  * useCloudBets - A hook that syncs bets to Firebase Firestore while keeping localStorage as a fast cache.
@@ -100,13 +103,28 @@ function writeArchive(key, bets) {
 // Union bets from cloud/local/archive by id. Never drops a known bet — a
 // tombstone (`deleted: true`) is how we represent intentional removal so that
 // a bad write can't silently erase data.
-function unionBets(...lists) {
+export function unionBets(...lists) {
   const map = new Map();
   lists.forEach(list => (list || []).forEach(bet => {
     if (!bet || bet.id == null) return;
     map.set(bet.id, mergePair(map.get(bet.id), bet));
   }));
   return Array.from(map.values()).sort((a, b) => (b.id || 0) - (a.id || 0));
+}
+
+// Same data, regardless of key order. Firestore returns map keys sorted, so a
+// plain JSON or identity comparison would call every cloud copy "changed".
+export function sameBets(a, b) {
+  return canonicalJson(a || []) === canonicalJson(b || []);
+}
+
+// Merge other copies into the current list, but hand back the current array
+// itself when they add nothing. A fresh-but-identical array still counts as a
+// state change in React, which re-ran the save effect: every save echoed back
+// through onSnapshot as "new" data and triggered the next save, forever.
+export function mergeInto(prev, ...lists) {
+  const merged = unionBets(prev, ...lists);
+  return sameBets(merged, prev) ? prev : merged;
 }
 
 // Heuristic: does this value look like a bet? Bets always carry an id and at
@@ -199,6 +217,12 @@ export function useCloudBets(key, defaultValue = []) {
   // Debounce timer for Firestore writes
   const debounceTimer = useRef(null);
 
+  // Canonical JSON of the bets Firestore is known to hold: what we loaded,
+  // last received from another device, or last wrote. A save is skipped when
+  // the current list matches it, so nothing is written unless something
+  // actually changed.
+  const cloudJsonRef = useRef(null);
+
   // Always-current snapshot of state, so cleanup handlers can flush the
   // latest data even if React's closure is stale.
   const latestStateRef = useRef(state);
@@ -211,38 +235,48 @@ export function useCloudBets(key, defaultValue = []) {
   // Track previous user state to detect login/logout
   const prevUserRef = useRef(null);
 
-  // Helper to merge bets — union by id, preserving the most complete record.
-  // Deletes propagate via tombstones (deleted:true) carried in mergePair.
-  const mergeBets = useCallback((localBets, cloudBets) => {
-    return unionBets(localBets, cloudBets);
-  }, []);
-
-  // Synchronously flush whatever is in latestStateRef to Firestore. Used by
-  // unmount cleanup and pagehide handlers so a tab switch or page close
-  // never loses a freshly-added bet.
-  const flushToFirestore = useCallback(() => {
-    const u = userRef.current;
-    if (!u) return;
-    if (!hasLoadedFromFirestore.current) return;
-    try {
-      const userId = u.uid;
-      const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
-      // Fire-and-forget; we don't await because this may be called from
-      // synchronous unmount paths.
-      setDoc(betsDocRef, {
-        bets: latestStateRef.current,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.error('Flush write failed:', err));
-    } catch (err) {
-      console.error('Flush failed:', err);
+  // Write the latest bets to Firestore now, unless the cloud already has
+  // exactly this data. Also used by unmount and pagehide paths so a tab
+  // switch or page close never loses a freshly-added bet.
+  const saveNow = useCallback(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
     }
-  }, []);
+    const u = userRef.current;
+    if (!u || !hasLoadedFromFirestore.current) return;
+    const bets = latestStateRef.current;
+    const json = canonicalJson(bets);
+    if (json === cloudJsonRef.current) return;
+    cloudJsonRef.current = json;
+    try {
+      // Fire-and-forget; this may run from synchronous unmount paths.
+      setDoc(doc(db, 'users', u.uid, 'data', 'bets'), {
+        bets,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(err => {
+        console.error('Error saving bets to Firestore:', err);
+        // Not saved after all: let the next change or tab hide retry.
+        if (cloudJsonRef.current === json) cloudJsonRef.current = null;
+      });
+      maybeWriteDailySnapshot(u.uid, key, bets);
+    } catch (err) {
+      console.error('Error saving bets to Firestore:', err);
+      cloudJsonRef.current = null;
+    }
+  }, [key]);
+
+  const scheduleSave = useCallback(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(saveNow, SAVE_DEBOUNCE_MS);
+  }, [saveNow]);
 
   // Effect 1: Load from Firestore when user logs in
   useEffect(() => {
     // If no user, reset the load flag but keep localStorage data
     if (!user) {
       hasLoadedFromFirestore.current = false;
+      cloudJsonRef.current = null;
       prevUserRef.current = null;
       return;
     }
@@ -280,31 +314,19 @@ export function useCloudBets(key, defaultValue = []) {
 
         const cloudBets = docSnap.exists() ? (docSnap.data().bets || defaultValue) : [];
 
-// Merge the latest in-memory state too. This prevents a race where a
+        // Merge the latest in-memory state too. This prevents a race where a
         // user adds a bet immediately after opening the tracker, but before
         // the first Firestore read finishes; without `prev`, that fresh bet
         // can be overwritten by an older local/cloud snapshot. Including the
         // archive and snapshots also protects against old truncation bugs.
-        let mergedBets = [];
-        setState(prev => {
-          mergedBets = unionBets(prev, localBets, archiveBets, cloudBets, snapshotBets);
-          return mergedBets;
-        });
-
-        // If the merge produced bets the cloud doesn't have yet, write back
-        // so other devices and future loads see the union. Also seed Firestore
-        // when no live doc exists yet.
-        const cloudIds = new Set(cloudBets.map(b => b.id));
-        const hasClientOnlyBets = mergedBets.some(b => !cloudIds.has(b.id));
-        if ((hasClientOnlyBets || !docSnap.exists()) && mergedBets.length > 0) {
-          setDoc(betsDocRef, {
-            bets: mergedBets,
-            updatedAt: new Date().toISOString()
-          }, { merge: true })
-            .catch(err => console.error('Error saving merged bets to Firestore:', err));
-        }
-
+        setState(prev => mergeInto(prev, localBets, archiveBets, cloudBets, snapshotBets));
+        cloudJsonRef.current = canonicalJson(cloudBets);
         hasLoadedFromFirestore.current = true;
+
+        // If the merge holds anything the cloud copy lacks (including a
+        // first-ever doc), write the union back so other devices and future
+        // loads see it. saveNow skips the write when they already match.
+        scheduleSave();
       })
       .catch(err => {
         console.error('Error loading bets from Firestore:', err);
@@ -321,9 +343,17 @@ export function useCloudBets(key, defaultValue = []) {
     const unsubscribe = onSnapshot(
       betsDocRef,
       (docSnap) => {
+        // Our own writes echo back at once as a local snapshot. They hold
+        // nothing new, and reacting to them is what turned every save into
+        // the next save.
+        if (docSnap.metadata.hasPendingWrites) return;
         if (!docSnap.exists() || !hasLoadedFromFirestore.current) return;
         const cloudBets = docSnap.data().bets || defaultValue;
-        setState(prev => unionBets(prev, cloudBets));
+        cloudJsonRef.current = canonicalJson(cloudBets);
+        setState(prev => mergeInto(prev, cloudBets));
+        // Another device's copy may be missing bets this one has; if so,
+        // write the union back (skipped when they match).
+        scheduleSave();
       },
       (err) => {
         console.error('Firestore snapshot error:', err);
@@ -332,7 +362,7 @@ export function useCloudBets(key, defaultValue = []) {
 
     return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, key, mergeBets]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
+  }, [user, key, scheduleSave]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
 
   // Durable setter: persist to localStorage/archive in the same turn as the
   // state update. This prevents the "bet shows, then disappears when I switch
@@ -361,58 +391,27 @@ export function useCloudBets(key, defaultValue = []) {
     writeArchive(key, state);
   }, [key, state]);
 
-  // Effect 3: Debounced save to Firestore, with a hard guarantee that any
-  // pending write is flushed when the component unmounts (e.g. user switches
-  // tabs in the app) or the tab is hidden / page is being unloaded. Without
-  // this flush, a tab switch within the 2s debounce window would silently
-  // drop the cloud write and the bet would appear to vanish on return.
+  // Effect 3: Debounced save to Firestore. Changes inside the debounce window
+  // just push the timer back; they must not flush, or every edit is written
+  // twice (the stale list first, then the new one).
   useEffect(() => {
-    if (!user) return;
-    if (!hasLoadedFromFirestore.current) return;
+    if (!user || !hasLoadedFromFirestore.current) return;
+    scheduleSave();
+  }, [state, user, scheduleSave]);
 
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    debounceTimer.current = setTimeout(() => {
-      const userId = user.uid;
-      const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
-
-      setDoc(betsDocRef, {
-        bets: state,
-        updatedAt: new Date().toISOString()
-      }, { merge: true })
-        .catch(err => console.error('Error saving bets to Firestore:', err));
-
-      maybeWriteDailySnapshot(userId, key, state);
-      debounceTimer.current = null;
-    }, 1500);
-
-    return () => {
-      // If a debounced write is still pending when this effect tears down
-      // (state changed, or component is unmounting), flush it immediately
-      // using the latest state. This is the core fix for "bet disappears
-      // when I switch tabs right after logging it" — the previous code
-      // simply cleared the timer and never wrote to Firestore.
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-        flushToFirestore();
-      }
-    };
-  }, [state, user, key, flushToFirestore]);
+  // Hard guarantee that a pending write is flushed when the component
+  // unmounts. Without it, leaving within the debounce window would silently
+  // drop the cloud write and the bet would appear to vanish on return.
+  useEffect(() => () => {
+    if (debounceTimer.current) saveNow();
+  }, [saveNow]);
 
   // Effect 4: Flush on tab hide / page unload. Browsers don't always fire
   // unmount cleanup before tearing down the page, so we listen for
   // visibilitychange and pagehide as a belt-and-suspenders safeguard.
+  // saveNow writes only if something changed since the last save.
   useEffect(() => {
-    const onHide = () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-      }
-      flushToFirestore();
-    };
+    const onHide = () => saveNow();
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') onHide();
     };
@@ -424,7 +423,7 @@ export function useCloudBets(key, defaultValue = []) {
       window.removeEventListener('beforeunload', onHide);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [flushToFirestore]);
+  }, [saveNow]);
 
   return [state, setDurableState];
 }
