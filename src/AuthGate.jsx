@@ -68,13 +68,20 @@ export function AuthProvider({ children }) {
   const [tier, setTier] = useState('free'); // Default to free tier
   const [loading, setLoading] = useState(true);
 
-  // refreshTier — re-fetches the user's tier from the API
-  // Call this after a successful Stripe checkout to update the UI
+  // Apply a tier answer only if the same account is still signed in — a slow
+  // reply must not hand Pro to whoever is signed in (or nobody) by then.
+  const applyTier = (uid, userTier) => {
+    if (auth.currentUser?.uid === uid) setTier(userTier);
+  };
+
+  // refreshTier — re-fetches the user's tier from the API and returns it.
+  // Call this after a successful Stripe checkout to update the UI.
   const refreshTier = async () => {
-    if (user?.email || user?.uid) {
-      const userTier = await getUserTier();
-      setTier(userTier);
-    }
+    const uid = auth.currentUser?.uid;
+    if (!uid) return 'free';
+    const userTier = await getUserTier();
+    applyTier(uid, userTier);
+    return userTier;
   };
 
   useEffect(() => {
@@ -84,7 +91,7 @@ export function AuthProvider({ children }) {
       if (u) {
         // User is logged in — check their subscription tier using Firebase UID first, then email fallback
         const userTier = await getUserTier();
-        setTier(userTier);
+        applyTier(u.uid, userTier);
       } else {
         // User logged out — reset to free
         setTier('free');

@@ -173,9 +173,9 @@ export function resetTierCache() {
   tierCache.clear();
 }
 
-async function lookupPlanTier(decoded, email, tokenEmail) {
+async function lookupPlanTier(decoded, email, tokenEmail, { fresh = false } = {}) {
   const cacheKey = `${decoded.uid}|${email}`;
-  const hit = tierCache.get(cacheKey);
+  const hit = fresh ? null : tierCache.get(cacheKey);
   if (hit && Date.now() - hit.ts < TIER_CACHE_TTL_MS) return hit.value;
 
   let value = null;
@@ -205,7 +205,10 @@ async function lookupPlanTier(decoded, email, tokenEmail) {
   return value;
 }
 
-export async function getRequestTier(req) {
+// `fresh: true` skips the remembered plan (it still refreshes it) — for the
+// tier check the app makes on load and right after checkout, where a
+// "free" remembered from moments before the purchase would be wrong.
+export async function getRequestTier(req, { fresh = false } = {}) {
   try {
     const token = getBearerToken(req);
     if (!token) {
@@ -234,7 +237,7 @@ export async function getRequestTier(req) {
       return { tier: 'pro', source: 'complimentary', uid: decoded.uid, email };
     }
 
-    return await lookupPlanTier(decoded, email, tokenEmail);
+    return await lookupPlanTier(decoded, email, tokenEmail, { fresh });
   } catch (error) {
     // SECURITY: when token verification fails, the X-EdgeFinder-Email header
     // is the only identity left and it is attacker-controlled — recovering
