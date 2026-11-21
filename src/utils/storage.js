@@ -2,13 +2,18 @@
 // localStorage can throw (Safari private mode, a full quota, blocked site
 // data), so every access goes through these helpers.
 
-// The user's own records — never removed by "reset" actions.
+// The user's own records — never removed by "reset" actions. Bets are stored
+// per account as `<key>:<uid>` (see useCloudBets), which is covered too.
 export const PROTECTED_KEYS = [
   'edgefinder_bets',
   'edgefinder_bets_archive',
   'edgefinder_bets_snapshot_date',
   'edgefinder_bankroll_settings',
 ];
+
+export function isProtectedKey(key) {
+  return PROTECTED_KEYS.some(p => key === p || key.startsWith(`${p}:`));
+}
 
 function store(storage) {
   if (storage) return storage;
@@ -56,7 +61,7 @@ export function clearCachedData(storage) {
     const keys = [];
     for (let i = 0; i < target.length; i += 1) keys.push(target.key(i));
     keys.forEach(key => {
-      if (!key || !key.startsWith('edgefinder_') || PROTECTED_KEYS.includes(key)) return;
+      if (!key || !key.startsWith('edgefinder_') || isProtectedKey(key)) return;
       target.removeItem(key);
       removed.push(key);
     });

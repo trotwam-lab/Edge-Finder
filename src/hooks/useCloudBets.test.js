@@ -38,3 +38,57 @@ describe('useCloudBets merge helpers', () => {
     expect(unionBets([bet(1)], [bet(2)], null).map(b => b.id)).toEqual([2, 1]);
   });
 });
+
+describe('per-account bet storage', () => {
+  function installStorage(initial = {}) {
+    const map = new Map(Object.entries(initial));
+    globalThis.localStorage = {
+      get length() { return map.size; },
+      key: (i) => Array.from(map.keys())[i] ?? null,
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => { map.set(k, String(v)); },
+      removeItem: (k) => { map.delete(k); },
+    };
+    return map;
+  }
+  const read = (map, k) => JSON.parse(map.get(k) || 'null');
+
+  it('moves device-wide bets to the first account that signs in, then removes them', async () => {
+    const { claimLegacyBets, betStorageKeys } = await import('./useCloudBets.js');
+    const map = installStorage({
+      edgefinder_bets: JSON.stringify([bet(2)]),
+      edgefinder_bets_archive: JSON.stringify([bet(1), bet(2)]),
+      edgefinder_bets_snapshot_date: '2026-11-20',
+    });
+    const claimed = claimLegacyBets('edgefinder_bets', 'uidA');
+    expect(claimed.map(b => b.id)).toEqual([2, 1]);
+    const keys = betStorageKeys('edgefinder_bets', 'uidA');
+    expect(read(map, keys.live).map(b => b.id)).toEqual([2]);
+    expect(read(map, keys.archive).map(b => b.id)).toEqual([2, 1]);
+    expect(map.get(keys.snapshotDate)).toBe('2026-11-20');
+    expect(map.has('edgefinder_bets')).toBe(false);
+    expect(map.has('edgefinder_bets_archive')).toBe(false);
+    // The next account on this device gets nothing.
+    expect(claimLegacyBets('edgefinder_bets', 'uidB')).toEqual([]);
+    expect(map.has(betStorageKeys('edgefinder_bets', 'uidB').live)).toBe(false);
+  });
+
+  it('keeps the old keys when the new ones cannot be written', async () => {
+    const { claimLegacyBets } = await import('./useCloudBets.js');
+    const map = installStorage({ edgefinder_bets: JSON.stringify([bet(1)]) });
+    globalThis.localStorage.setItem = () => { throw new Error('quota'); };
+    expect(claimLegacyBets('edgefinder_bets', 'uidA').map(b => b.id)).toEqual([1]);
+    expect(map.has('edgefinder_bets')).toBe(true);
+  });
+
+  it('recovery scan ignores other accounts on the same device', async () => {
+    const { scanLocalStorageForBets } = await import('./useCloudBets.js');
+    installStorage({
+      'edgefinder_bets:uidAAAA': JSON.stringify([bet(1)]),
+      'edgefinder_bets_archive:uidAAAA': JSON.stringify([bet(2)]),
+      'edgefinder_bets:uidBBBB': JSON.stringify([bet(3)]),
+    });
+    expect(scanLocalStorageForBets('uidAAAA').map(b => b.id)).toEqual([2, 1]);
+    expect(scanLocalStorageForBets('uidBBBB').map(b => b.id)).toEqual([3]);
+  });
+});

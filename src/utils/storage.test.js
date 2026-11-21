@@ -25,6 +25,15 @@ describe('storage helpers', () => {
     expect(s.getItem('other_app_key')).toBe('x');
   });
 
+  it('reset keeps per-account bet keys too', () => {
+    const s = memoryStorage({
+      'edgefinder_bets:uidA': '[1]', 'edgefinder_bets_archive:uidA': '[1]', 'edgefinder_bets_snapshot_date:uidA': '2026-11-21',
+      'edgefinder_bets:uidB': '[2]', edgefinder_game_lines: '{}',
+    });
+    expect(clearCachedData(s)).toEqual(['edgefinder_game_lines']);
+    expect(s.map.size).toBe(4);
+  });
+
   it('survives storage that throws', () => {
     const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('quota'); }, get length() { throw new Error('x'); } };
     expect(readJSON('k', 'fallback', broken)).toBe('fallback');

@@ -142,5 +142,8 @@ export default function AuthGate({ children }) {
     );
   }
 
-  return children;
+  // Keyed by account: if a different account ever signs in without passing
+  // through the signed-out screen, the whole app starts fresh for it, so no
+  // in-memory state (bets, verified record, parlay slip) carries over.
+  return <React.Fragment key={user.uid}>{children}</React.Fragment>;
 }
