@@ -561,7 +561,7 @@ export default function BetTracker({ pendingBet, onBetConsumed, bets, setBets, l
   // back in. Only ever adds — never overwrites or removes.
   async function scanAndRecover() {
     try {
-      const local = scanLocalStorageForBets();
+      const local = scanLocalStorageForBets(user?.uid);
       const cloud = user?.uid ? await loadCloudSnapshots(user.uid) : [];
       const knownIds = new Set(bets.map(b => b.id));
       const incoming = [...local, ...cloud].filter(b => b && b.id != null);

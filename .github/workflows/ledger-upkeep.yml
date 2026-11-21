@@ -1,6 +1,7 @@
 name: Ledger upkeep
 
-# Two jobs for the verified bet ledger:
+# Scheduled upkeep. Two jobs for the verified bet ledger, plus a daily
+# subscription check (see "subscriptions" below):
 #  * closes — every 10 minutes, record closing lines for verified bets that
 #    start soon (the endpoint only fetches odds for sports that need it), and
 #    send background line-move alerts for watched games (web push).
@@ -23,7 +24,7 @@ on:
       task:
         description: Which job to run
         type: choice
-        options: [closes, anchor]
+        options: [closes, anchor, subscriptions]
         default: anchor
 
 permissions:
@@ -47,6 +48,24 @@ jobs:
             -H "Authorization: Bearer ${CRON_SECRET}"
           # Background line-move alerts (no-op until VAPID keys are set on Vercel).
           curl -fsS --max-time 60 -X POST "${BASE_URL%/}/api/ledger-maintenance?task=alerts" \
+            -H "Authorization: Bearer ${CRON_SECRET}"
+
+  # Daily: re-check every Stripe-linked account against Stripe, so a
+  # subscription that lapsed without a webhook still loses Pro.
+  subscriptions:
+    if: github.event.schedule == '17 6 * * *' || inputs.task == 'subscriptions'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency: { group: subscriptions, cancel-in-progress: false }
+    steps:
+      - name: Reconcile subscriptions with Stripe
+        env:
+          BASE_URL: ${{ vars.EDGEFINDER_BASE_URL }}
+          CRON_SECRET: ${{ secrets.LEDGER_CRON_SECRET }}
+        run: |
+          if [ -z "$BASE_URL" ]; then echo "::notice::EDGEFINDER_BASE_URL is not set — skipping."; exit 0; fi
+          if [ -z "$CRON_SECRET" ]; then echo "::error::LEDGER_CRON_SECRET is not set."; exit 1; fi
+          curl -fsS --max-time 120 -X POST "${BASE_URL%/}/api/ledger-maintenance?task=subscriptions" \
             -H "Authorization: Bearer ${CRON_SECRET}"
 
   anchor:

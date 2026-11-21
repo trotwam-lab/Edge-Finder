@@ -34,9 +34,16 @@ Bets logged from the board (basketball, football, baseball and hockey moneylines
 - **Public anchors.** Once a day the `Ledger upkeep` workflow commits a fingerprint of every ledger's latest entry to the `ledger-anchors` branch of this public repo. Record pages check themselves against `anchors/latest.json` fetched straight from GitHub, so history before an anchor can't be rewritten unnoticed, even by EdgeFinder.
 - **Closing lines on a schedule.** The same workflow asks `/api/ledger-maintenance?task=closes` every 10 minutes to record closes for verified bets starting soon. It only fetches odds for sports that need them.
 
-**To switch on the scheduled jobs:** in GitHub → Settings → Secrets and variables → Actions, add the variable `EDGEFINDER_BASE_URL` (the production site URL). Optionally add a secret `LEDGER_CRON_SECRET`, and put the same value in Vercel's environment variables. Until the URL is set, both jobs skip cleanly.
+**To switch on the scheduled jobs:** in GitHub → Settings → Secrets and variables → Actions, add the variable `EDGEFINDER_BASE_URL` (the production site URL). Also add a secret `LEDGER_CRON_SECRET` and put the same value in Vercel's environment variables: the closing-line and alert tasks refuse requests without it (the daily anchor doesn't need it). Until the URL is set, both jobs skip cleanly.
 
 Storage is `bet_ledger/{uid}` (+ `events`), `ledger_open` and `ledger_handles`, both Admin-SDK only under the existing default-deny rule. `npm run test:rules` checks that clients can't read or write them. No rules deploy is needed.
+
+## Subscriptions (Stripe)
+`/api/stripe-webhook` keeps each account's plan (`users/{uid}`) in step with Stripe. Every event re-reads the account's subscriptions from Stripe, so late or out-of-order events can't leave a stale plan (`api/_subscriptions.js`). An account stays Pro while its subscription is `active`, `trialing` or `past_due` (Stripe still retrying a failed renewal) and drops to Free once Stripe ends it (`canceled`, `unpaid`, `paused`, …).
+
+In Stripe → Developers → Webhooks, the endpoint must send **`checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated` and `customer.subscription.deleted`** (`customer.subscription.paused`/`resumed` are handled too). Without `updated`, a renewal that fails for good is only caught by the daily check below.
+
+Once a day the `Ledger upkeep` workflow calls `/api/ledger-maintenance?task=subscriptions`, which re-checks every account linked to a Stripe customer — a safety net for missed webhooks. Accounts with no Stripe customer (complimentary or manual grants) are never touched.
 
 ## Background line-move alerts (web push)
 Users can turn on **Settings → Alerts when EdgeFinder is closed**. Every 10 minutes the `Ledger upkeep` workflow calls `/api/ledger-maintenance?task=alerts`. For each subscriber it checks their starred pregame games and sends one notification when the median spread across books moves 1+ point or the total 1.5+ points since the last alert. The first check only records a starting line. Dead device subscriptions are removed automatically. Storage is `push_subscriptions/{uid}`, Admin-only.

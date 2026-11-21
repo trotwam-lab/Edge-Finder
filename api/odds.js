@@ -33,10 +33,19 @@ function setTierHeaders(res, tierInfo) {
 }
 
 // Query values are interpolated into the upstream URL; only accept plain
-// sport keys and a short list of market keys, so a caller can't request
-// extra (paid) markets or inject parameters.
+// sport keys and the board's own markets, so a caller can't request extra
+// (paid) markets or inject parameters. Every distinct market list is its own
+// cache entry, so any other key or ordering would also mean a fresh,
+// multi-credit upstream call on every request.
 const SPORT_RE = /^[a-z0-9_]{2,64}$/;
-const MARKETS_RE = /^[a-z0-9_]+(,[a-z0-9_]+){0,5}$/;
+const ALLOWED_MARKETS = ['h2h', 'spreads', 'totals'];
+
+// "totals,h2h" → "h2h,totals"; null for anything outside ALLOWED_MARKETS.
+export function normalizeMarkets(value) {
+  const requested = String(value).split(',');
+  if (!requested.length || requested.some(m => !ALLOWED_MARKETS.includes(m))) return null;
+  return ALLOWED_MARKETS.filter(m => requested.includes(m)).join(',');
+}
 
 function clampInt(value, fallback, max) {
   const parsed = Number(value);
@@ -46,8 +55,9 @@ function clampInt(value, fallback, max) {
 
 export default async function handler(req, res) {
   if (guardRequest(req, res, { route: 'odds', rateLimit: 300 })) return;
-  const { sport = 'basketball_nba', markets = 'h2h,spreads,totals' } = req.query;
-  if (!SPORT_RE.test(String(sport)) || !MARKETS_RE.test(String(markets))) {
+  const { sport = 'basketball_nba' } = req.query;
+  const markets = normalizeMarkets(req.query.markets ?? ALLOWED_MARKETS.join(','));
+  if (!SPORT_RE.test(String(sport)) || !markets) {
     return res.status(400).json({ error: 'Invalid sport or markets' });
   }
   const tierInfo = await getRequestTier(req);

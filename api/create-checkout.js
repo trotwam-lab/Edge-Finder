@@ -6,9 +6,25 @@
 
 import Stripe from 'stripe';
 import { getVerifiedUser } from './_auth.js';
+import { getAdminDb } from './_firebaseAdmin.js';
 import { guardRequest } from './_http.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// The Stripe customer already linked to this account, if any. Reusing it
+// keeps one account's subscriptions under one customer, so a resubscribe
+// can't leave a live subscription on a second customer nobody checks.
+async function linkedCustomerId(uid) {
+  try {
+    const db = getAdminDb();
+    if (!db) return null;
+    const doc = await db.collection('users').doc(uid).get();
+    return (doc.exists && doc.data()?.stripeCustomerId) || null;
+  } catch (error) {
+    console.warn('Customer lookup failed:', error.message);
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
   if (guardRequest(req, res, { route: 'create-checkout', methods: ['POST'], rateLimit: 20 })) return;
@@ -37,16 +53,24 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'STRIPE_PRICE_ID not configured' });
     }
     
-    const session = await stripe.checkout.sessions.create({
-            line_items: [{ price: priceId, quantity: 1 }],
+    const params = {
+      line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
       success_url: 'https://www.edgefinderdaily.com/?checkout=success',
       cancel_url: 'https://www.edgefinderdaily.com/?checkout=cancel',
       client_reference_id: userId,
-      customer_email: email,
-              metadata: { firebaseUID: userId },
-              subscription_data: { metadata: { firebaseUID: userId } },
-    });
+      metadata: { firebaseUID: userId },
+      subscription_data: { metadata: { firebaseUID: userId } },
+    };
+    const customerId = await linkedCustomerId(userId);
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(customerId ? { ...params, customer: customerId } : { ...params, customer_email: email });
+    } catch (error) {
+      // The linked customer was deleted in Stripe: start fresh by email.
+      if (!customerId || error?.code !== 'resource_missing') throw error;
+      session = await stripe.checkout.sessions.create({ ...params, customer_email: email });
+    }
 
     return res.status(200).json({ url: session.url });
   } catch (error) {

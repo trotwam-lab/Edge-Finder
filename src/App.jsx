@@ -204,8 +204,20 @@ export default function BettingApp() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('checkout') === 'success') {
       setShowCheckoutToast(true);
-      refreshTier();
       window.history.replaceState({}, '', window.location.pathname);
+      // Stripe's webhook (which marks the account Pro) often lands a few
+      // seconds after the redirect back here. One immediate check used to
+      // leave a paying user looking at Free until they reloaded, so keep
+      // checking for about a minute. Deliberately not cancelled on cleanup:
+      // StrictMode re-runs this effect after the URL is already cleared.
+      (async () => {
+        for (const delay of [0, 2000, 3000, 5000, 10000, 15000, 25000]) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          try {
+            if (await refreshTier() === 'pro') return;
+          } catch {}
+        }
+      })();
     } else if (params.get('checkout') === 'cancel') {
       setShowCancelToast(true);
       window.history.replaceState({}, '', window.location.pathname);

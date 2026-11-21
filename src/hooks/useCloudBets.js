@@ -1,32 +1,100 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { doc, getDoc, getDocs, setDoc, onSnapshot, collection } from 'firebase/firestore';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { doc, getDoc, getDocs, setDoc, onSnapshot, collection, runTransaction } from 'firebase/firestore';
 import { db } from '../firestore.js';
 import { useAuth } from '../AuthGate.jsx';
+import { canonicalJson } from '../utils/ledger.js';
+
+const SAVE_DEBOUNCE_MS = 1500;
+const RETRY_MIN_MS = 5000;
+const RETRY_MAX_MS = 60000;
+const ARCHIVE_LIMIT = 500;
 
 /**
  * useCloudBets - A hook that syncs bets to Firebase Firestore while keeping localStorage as a fast cache.
  *
- * This is a drop-in replacement for usePersistentState that:
- * 1. On mount (when user is logged in): Loads bets from Firestore doc at users/{userId}/data/bets
- * 2. When bets change: Saves to both localStorage AND Firestore
- * 3. When user logs in: Merges any localStorage bets with Firestore bets (so offline bets aren't lost)
- * 4. When user logs out: Keeps localStorage bets (they'll merge when they log back in)
+ * 1. On mount: loads bets from Firestore doc at users/{userId}/data/bets and
+ *    merges them with this device's copy for the same account.
+ * 2. When bets change: saves to localStorage at once and to Firestore shortly
+ *    after. A cloud save reads the cloud copy and writes the UNION, so a
+ *    device with a stale list can never wipe out bets another device added.
+ * 3. Each account's bets have their own keys on this device, so whoever signs
+ *    in next on a shared browser never inherits them.
  *
  * Usage: const [bets, setBets] = useCloudBets('edgefinder_bets', []);
  */
 
-// Archive of every bet we have ever seen locally. Writes are append-only
-// (deduped by id) so a bad cloud snapshot or a concurrent-write race can never
-// make a bet permanently disappear from the user's device.
-const archiveKey = (key) => `${key}_archive`;
+// This device's storage for one account: the live list, an append-only
+// archive of every bet ever seen here (so a bad cloud snapshot or a race can
+// never make a bet disappear from the device), and the daily-backup date.
+export function betStorageKeys(key, uid) {
+  return {
+    live: `${key}:${uid}`,
+    archive: `${key}_archive:${uid}`,
+    snapshotDate: `${key}_snapshot_date:${uid}`,
+  };
+}
 
-function readArchive(key) {
+// Before bets were stored per account they lived under these bare keys.
+const legacyStorageKeys = (key) => ({ live: key, archive: `${key}_archive`, snapshotDate: `${key}_snapshot_date` });
+
+function readList(storageKey, fallback = []) {
   try {
-    const saved = localStorage.getItem(archiveKey(key));
-    return saved ? JSON.parse(saved) : [];
+    const saved = localStorage.getItem(storageKey);
+    const parsed = saved ? JSON.parse(saved) : fallback;
+    return Array.isArray(parsed) ? parsed : fallback;
   } catch {
-    return [];
+    return fallback;
   }
+}
+
+function writeList(storageKey, bets) {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(bets));
+  } catch (err) {
+    console.error('Error saving to localStorage:', err);
+  }
+}
+
+/**
+ * Move bets saved under the old, device-wide keys to this account's keys.
+ * Those bets used to be merged into whichever account signed in, so the
+ * first account to sign in after this change claims them (in practice the
+ * account that was already signed in on this device); the bare keys are then
+ * removed so no later account can pick them up. Nothing is dropped: the old
+ * keys are only removed once their bets are written under the new ones.
+ * Returns the bets found under the old keys.
+ */
+export function claimLegacyBets(key, uid) {
+  if (!uid) return [];
+  const legacy = legacyStorageKeys(key);
+  const live = readList(legacy.live);
+  const archive = readList(legacy.archive);
+  let snapshotDate = null;
+  try { snapshotDate = localStorage.getItem(legacy.snapshotDate); } catch {}
+  if (!live.length && !archive.length && snapshotDate == null) return [];
+  const mine = betStorageKeys(key, uid);
+  try {
+    localStorage.setItem(mine.live, JSON.stringify(unionBets(readList(mine.live), live)));
+    localStorage.setItem(mine.archive, JSON.stringify(unionBets(readList(mine.archive), archive, live).slice(0, ARCHIVE_LIMIT)));
+    if (snapshotDate && !localStorage.getItem(mine.snapshotDate)) localStorage.setItem(mine.snapshotDate, snapshotDate);
+    localStorage.removeItem(legacy.live);
+    localStorage.removeItem(legacy.archive);
+    localStorage.removeItem(legacy.snapshotDate);
+  } catch (err) {
+    // Storage full or blocked: leave the old keys alone. The caller still
+    // shows (and cloud-saves) what was found, and the next load tries again.
+    console.error('Could not move saved bets to this account:', err);
+  }
+  return unionBets(live, archive);
+}
+
+// Everything this device holds for one account (claiming old shared-key bets
+// on the way). Without an account, nothing is read.
+function loadLocalBets(key, uid, fallback) {
+  if (!uid) return fallback;
+  const legacy = claimLegacyBets(key, uid);
+  const keys = betStorageKeys(key, uid);
+  return unionBets(readList(keys.archive), readList(keys.live, fallback), legacy);
 }
 
 // Prefer the "most complete" version of a bet when the same id appears twice:
@@ -82,31 +150,54 @@ function mergePair(a, b) {
   return out;
 }
 
-function writeArchive(key, bets) {
+function writeArchive(archiveStorageKey, bets) {
   try {
-    const existing = readArchive(key);
+    const existing = readList(archiveStorageKey);
     const map = new Map();
     existing.forEach(b => { if (b?.id != null) map.set(b.id, b); });
     bets.forEach(b => {
       if (b?.id == null) return;
       map.set(b.id, mergePair(map.get(b.id), b));
     });
-    // Cap archive to the 500 most recent bets by id (ids are Date.now()).
-    const all = Array.from(map.values()).sort((x, y) => (y.id || 0) - (x.id || 0)).slice(0, 500);
-    localStorage.setItem(archiveKey(key), JSON.stringify(all));
+    // Cap archive to the most recent bets by id (ids are Date.now()).
+    const all = Array.from(map.values()).sort((x, y) => (y.id || 0) - (x.id || 0)).slice(0, ARCHIVE_LIMIT);
+    localStorage.setItem(archiveStorageKey, JSON.stringify(all));
   } catch {}
 }
 
 // Union bets from cloud/local/archive by id. Never drops a known bet — a
 // tombstone (`deleted: true`) is how we represent intentional removal so that
 // a bad write can't silently erase data.
-function unionBets(...lists) {
+export function unionBets(...lists) {
   const map = new Map();
   lists.forEach(list => (list || []).forEach(bet => {
     if (!bet || bet.id == null) return;
     map.set(bet.id, mergePair(map.get(bet.id), bet));
   }));
   return Array.from(map.values()).sort((a, b) => (b.id || 0) - (a.id || 0));
+}
+
+// Same data, regardless of key order. Firestore returns map keys sorted, so a
+// plain JSON or identity comparison would call every cloud copy "changed".
+export function sameBets(a, b) {
+  return canonicalJson(a || []) === canonicalJson(b || []);
+}
+
+// Merge other copies into the current list, but hand back the current array
+// itself when they add nothing. A fresh-but-identical array still counts as a
+// state change in React, which re-ran the save effect: every save echoed back
+// through onSnapshot as "new" data and triggered the next save, forever.
+export function mergeInto(prev, ...lists) {
+  const merged = unionBets(prev, ...lists);
+  return sameBets(merged, prev) ? prev : merged;
+}
+
+// The same, for the hook's { owner, bets } state: merges only into the given
+// account's bets, and keeps the state object when nothing changed.
+function mergeStore(prev, owner, ...lists) {
+  if (prev.owner !== owner) return prev;
+  const bets = mergeInto(prev.bets, ...lists);
+  return bets === prev.bets ? prev : { owner, bets };
 }
 
 // Heuristic: does this value look like a bet? Bets always carry an id and at
@@ -119,13 +210,16 @@ function looksLikeBet(x) {
 }
 
 // Walk every localStorage entry looking for arrays of bet-like records.
-// Returns the union of everything found. Safe to call repeatedly.
-export function scanLocalStorageForBets() {
+// Returns the union of everything found. Safe to call repeatedly. Keys that
+// belong to another account on this device (`…:<their uid>`) are skipped.
+export function scanLocalStorageForBets(uid) {
   const found = [];
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k) continue;
+      const owner = k.match(/:([A-Za-z0-9_-]{6,128})$/)?.[1];
+      if (owner && owner !== uid) continue;
       let raw;
       try { raw = localStorage.getItem(k); } catch { continue; }
       if (!raw || raw[0] !== '[' && raw[0] !== '{') continue;
@@ -159,19 +253,17 @@ export async function loadCloudSnapshots(userId) {
   }
 }
 
-const snapshotDateKey = (key) => `${key}_snapshot_date`;
-
 // Write today's snapshot at most once per day (keyed in localStorage) to a
 // date-stamped Firestore doc. Each day gets its own doc so snapshots are
 // additive — today's bad write can never overwrite yesterday's snapshot.
-async function maybeWriteDailySnapshot(userId, key, bets) {
+async function maybeWriteDailySnapshot(userId, dateStorageKey, bets) {
   try {
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const last = localStorage.getItem(snapshotDateKey(key));
+    const last = localStorage.getItem(dateStorageKey);
     if (last === today) return;
     const ref = doc(db, 'users', userId, 'bets_snapshots', today);
     await setDoc(ref, { bets, savedAt: new Date().toISOString() }, { merge: true });
-    localStorage.setItem(snapshotDateKey(key), today);
+    localStorage.setItem(dateStorageKey, today);
   } catch (err) {
     console.error('Daily snapshot failed:', err);
   }
@@ -179,252 +271,209 @@ async function maybeWriteDailySnapshot(userId, key, bets) {
 
 export function useCloudBets(key, defaultValue = []) {
   const { user } = useAuth();
-  const [state, setState] = useState(() => {
-    // On first mount, hydrate from localStorage AND the local archive, so
-    // any bets that were previously saved but lost from the "live" list
-    // (e.g., due to a prior overwrite bug) come back automatically.
-    try {
-      const saved = localStorage.getItem(key);
-      const liveList = saved ? JSON.parse(saved) : defaultValue;
-      const archive = readArchive(key);
-      return unionBets(archive, liveList);
-    } catch {
-      return defaultValue;
-    }
-  });
+  const uid = user?.uid || null;
 
-  // Track if we've done the initial Firestore load
+  // `owner` is the account these bets belong to. Every local and cloud write
+  // goes to the owner's own storage, so one account's list can never land in
+  // another's — not even for a moment while accounts switch.
+  const [store, setStore] = useState(() => ({ owner: uid, bets: loadLocalBets(key, uid, defaultValue) }));
+  const state = store.bets;
+
+  // A different account signed in without the app remounting: swap in that
+  // account's own bets before anything else happens.
+  useEffect(() => {
+    if (store.owner !== uid) setStore({ owner: uid, bets: loadLocalBets(key, uid, defaultValue) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, uid, store.owner]); // defaultValue excluded: stable default ([] literal)
+
+  // Whether this account's cloud copy has been loaded (saves wait for it).
   const hasLoadedFromFirestore = useRef(false);
 
-  // Debounce timer for Firestore writes
-  const debounceTimer = useRef(null);
+  // Canonical JSON of the bets Firestore is known to hold: what we loaded,
+  // last received from another device, or last saved. A save is skipped when
+  // the current list matches it, so nothing is written unless something
+  // actually changed.
+  const cloudJsonRef = useRef(null);
 
-  // Always-current snapshot of state, so cleanup handlers can flush the
-  // latest data even if React's closure is stale.
-  const latestStateRef = useRef(state);
-  useEffect(() => { latestStateRef.current = state; }, [state]);
-
-  // Stable ref to the user so flush handlers can access the userId.
-  const userRef = useRef(null);
+  // Always-current state and user, for timers and unload handlers.
+  const latestStoreRef = useRef(store);
+  useEffect(() => { latestStoreRef.current = store; }, [store]);
+  const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
 
-  // Track previous user state to detect login/logout
-  const prevUserRef = useRef(null);
+  // Cloud saves. Stable for the hook's lifetime; everything they read comes
+  // from refs.
+  const saver = useMemo(() => {
+    let debounceTimer = null;
+    let retryDelay = RETRY_MIN_MS;
+    let saving = false;
+    let saveAgain = false;
 
-  // Helper to merge bets — union by id, preserving the most complete record.
-  // Deletes propagate via tombstones (deleted:true) carried in mergePair.
-  const mergeBets = useCallback((localBets, cloudBets) => {
-    return unionBets(localBets, cloudBets);
-  }, []);
-
-  // Synchronously flush whatever is in latestStateRef to Firestore. Used by
-  // unmount cleanup and pagehide handlers so a tab switch or page close
-  // never loses a freshly-added bet.
-  const flushToFirestore = useCallback(() => {
-    const u = userRef.current;
-    if (!u) return;
-    if (!hasLoadedFromFirestore.current) return;
-    try {
-      const userId = u.uid;
-      const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
-      // Fire-and-forget; we don't await because this may be called from
-      // synchronous unmount paths.
-      setDoc(betsDocRef, {
-        bets: latestStateRef.current,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.error('Flush write failed:', err));
-    } catch (err) {
-      console.error('Flush failed:', err);
+    function schedule(delay = SAVE_DEBOUNCE_MS) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { save(); }, delay);
     }
-  }, []);
 
-  // Effect 1: Load from Firestore when user logs in
+    function hasPending() {
+      return debounceTimer != null;
+    }
+
+    async function save() {
+      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+      const { owner, bets } = latestStoreRef.current;
+      if (!owner || userRef.current?.uid !== owner || !hasLoadedFromFirestore.current) return;
+      if (canonicalJson(bets) === cloudJsonRef.current) return;
+      if (saving) { saveAgain = true; return; }
+      saving = true;
+      try {
+        // Read the cloud copy and write the union in one transaction. A plain
+        // overwrite let a device with a stale list (a phone waking up, a tab
+        // left open) wipe out bets another device had just saved — they then
+        // had to be logged again.
+        const ref = doc(db, 'users', owner, 'data', 'bets');
+        const saved = await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref);
+          const cloudBets = snap.exists() ? (snap.data().bets || []) : [];
+          const union = unionBets(cloudBets, bets);
+          tx.set(ref, { bets: union, updatedAt: new Date().toISOString() }, { merge: true });
+          return union;
+        });
+        retryDelay = RETRY_MIN_MS;
+        if (userRef.current?.uid !== owner) return; // signed out meanwhile
+        cloudJsonRef.current = canonicalJson(saved);
+        // Bring anything another device had added into this one too.
+        setStore(prev => mergeStore(prev, owner, saved));
+        maybeWriteDailySnapshot(owner, betStorageKeys(key, owner).snapshotDate, saved);
+      } catch (err) {
+        // Offline, or contention that outlasted Firestore's own retries. The
+        // bets are safe on this device; try again with backoff.
+        console.error('Error saving bets to Firestore:', err);
+        saveAgain = false;
+        schedule(retryDelay);
+        retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+      } finally {
+        saving = false;
+        if (saveAgain) { saveAgain = false; schedule(); }
+      }
+    }
+
+    return { save, schedule, hasPending };
+  }, [key]);
+
+  // Effect 1: load this account's cloud copy and keep listening for changes
+  // from its other devices.
   useEffect(() => {
-    // If no user, reset the load flag but keep localStorage data
-    if (!user) {
-      hasLoadedFromFirestore.current = false;
-      prevUserRef.current = null;
-      return;
-    }
+    hasLoadedFromFirestore.current = false;
+    cloudJsonRef.current = null;
+    if (!uid) return undefined;
+    let active = true;
+    const betsDocRef = doc(db, 'users', uid, 'data', 'bets');
+    const keys = betStorageKeys(key, uid);
 
-    // If user just logged in (was null, now has value)
-    const justLoggedIn = !prevUserRef.current && user;
-    prevUserRef.current = user;
-
-    if (!justLoggedIn && hasLoadedFromFirestore.current) {
-      return; // Already loaded
-    }
-
-    const userId = user.uid;
-    const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
-
-    // First, try to get the data once
     getDoc(betsDocRef)
       .then(async (docSnap) => {
-        const localBets = (() => {
-          try {
-            const saved = localStorage.getItem(key);
-            return saved ? JSON.parse(saved) : defaultValue;
-          } catch {
-            return defaultValue;
-          }
-        })();
-        // Also pull the local archive so any bet ever seen on this device
-        // survives the initial cloud merge, even if it isn't in the live
-        // localStorage list yet.
-        const archiveBets = readArchive(key);
-
         // Pull every daily snapshot we've ever saved and merge them in too,
         // so a bad write to the live `bets` doc can't erase older data.
-        const snapshotBets = await loadCloudSnapshots(userId);
-
+        const snapshotBets = await loadCloudSnapshots(uid);
+        if (!active) return;
         const cloudBets = docSnap.exists() ? (docSnap.data().bets || defaultValue) : [];
-
-// Merge the latest in-memory state too. This prevents a race where a
-        // user adds a bet immediately after opening the tracker, but before
-        // the first Firestore read finishes; without `prev`, that fresh bet
-        // can be overwritten by an older local/cloud snapshot. Including the
-        // archive and snapshots also protects against old truncation bugs.
-        let mergedBets = [];
-        setState(prev => {
-          mergedBets = unionBets(prev, localBets, archiveBets, cloudBets, snapshotBets);
-          return mergedBets;
-        });
-
-        // If the merge produced bets the cloud doesn't have yet, write back
-        // so other devices and future loads see the union. Also seed Firestore
-        // when no live doc exists yet.
-        const cloudIds = new Set(cloudBets.map(b => b.id));
-        const hasClientOnlyBets = mergedBets.some(b => !cloudIds.has(b.id));
-        if ((hasClientOnlyBets || !docSnap.exists()) && mergedBets.length > 0) {
-          setDoc(betsDocRef, {
-            bets: mergedBets,
-            updatedAt: new Date().toISOString()
-          }, { merge: true })
-            .catch(err => console.error('Error saving merged bets to Firestore:', err));
-        }
-
+        // Merge the latest in-memory state too (`prev`), so a bet added
+        // before this read finished is kept. The device's live list and
+        // archive are re-read in case another tab changed them.
+        setStore(prev => mergeStore(prev, uid, readList(keys.live), readList(keys.archive), cloudBets, snapshotBets));
+        cloudJsonRef.current = canonicalJson(cloudBets);
         hasLoadedFromFirestore.current = true;
+        // If the merge holds anything the cloud copy lacks (including a
+        // first-ever doc), save the union. Skipped when they already match.
+        saver.schedule();
       })
       .catch(err => {
         console.error('Error loading bets from Firestore:', err);
-        // Even if the cloud load failed, mark hydration as complete so
-        // subsequent local writes can sync up to Firestore once available.
+        if (!active) return;
+        // Saves merge with whatever the cloud holds, so syncing can start
+        // even though this read failed.
         hasLoadedFromFirestore.current = true;
+        saver.schedule();
       });
 
-    // Set up real-time listener for updates from other devices. We always
-    // MERGE cloud state into local state rather than replacing — this way
-    // a bad write from another device can't silently delete bets. Intentional
-    // deletes still propagate because they ride along as `deleted: true`
-    // tombstones, which `mergePair` preserves.
+    // Other devices' saves arrive here. Always MERGE, never replace, so a bad
+    // write elsewhere can't delete bets here. Intentional deletes still
+    // propagate as `deleted: true` tombstones, which `mergePair` preserves.
     const unsubscribe = onSnapshot(
       betsDocRef,
       (docSnap) => {
-        if (!docSnap.exists() || !hasLoadedFromFirestore.current) return;
+        if (docSnap.metadata.hasPendingWrites) return;
+        if (!active || !docSnap.exists() || !hasLoadedFromFirestore.current) return;
         const cloudBets = docSnap.data().bets || defaultValue;
-        setState(prev => unionBets(prev, cloudBets));
+        cloudJsonRef.current = canonicalJson(cloudBets);
+        setStore(prev => mergeStore(prev, uid, cloudBets));
+        // If this device holds bets that copy lacks, save the union back.
+        saver.schedule();
       },
       (err) => {
         console.error('Firestore snapshot error:', err);
       }
     );
 
-    return () => unsubscribe();
+    return () => { active = false; unsubscribe(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, key, mergeBets]); // defaultValue excluded: stable default ([] literal) to prevent infinite re-renders
+  }, [uid, key, saver]); // defaultValue excluded: stable default ([] literal)
 
-  // Durable setter: persist to localStorage/archive in the same turn as the
-  // state update. This prevents the "bet shows, then disappears when I switch
-  // tabs" bug, which can happen if the component unmounts before React has a
-  // chance to run the post-render persistence effect.
+  // Durable setter: persist to this account's localStorage keys in the same
+  // turn as the state update, so a bet survives even if the app unmounts
+  // before React runs the persistence effect below.
   const setDurableState = useCallback((valueOrUpdater) => {
-    setState(prev => {
-      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev) : valueOrUpdater;
-      try {
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch (err) {
-        console.error('Error saving to localStorage:', err);
+    setStore(prev => {
+      const next = typeof valueOrUpdater === 'function' ? valueOrUpdater(prev.bets) : valueOrUpdater;
+      if (next === prev.bets) return prev;
+      if (prev.owner) {
+        const keys = betStorageKeys(key, prev.owner);
+        writeList(keys.live, next);
+        writeArchive(keys.archive, next);
       }
-      writeArchive(key, next);
-      return next;
+      return { owner: prev.owner, bets: next };
     });
   }, [key]);
 
-  // Effect 2: Mirror current state to localStorage as a safety net too.
+  // Effect 2: mirror every state change (including merges from the cloud)
+  // to this account's localStorage keys.
   useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(state));
-    } catch (err) {
-      console.error('Error saving to localStorage:', err);
-    }
-    writeArchive(key, state);
-  }, [key, state]);
+    if (!store.owner) return;
+    const keys = betStorageKeys(key, store.owner);
+    writeList(keys.live, store.bets);
+    writeArchive(keys.archive, store.bets);
+  }, [key, store]);
 
-  // Effect 3: Debounced save to Firestore, with a hard guarantee that any
-  // pending write is flushed when the component unmounts (e.g. user switches
-  // tabs in the app) or the tab is hidden / page is being unloaded. Without
-  // this flush, a tab switch within the 2s debounce window would silently
-  // drop the cloud write and the bet would appear to vanish on return.
+  // Effect 3: debounced cloud save after each change.
   useEffect(() => {
-    if (!user) return;
-    if (!hasLoadedFromFirestore.current) return;
+    if (!uid || store.owner !== uid || !hasLoadedFromFirestore.current) return;
+    saver.schedule();
+  }, [store, uid, saver]);
 
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
+  // Leaving within the debounce window must not drop the cloud save.
+  useEffect(() => () => {
+    if (saver.hasPending()) saver.save();
+  }, [saver]);
 
-    debounceTimer.current = setTimeout(() => {
-      const userId = user.uid;
-      const betsDocRef = doc(db, 'users', userId, 'data', 'bets');
-
-      setDoc(betsDocRef, {
-        bets: state,
-        updatedAt: new Date().toISOString()
-      }, { merge: true })
-        .catch(err => console.error('Error saving bets to Firestore:', err));
-
-      maybeWriteDailySnapshot(userId, key, state);
-      debounceTimer.current = null;
-    }, 1500);
-
-    return () => {
-      // If a debounced write is still pending when this effect tears down
-      // (state changed, or component is unmounting), flush it immediately
-      // using the latest state. This is the core fix for "bet disappears
-      // when I switch tabs right after logging it" — the previous code
-      // simply cleared the timer and never wrote to Firestore.
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-        flushToFirestore();
-      }
-    };
-  }, [state, user, key, flushToFirestore]);
-
-  // Effect 4: Flush on tab hide / page unload. Browsers don't always fire
-  // unmount cleanup before tearing down the page, so we listen for
-  // visibilitychange and pagehide as a belt-and-suspenders safeguard.
+  // Effect 4: save on tab hide / page unload (browsers don't always run
+  // unmount cleanup), and as soon as the connection comes back. `save`
+  // writes only if something changed since the last save.
   useEffect(() => {
-    const onHide = () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-      }
-      flushToFirestore();
-    };
+    const onHide = () => { saver.save(); };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') onHide();
     };
     window.addEventListener('pagehide', onHide);
     window.addEventListener('beforeunload', onHide);
+    window.addEventListener('online', onHide);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('pagehide', onHide);
       window.removeEventListener('beforeunload', onHide);
+      window.removeEventListener('online', onHide);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [flushToFirestore]);
+  }, [saver]);
 
   return [state, setDurableState];
 }

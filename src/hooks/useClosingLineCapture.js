@@ -110,7 +110,7 @@ export function useClosingLineCapture(bets, setBets, games, historicOdds, player
             patch.closingCapturedAt = now;
           }
         } else if (!gameStillListed && (bet.lastPreGameOdds != null || bet.lastPreGamePoint != null)) {
-          if (bet.closingOdds == null) patch.closingOdds = bet.lastPreGameOdds;
+          if (bet.closingOdds == null && bet.lastPreGameOdds != null) patch.closingOdds = bet.lastPreGameOdds;
           if (bet.closingPoint == null && bet.lastPreGamePoint != null) patch.closingPoint = bet.lastPreGamePoint;
           if (patch.closingOdds != null || patch.closingPoint != null) patch.closingCapturedAt = now;
         }
